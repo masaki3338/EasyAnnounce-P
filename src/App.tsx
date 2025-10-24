@@ -349,7 +349,7 @@ const handleSpeak = async () => {
   useEffect(() => {
     const initializeDatabase = async () => {
       const exists = await localForage.getItem("initialized");
-      if (!exists) {
+ /*     if (!exists) {
         await localForage.setItem("team", {
           name: "東京武蔵ポニー",
           furigana: "とうきょうむさしぽにー",
@@ -378,6 +378,7 @@ const handleSpeak = async () => {
         console.log("✅ 初期チームデータを登録しました。");
       }
     };
+ */   
     initializeDatabase();
   }, []);
 
