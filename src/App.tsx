@@ -346,41 +346,7 @@ const handleSpeak = async () => {
   };
   useKeepScreenAwake();
 
-  useEffect(() => {
-    const initializeDatabase = async () => {
-      const exists = await localForage.getItem("initialized");
- /*     if (!exists) {
-        await localForage.setItem("team", {
-          name: "東京武蔵ポニー",
-          furigana: "とうきょうむさしぽにー",
-          players: [
-            {
-              id: 1,
-              lastName: "田中",
-              firstName: "太郎",
-              lastNameKana: "たなか",
-              firstNameKana: "たろう",
-              number: "1",
-              isFemale: false,
-            },
-            {
-              id: 2,
-              lastName: "鈴木",
-              firstName: "次郎",
-              lastNameKana: "すずき",
-              firstNameKana: "じろう",
-              number: "2",
-              isFemale: false,
-            },
-          ],
-        });
-        await localForage.setItem("initialized", true);
-        console.log("✅ 初期チームデータを登録しました。");
-      }
-    };
- */   
-    initializeDatabase();
-  }, []);
+
 
 
   return (
