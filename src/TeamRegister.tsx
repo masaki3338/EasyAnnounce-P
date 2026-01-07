@@ -162,10 +162,10 @@ const addOrUpdatePlayer = () => {
   // 未入力チェック（順番＝フォーカス優先度）
   const missing: { label: string; ref: React.RefObject<HTMLInputElement> }[] = [];
   if (!ln)  missing.push({ label: "姓",     ref: lastNameInputRef  });
-  if (!fn)  missing.push({ label: "名",     ref: firstNameInputRef });
-  if (!lnk) missing.push({ label: "ふりがな（姓）",  ref: lastNameKanaRef    });   // ★追加
-  if (!fnk) missing.push({ label: "ふりがな（名）",  ref: firstNameKanaRef   });   // ★追加
-  if (!num) missing.push({ label: "背番号", ref: numberInputRef    });
+  //if (!fn)  missing.push({ label: "名",     ref: firstNameInputRef });
+  //if (!lnk) missing.push({ label: "ふりがな（姓）",  ref: lastNameKanaRef    });   // ★追加
+  //if (!fnk) missing.push({ label: "ふりがな（名）",  ref: firstNameKanaRef   });   // ★追加
+  //if (!num) missing.push({ label: "背番号", ref: numberInputRef    });
 
   if (missing.length > 0) {
     const labels = missing.map(m => m.label).join("・");
@@ -184,7 +184,8 @@ const addOrUpdatePlayer = () => {
   setFormError("");
 
   // ここからは従来通りの追加・更新処理
-  if (!editingPlayer.lastName || !editingPlayer.firstName || !editingPlayer.number) return;
+  //if (!editingPlayer.lastName || !editingPlayer.firstName || !editingPlayer.number) return;
+  if (!editingPlayer.lastName) return;
 
   setTeam((prev) => {
     const existingIndex = prev.players.findIndex((p) => p.id === editingPlayer.id);
