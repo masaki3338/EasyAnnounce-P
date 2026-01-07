@@ -46,7 +46,7 @@ const positionNames: { [key: string]: string } = {
 };
 
 const positionStyles: { [key: string]: React.CSSProperties } = {
-  投: { top: "62%", left: "50%" },
+  投: { top: "63%", left: "50%" },
   捕: { top: "91%", left: "50%" },
   一: { top: "65%", left: "82%" },
   二: { top: "44%", left: "66%" },
@@ -638,7 +638,6 @@ const handleDropToPosition = (e: React.DragEvent<HTMLDivElement>, toPos: string)
 
 
 // ── DHルール（打順固定）：投手枠とDHの“中身だけ”入れ替える ──
-// ── DHルール（打順固定）：投手枠とDHの“中身だけ”入れ替える ──
 // 変更前のDHを退避（変数名を oldDhId として新規定義）
 const oldDhId = assignments[DH] ?? null;
 
@@ -662,6 +661,36 @@ if (pitcherId) {
     const dIdx = updated.findIndex((e) => e.id === oldDhId);
     if (dIdx !== -1) {
       updated[dIdx] = { id: pitcherId, reason: "スタメン" };
+    }
+  }
+}
+
+// ✅ 追加：DHが打順にいるとき、投手が打順に入っていたら「フィールドで打順にいない選手」と入替
+if (dhId && pitcherId) {
+  const pIdx = updated.findIndex((e) => e.id === pitcherId);
+
+  if (pIdx !== -1) {
+    // フィールド（守備9人）にいるのに打順にいない選手を探す（投手以外）
+    const orderSet = new Set(updated.map((e) => e.id));
+
+    // positions は ["投","捕","一","二","三","遊","左","中","右"]
+    // ここでは投手を除外して候補を順に探す
+    const candidateId =
+      positions
+        .filter((pos) => pos !== "投")
+        .map((pos) => next[pos])
+        .find((id) => typeof id === "number" && !orderSet.has(id)) ?? null;
+
+    if (typeof candidateId === "number") {
+      // 打順上の投手を、打順に入っていないフィールド選手に差し替える
+      updated[pIdx] = { id: candidateId, reason: "スタメン" };
+    } else {
+      // 候補がいない＝異常状態（念のため投手を消してDHを優先）
+      // ※ DHが既に打順にいるはずだが、保険として書いておく
+      updated = updated.filter((e) => e.id !== pitcherId);
+      if (!updated.some((e) => e.id === dhId)) {
+        updated.push({ id: dhId, reason: "スタメン" });
+      }
     }
   }
 }
