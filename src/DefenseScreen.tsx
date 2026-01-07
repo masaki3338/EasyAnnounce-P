@@ -1228,11 +1228,13 @@ const handleStop = () => { ttsStop(); };
     type="button"
     onClick={() => changeRun(-1)}
     className="
-      flex-[0.6] h-14
+      flex-[0.6] h-14 min-w-0
       bg-red-600 hover:bg-red-700
-      text-white font-extrabold text-lg
+      text-white font-extrabold
+      text-[clamp(12px,3.5vw,16px)]
       rounded-xl shadow-lg
       flex items-center justify-center
+      whitespace-nowrap leading-none
       transform hover:scale-[1.02] active:scale-[0.97]
       transition-all duration-150
       ring-4 ring-red-400/40
@@ -1240,6 +1242,7 @@ const handleStop = () => { ttsStop(); };
   >
     得点−1
   </button>
+
 
   {/* 得点 +1 */}
   <button
@@ -1271,15 +1274,17 @@ const handleStop = () => { ttsStop(); };
       setScoreOverwrite(true);
       setEditInning(null);
       setEditTopBottom(null);
-
       setShowModal(true);
     }}
     className="
-      flex-[1.4] h-14
+      flex-[1.4] h-14 min-w-0
       bg-black hover:bg-gray-900
-      text-white font-extrabold text-lg tracking-wider
+      text-white font-extrabold
+      text-[clamp(13px,3.6vw,18px)]
+      tracking-wider
       rounded-xl shadow-lg
       flex items-center justify-center gap-2
+      whitespace-nowrap leading-none
       transform hover:scale-[1.02] active:scale-[0.97]
       transition-all duration-150
       ring-4 ring-gray-400/40
@@ -1287,6 +1292,7 @@ const handleStop = () => { ttsStop(); };
   >
     ⚾イニング終了
   </button>
+
 </div>
 
 
