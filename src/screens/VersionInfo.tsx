@@ -92,6 +92,7 @@ export default function VersionInfo({ version, onBack, onOpenContact }: Props) {
             </div>
             <ul className="mt-2 text-base leading-7 list-disc ml-6">
               <li>2025.09.01　Vesion 0.10 β版 Release</li>
+              <li>2026.01.07　Vesion 0.20 β版 追加仕様</li>
             </ul>
           </div>
         </section>
@@ -134,13 +135,6 @@ export default function VersionInfo({ version, onBack, onOpenContact }: Props) {
               <li>生成音声の取扱いはプライバシーポリシー／利用規約をご参照ください。</li>
             </ul>
 
-            {/* VOICEVOX */}
-            <p className="font-medium mt-4">VOICEVOX</p>
-            <ul className="list-disc ml-5 mt-2 space-y-1">
-              <li>本アプリは音声合成に VOICEVOX を使用しています。</li>
-              <li>VOICEVOX はオープンソースの音声合成ソフトウェアです。</li>
-              <li>利用にあたり VOICEVOX のライセンス（MIT License）および各キャラクターの利用規約に従います。</li>
-            </ul>
           </div>
 
 
