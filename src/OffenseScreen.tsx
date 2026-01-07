@@ -1901,14 +1901,13 @@ useEffect(() => {
 
 {/* 一番下のイニング終了ボタン（左に 得点-1 / 得点+1 を追加） */}
 <div className="mt-6 flex gap-2">
-  {/* 得点 -1 */}
+  {/* 得点 -1（小さく） */}
   <button
     type="button"
     onClick={async () => {
       try {
-        const idx = Number(inning) - 1;                 // ★ scores は 0始まり
+        const idx = Number(inning) - 1;
         const half: "top" | "bottom" = isTop ? "top" : "bottom";
-
         const current = scores?.[idx]?.[half] ?? 0;
         const nextVal = Math.max(0, current - 1);
 
@@ -1927,27 +1926,25 @@ useEffect(() => {
       }
     }}
     className="
-      flex-1 h-14
+      flex-[0.6] h-14
       bg-red-600 hover:bg-red-700
-      text-white font-extrabold text-lg
-      rounded-xl shadow-lg
+      text-white font-bold text-sm
+      rounded-lg shadow
       flex items-center justify-center
-      transform hover:scale-[1.02] active:scale-[0.97]
-      transition-all duration-150
-      ring-4 ring-red-400/40
+      active:scale-[0.96]
+      transition
     "
   >
-    得点 −1
+    得点−1
   </button>
 
-  {/* 得点 +1 */}
+  {/* 得点 +1（中サイズ） */}
   <button
     type="button"
     onClick={async () => {
       try {
-        const idx = Number(inning) - 1;                 // ★ scores は 0始まり
+        const idx = Number(inning) - 1;
         const half: "top" | "bottom" = isTop ? "top" : "bottom";
-
         const current = scores?.[idx]?.[half] ?? 0;
         const nextVal = current + 1;
 
@@ -1971,34 +1968,32 @@ useEffect(() => {
       text-white font-extrabold text-lg
       rounded-xl shadow-lg
       flex items-center justify-center
-      transform hover:scale-[1.02] active:scale-[0.97]
-      transition-all duration-150
-      ring-4 ring-blue-400/40
+      active:scale-[0.97]
+      transition
     "
   >
-    得点 ＋1
+    得点＋1
   </button>
 
-  {/* イニング終了（既存処理そのまま） */}
+  {/* イニング終了（大きく・主役） */}
   <button
     type="button"
     onClick={async () => {
       const currentInning = Number(inning);
       const currentHalf: "top" | "bottom" = isTop ? "top" : "bottom";
-      // ★ 黄色表示の得点を取得（scores は 0始まり）
       const currentScore =
         scores[currentInning - 1]?.[currentHalf] ?? 0;
-      // ★ モーダル初期値としてセット
-      setInputScore(String(currentScore));        
+
+      setInputScore(String(currentScore));
       setScoreOverwrite(true);
 
-      // 既存のイニング終了ボタンと同じ処理
-      const isThirdBottom = (Number(inning) === 3 && isTop === false);
+      const isThirdBottom =
+        Number(inning) === 3 && isTop === false;
 
       if (isThirdBottom) {
         const mi = await localForage.getItem<any>("matchInfo");
         const noNextGame =
-          (mi?.noNextGame === true) || (mi?.noNextGame === "true");
+          mi?.noNextGame === true || mi?.noNextGame === "true";
         if (!noNextGame) {
           setPendingMemberExchange(true);
         }
@@ -2007,17 +2002,17 @@ useEffect(() => {
       setShowModal(true);
     }}
     className="
-      flex-[1.2] h-14
+      flex-[2.2] h-16
       bg-black hover:bg-gray-900
-      text-white font-extrabold text-lg tracking-wider
-      rounded-xl shadow-lg
+      text-white font-extrabold text-xl tracking-wider
+      rounded-2xl shadow-xl
       flex items-center justify-center gap-2
-      transform hover:scale-[1.02] active:scale-[0.97]
-      transition-all duration-150
+      active:scale-[0.97]
+      transition
       ring-4 ring-gray-400/40
     "
   >
-    ⚾ イニング終了 ⚾
+    ⚾イニング終了
   </button>
 </div>
 

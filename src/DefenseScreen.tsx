@@ -1220,7 +1220,7 @@ const handleStop = () => { ttsStop(); };
       transition-all duration-150
     "
   >
-    🔀 守備交代
+    🔀守備交代
   </button>
 
   {/* 得点 -1 */}
@@ -1228,7 +1228,7 @@ const handleStop = () => { ttsStop(); };
     type="button"
     onClick={() => changeRun(-1)}
     className="
-      flex-1 h-14
+      flex-[0.6] h-14
       bg-red-600 hover:bg-red-700
       text-white font-extrabold text-lg
       rounded-xl shadow-lg
@@ -1238,7 +1238,7 @@ const handleStop = () => { ttsStop(); };
       ring-4 ring-red-400/40
     "
   >
-    得点 −1
+    得点−1
   </button>
 
   {/* 得点 +1 */}
@@ -1256,7 +1256,7 @@ const handleStop = () => { ttsStop(); };
       ring-4 ring-blue-400/40
     "
   >
-    得点 ＋1
+    得点＋1
   </button>
 
   {/* イニング終了（右端） */}
@@ -1285,7 +1285,7 @@ const handleStop = () => { ttsStop(); };
       ring-4 ring-gray-400/40
     "
   >
-    ⚾ イニング終了 ⚾
+    ⚾イニング終了
   </button>
 </div>
 
