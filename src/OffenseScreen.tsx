@@ -174,7 +174,14 @@ const formatJaTime = (t: string | Date | undefined | null): string => {
   return t;
 };
 
+const formatNumberBadge = (num?: string | number) => {
+  // null/undefined/空文字は「#」のみ
+  if (num === undefined || num === null || `${num}`.trim() === "") return "#";
+  return `#${num}`;
+};
 
+const hasNumber = (num?: string | number) =>
+  !(num === undefined || num === null || `${num}`.trim() === "");
 
 const DraggablePlayer = ({ player }: { player: any }) => {
   const [, drag] = useDrag({
@@ -273,6 +280,8 @@ const OffenseScreen: React.FC<OffenseScreenProps> = ({
   const [announcementHTMLStr, setAnnouncementHTMLStr] = useState<string>("");
   const [announcementHTMLOverrideStr, setAnnouncementHTMLOverrideStr] = useState<string>("");
   const [tiebreakAnno, setTiebreakAnno] = useState<string | null>(null);
+  const [scoreOverwrite, setScoreOverwrite] = useState(true);
+
   // 🔒 読み上げ連打ロック
   const [speaking, setSpeaking] = useState(false);
   const isSpeakingRef = useRef(false);
@@ -1093,19 +1102,35 @@ const makeRunnerAnnounce = (base: string, fromName: string, to: Player | null, i
   const baseKanji = base.replace("1", "一").replace("2", "二").replace("3", "三");
   const prefix = `${baseKanji}ランナー`;
 
+  const num = (to.number ?? "").trim();
+
   if (isTemp) {
     // 例）「一塁ランナー〇〇くんに代わりまして 臨時代走、▲▲君、臨時代走は▲▲君。」
     return `${prefix}${fromName ? fromName + "に" : ""}代わりまして 臨時代走、${toNameLast}、臨時代走は ${toNameLast}。`;
   }
-  // 通常代走
-  return `${prefix}${fromName ? fromName + "に" : ""}代わりまして、${toNameFull}、${prefix}は ${toNameLast}、背番号  ${to.number}。`;
+
+  // 通常代走（背番号がある時だけ付ける）
+  return `${prefix}${fromName ? fromName + "に" : ""}代わりまして、${toNameFull}、${prefix}は ${toNameLast}${
+    num ? `、背番号 ${num}。` : "。"
+  }`;
+
 };
 
 const handleScoreInput = (digit: string) => {
-  if (inputScore.length < 2) {
-    setInputScore(prev => prev + digit);
-  }
+  setInputScore(prev => {
+    // 1回目は上書き（初期値を置き換える）
+    if (scoreOverwrite) return digit;
+
+    // 2回目以降は追記（最大2桁）
+    if ((prev ?? "").length >= 2) return prev;
+    if (prev === "0") return digit; // 0の後に押したら 05 ではなく 5 にしたい場合
+
+    return (prev ?? "") + digit;
+  });
+  // 1回押したら次から追記モード
+  setScoreOverwrite(false);
 };
+
 
 // HTML文字列を通常アナウンス欄へ出す
 const setAnnouncementHTML = (html: string) => {
@@ -1373,15 +1398,19 @@ const nameHTML = isChecked
   ? formatNameForAnnounce(player, true)    // 「苗字のみ」指定。ただし重複姓ならフル
   : formatNameForAnnounce(player, false);  // フルネーム
 
+const num = (number ?? "").trim(); // ★追加：背番号判定用
+
 if (!isChecked) {
   lines.push(
     `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}、<br />` +
-    // 2行目の“苗字のみ”も重複姓ならフルにしたいので、ヘルパー経由で生成
-    `${posPrefix}${formatNameForAnnounce(player, true)}${honorific}、背番号 ${number}。`
+    // 2行目：背番号がある時だけ付ける
+    `${posPrefix}${formatNameForAnnounce(player, true)}${honorific}` +
+    `${num ? `、背番号 ${num}。` : "。"}`
   );
 } else {
   lines.push(
-    `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}、背番号 ${number}。`
+    `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}` +
+    `${num ? `、背番号 ${num}。` : "。"}`
   );
 }
 
@@ -1619,38 +1648,56 @@ useEffect(() => {
                 className={`border text-center cursor-pointer hover:bg-gray-200 ${
                   isNow ? "bg-yellow-300 font-bold border-2 border-yellow-500" : ""
                 }`}
-onClick={() => {
-  const clickedInning = i + 1;
-  const clickedHalf: "top" | "bottom" = target as "top" | "bottom";
+                onClick={() => {
+                  const clickedInning = i + 1;
+                  const clickedHalf: "top" | "bottom" = target as "top" | "bottom";
 
-  // 半回の序列: 表=0, 裏=1
-  const currentHalfIndex = isTop ? 0 : 1;
-  const clickedHalfIndex = clickedHalf === "top" ? 0 : 1;
+                  // 半回の序列: 表=0, 裏=1
+                  const currentHalfIndex = isTop ? 0 : 1;
+                  const clickedHalfIndex = clickedHalf === "top" ? 0 : 1;
 
-  // いま進行中の半回は編集禁止
-  const isCurrentHalf =
-    clickedInning === inning && clickedHalfIndex === currentHalfIndex;
+                  // いま進行中の半回は編集禁止
+                  const isCurrentHalf =
+                    clickedInning === Number(inning) && clickedHalfIndex === currentHalfIndex;
 
-  // 未来（現在より後）の半回は編集禁止
-  const isFuture =
-    clickedInning > inning ||
-    (clickedInning === inning && clickedHalfIndex > currentHalfIndex);
+                  // 未来（現在より後）の半回は編集禁止
+                  const isFuture =
+                    clickedInning > Number(inning) ||
+                    (clickedInning === Number(inning) && clickedHalfIndex > currentHalfIndex);
 
-  if (isCurrentHalf || isFuture) return;
+                  if (isCurrentHalf || isFuture) return;
 
-  // ここまで来たら「過去の半回」= 編集OK
-  setEditInning(clickedInning);
-  setEditTopBottom(clickedHalf);
-  const existing = scores[i]?.[clickedHalf];
-  setInputScore(
-    existing !== undefined ? String(existing) : ""
-  );
-  setShowModal(true);
-}}
+                  // ここまで来たら「過去の半回」= 編集OK
+                  setEditInning(clickedInning);
+                  setEditTopBottom(clickedHalf);
 
+                  // ★ scores は 0始まりなので -1
+                  const existing = scores[clickedInning - 1]?.[clickedHalf];
+                  setInputScore(existing !== undefined ? String(existing) : "");
+
+                  setShowModal(true);
+                }}
               >
-                {isNow ? "" : (i + 1 > inning ? "" : val ?? "")}
+                {(() => {
+                  const nInning = Number(inning);
+
+                  // 未来の回は空
+                  if (i + 1 > nInning) return "";
+
+                  // 同じ回でも「未来の半回」（例: 表のときの裏）は空
+                  const currentHalf: "top" | "bottom" = isTop ? "top" : "bottom";
+                  if (i + 1 === nInning && target !== currentHalf) return "";
+
+                  // 表示値（現在の黄色セルも含めて表示）
+                  const v = val ?? "";
+
+                  // 0 を空にしたいなら↓を有効化（好み）
+                  // if (v === 0) return "";
+
+                  return v;
+                })()}
               </td>
+
             );
           })}
           {/* ── 計 ── */}
@@ -1729,6 +1776,7 @@ onClick={() => {
 <div className="grid grid-cols-[50px_100px_150px_60px] items-center gap-2">
   <div>{idx + 1}番</div>
   <div>{positionLabel}</div>
+
   <div className="flex items-center gap-1">
     <input
       type="checkbox"
@@ -1736,17 +1784,25 @@ onClick={() => {
       onChange={() => toggleChecked(entry.id)}
       className="mr-2"
     />
+
+    {/* 姓（必ず表示） */}
     <ruby>
-      {player?.lastName ?? "苗字"}
+      {player?.lastName ?? ""}
       {player?.lastNameKana && <rt>{player.lastNameKana}</rt>}
     </ruby>
-    <ruby>
-      {player?.firstName ?? "名前"}
-      {player?.firstNameKana && <rt>{player.firstNameKana}</rt>}
-    </ruby>
+
+    {/* 名（ある時だけ表示） */}
+    {player?.firstName?.trim() ? (
+      <ruby>
+        {player.firstName}
+        {player.firstNameKana && <rt>{player.firstNameKana}</rt>}
+      </ruby>
+    ) : null}
   </div>
-  <div>#{player?.number ?? "番号"}</div>
+
+  <div>{formatNumberBadge(player?.number)}</div>
 </div>
+
     </div>
   );
 })}
@@ -1843,10 +1899,99 @@ onClick={() => {
     </div>
   </div>
 
-  {/* 一番下のイニング終了ボタン */}
-<div className="mt-6">
+{/* 一番下のイニング終了ボタン（左に 得点-1 / 得点+1 を追加） */}
+<div className="mt-6 flex gap-2">
+  {/* 得点 -1 */}
   <button
+    type="button"
     onClick={async () => {
+      try {
+        const idx = Number(inning) - 1;                 // ★ scores は 0始まり
+        const half: "top" | "bottom" = isTop ? "top" : "bottom";
+
+        const current = scores?.[idx]?.[half] ?? 0;
+        const nextVal = Math.max(0, current - 1);
+
+        const nextScores = {
+          ...scores,
+          [idx]: {
+            ...(scores?.[idx] ?? {}),
+            [half]: nextVal,
+          },
+        };
+
+        setScores(nextScores);
+        await localForage.setItem("scores", nextScores);
+      } catch (e) {
+        console.error("score -1 error", e);
+      }
+    }}
+    className="
+      flex-1 h-14
+      bg-red-600 hover:bg-red-700
+      text-white font-extrabold text-lg
+      rounded-xl shadow-lg
+      flex items-center justify-center
+      transform hover:scale-[1.02] active:scale-[0.97]
+      transition-all duration-150
+      ring-4 ring-red-400/40
+    "
+  >
+    得点 −1
+  </button>
+
+  {/* 得点 +1 */}
+  <button
+    type="button"
+    onClick={async () => {
+      try {
+        const idx = Number(inning) - 1;                 // ★ scores は 0始まり
+        const half: "top" | "bottom" = isTop ? "top" : "bottom";
+
+        const current = scores?.[idx]?.[half] ?? 0;
+        const nextVal = current + 1;
+
+        const nextScores = {
+          ...scores,
+          [idx]: {
+            ...(scores?.[idx] ?? {}),
+            [half]: nextVal,
+          },
+        };
+
+        setScores(nextScores);
+        await localForage.setItem("scores", nextScores);
+      } catch (e) {
+        console.error("score +1 error", e);
+      }
+    }}
+    className="
+      flex-1 h-14
+      bg-blue-600 hover:bg-blue-700
+      text-white font-extrabold text-lg
+      rounded-xl shadow-lg
+      flex items-center justify-center
+      transform hover:scale-[1.02] active:scale-[0.97]
+      transition-all duration-150
+      ring-4 ring-blue-400/40
+    "
+  >
+    得点 ＋1
+  </button>
+
+  {/* イニング終了（既存処理そのまま） */}
+  <button
+    type="button"
+    onClick={async () => {
+      const currentInning = Number(inning);
+      const currentHalf: "top" | "bottom" = isTop ? "top" : "bottom";
+      // ★ 黄色表示の得点を取得（scores は 0始まり）
+      const currentScore =
+        scores[currentInning - 1]?.[currentHalf] ?? 0;
+      // ★ モーダル初期値としてセット
+      setInputScore(String(currentScore));        
+      setScoreOverwrite(true);
+
       // 既存のイニング終了ボタンと同じ処理
       const isThirdBottom = (Number(inning) === 3 && isTop === false);
 
@@ -1862,7 +2007,7 @@ onClick={() => {
       setShowModal(true);
     }}
     className="
-      w-full h-14
+      flex-[1.2] h-14
       bg-black hover:bg-gray-900
       text-white font-extrabold text-lg tracking-wider
       rounded-xl shadow-lg
@@ -1875,6 +2020,7 @@ onClick={() => {
     ⚾ イニング終了 ⚾
   </button>
 </div>
+
 
 
 
@@ -1954,11 +2100,32 @@ onClick={async () => {
   const p = getPlayer(pitcherId);
   if (!p) return null;
 
-  const honor = p.isFemale ? "さん" : "くん";
-  const line1 = "ただいまより、指名打者制を解除します。";
-  const line2 = `${order1}番　ピッチャー　${p.lastName} ${p.firstName}${honor}　ピッチャー${p.lastName}${honor}　背番号 ${p.number}`;
+ const honor = p.isFemale ? "さん" : "くん";
+const line1 = "ただいまより、指名打者制を解除します。";
 
-  const speak = () => announce(`${line1}${line2}`);
+const num = (p.number ?? "").trim(); // ★追加：背番号
+
+// ★ 表示用（従来どおり・漢字）
+const line2 =
+  `${order1}番　ピッチャー　${p.lastName} ${p.firstName}${honor}　` +
+  `ピッチャー${p.lastName}${honor}` +
+  `${num ? `　背番号 ${num}` : ""}`;
+
+// ★ 読み上げ用（ふりがな優先：rubyタグを付ける）
+const line2Html =
+  `${order1}番　ピッチャー　${rubyFull(p)}${honor}　` +
+  `ピッチャー${rubyLast(p)}${honor}` +
+  `${num ? `　背番号 ${num}` : ""}`;
+
+// ★ 読み上げ：モーダルの見た目はそのまま、TTSには ruby を渡してかな化
+const speak = async () => {
+  await speakFromAnnouncementArea(
+    `${line1}<br/>${line2Html}`,
+    undefined
+  );
+};
+
+
   const stop  = () => speechSynthesis.cancel();
 
   const confirmDisableDH = async () => {
@@ -2041,6 +2208,29 @@ onClick={async () => {
               </div>
 
               {/* 読み上げ・停止 */}
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={speak}
+                  disabled={isSpeakingRef.current || speaking}
+                  className="flex-1 h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white inline-flex items-center justify-center gap-2 shadow-md"
+                  title="読み上げ"
+                >
+                  <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+                  <span className="whitespace-nowrap leading-none">読み上げ</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    stop();                 // その場でTTS停止
+                    isSpeakingRef.current = false; // 連打ロック解除（保険）
+                    setSpeaking(false);
+                  }}
+                  className="flex-1 h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white inline-flex items-center justify-center shadow-md"
+                  title="停止"
+                >
+                  <span className="whitespace-nowrap leading-none">停止</span>
+                </button>
+              </div>
 
             </div>
           </div>
@@ -2093,7 +2283,7 @@ onClick={async () => {
         {/* 固定ヘッダー（他モーダルと統一） */}
         <div className="sticky top-0 z-10 px-4 py-3 flex items-center justify-between
                         bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
-          <h2 className="text-lg font-extrabold tracking-wide">得点を入力してください</h2>
+          <h2 className="text-lg font-extrabold tracking-wide">この回の得点を入力してください</h2>
           <div className="w-9 h-9" />
         </div>
 
@@ -2671,8 +2861,12 @@ onClick={async () => {
                 バッターは{" "}
                 {/* ここは「苗字のみ」指定だが、重複姓なら自動でフル */}
                 <RenderName p={selectedSubPlayer} preferLastOnly={true} />
-                {(selectedSubPlayer?.isFemale ? "さん" : "くん")}、 
-                背番号 {selectedSubPlayer?.number}
+                {(selectedSubPlayer?.isFemale ? "さん" : "くん")}
+                {(() => {
+                  const num = (selectedSubPlayer?.number ?? "").trim();
+                  return num ? `、背番号 ${num}` : "、";
+                })()}
+
               </span>
 
             </div>
@@ -2755,15 +2949,28 @@ onClick={async () => {
                   if (replaced2 && sub2) {
                     const honorBef = replaced2.isFemale ? "さん" : "くん";
                     const honorSub = sub2.isFemale ? "さん" : "くん";
-                    const prefix = isLeadingBatter ? `${inning}回${isTop ? "表" : "裏"}、${teamName}の攻撃は、<br/>` : "";
+                    const prefix = isLeadingBatter
+                      ? `${inning}回${isTop ? "表" : "裏"}、${teamName}の攻撃は、<br/>`
+                      : "";
+
+                    const num = (sub2.number ?? "").trim(); // ★追加：背番号
+                    const first = (sub2.firstName ?? "").trim(); // ★追加：名（空判定）
+
+                    // 名がある時だけ「名」を入れる
+                    const subNameHtml = first
+                      ? `${rubyLast(sub2)} ${rubyFirst(sub2)}`
+                      : `${rubyLast(sub2)}`;
+
                     const html =
                       `${prefix}${currentBatterIndex + 1}番 ` +
                       `${rubyLast(replaced2)} ${honorBef}に代わりまして ` +
-                      `${rubyLast(sub2)} ${rubyFirst(sub2)} ${honorSub}、` +
-                      `バッターは ${rubyLast(sub2)} ${honorSub}、` +
-                      `背番号 ${sub2.number}`;
+                      `${subNameHtml} ${honorSub}、` +
+                      `バッターは ${rubyLast(sub2)} ${honorSub}` +
+                      `${num ? `、背番号 ${num}` : ""}。`;
+
                     setAnnouncementHTML(html);
                   }
+
 
                   setShowSubModal(false);
                 }
@@ -2991,11 +3198,26 @@ onClick={async () => {
                         const toNameFull = `${formatNameForAnnounce(sub, false)}${honorificTo}`;
                         const toNameLast = `${formatNameForAnnounce(sub, true)}${honorificTo}`;
 
+                        const num = (sub.number ?? "").trim();
+
+                        const basePrefix = fromName
+                          ? `${prefix} ${fromName}に代わりまして、`
+                          : `${prefix}に代わりまして、`;
+
                         const text = checked
-                          ? ((fromName ? `${prefix} ${fromName}に代わりまして、` : `${prefix}に代わりまして、`) +
-                              `臨時代走、${toNameLast}、臨時代走は ${toNameLast}、背番号 ${sub.number}。`)
-                          : ((fromName ? `${prefix} ${fromName}に代わりまして、` : `${prefix}に代わりまして、`) +
-                              `${toNameFull}、${prefix}は ${toNameLast}、背番号 ${sub.number}。`);
+                          ? (
+                              // 臨時代走
+                              basePrefix +
+                              `臨時代走、${toNameLast}、臨時代走は ${toNameLast}` +
+                              `${num ? `、背番号 ${num}。` : "。"}`
+                            )
+                          : (
+                              // 通常代走
+                              basePrefix +
+                              `${toNameFull}、${prefix}は ${toNameLast}` +
+                              `${num ? `、背番号 ${num}。` : "。"}`
+                            );
+
 
                         setAnnouncementHTML(text);
                         return [...updated, text];
@@ -3013,22 +3235,40 @@ onClick={async () => {
           {selectedRunnerIndex !== null && selectedBase !== null && (
             <>
               <h3 className="text-lg font-bold text-slate-900">代走設定内容</h3>
-              <div className="text-md mb-2">
-                {(() => {
-                  const runner = getPlayer(battingOrder[selectedRunnerIndex].id);
-                  const sub = runnerAssignments[selectedBase];
-                  const isTemp = !!tempRunnerFlags[selectedBase];
-                  const fromText = runner ? `${runner.lastName}${runner.firstName} #${runner.number}` : "";
-                  const toText = sub
-                    ? `➡ ${isTemp ? "（" : ""}${sub.lastName}${sub.firstName} #${sub.number}${isTemp ? "）" : ""}`
-                    : "➡";
-                  return (
-                    <p className="px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900">
-                      {selectedBase}：{fromText} {toText}
-                    </p>
-                  );
-                })()}
-              </div>
+<div className="text-md mb-2">
+  {(() => {
+    const runner = getPlayer(battingOrder[selectedRunnerIndex].id);
+    const sub = runnerAssignments[selectedBase];
+    const isTemp = !!tempRunnerFlags[selectedBase];
+
+    const formatBadge = (n?: string) => {
+      const v = (n ?? "").trim();
+      return v ? `#${v}` : "#";
+    };
+
+    // ★ 名がある時だけ付ける（undefined対策）
+    const formatName = (p?: { lastName?: string; firstName?: string }) => {
+      const ln = (p?.lastName ?? "").trim();
+      const fn = (p?.firstName ?? "").trim();
+      return fn ? `${ln}${fn}` : ln;
+    };
+
+    const fromText = runner
+      ? `${formatName(runner)} ${formatBadge(runner.number)}`
+      : "";
+
+    const toText = sub
+      ? `➡ ${isTemp ? "（" : ""}${formatName(sub)} ${formatBadge(sub.number)}${isTemp ? "）" : ""}`
+      : "➡";
+
+    return (
+      <p className="px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900">
+        {selectedBase}：{fromText} {toText}
+      </p>
+    );
+  })()}
+</div>
+
 
               <h3 className="text-lg font-bold text-slate-900">代走として出す選手を選択</h3>
               <div className="grid grid-cols-2 gap-2 mb-3">
@@ -3076,11 +3316,15 @@ onClick={() => {
   const toNameLast = `${formatNameForAnnounce(player,  true)}${honorificTo}`;
 
   // 文言（HTML）
+  const num = (player.number ?? "").trim();
+
   const text = isTemp
     ? ((fromName ? `${prefix} ${fromName}に代わりまして、` : `${prefix}に代わりまして、`) +
         `臨時代走、${toNameLast}、臨時代走は ${toNameLast}。`)
     : ((fromName ? `${prefix} ${fromName}に代わりまして、` : `${prefix}に代わりまして、`) +
-        `${toNameFull}、${prefix}は ${toNameLast}、背番号 ${player.number}。`);
+        `${toNameFull}、${prefix}は ${toNameLast}` +
+        (num ? `、背番号 ${num}。` : "。"));
+
 
   // 同じ塁の既存テキストを置き換え
   setRunnerAnnouncement(prev => {

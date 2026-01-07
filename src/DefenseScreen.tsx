@@ -59,8 +59,9 @@ const positions = Object.keys(positionStyles);
 
 
 type Scores = {
-  [inning: number]: { top: number; bottom: number };
+  [inning: number]: { top?: number; bottom?: number };
 };
+
 
 type DefenseScreenProps = {
   onChangeDefense: () => void;
@@ -88,6 +89,13 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({ onChangeDefense, onSwitch
   const [inning, setInning] = useState(1);
   const [isTop, setIsTop] = useState(true);
   const [pitchLimitSelected, setPitchLimitSelected] = useState<number>(75);
+  const [showTotalPitchModal, setShowTotalPitchModal] = useState(false);
+  const [totalPitchInput, setTotalPitchInput] = useState<string>(""); // 入力中の文字列
+  const openTotalPitchModal = (currentTotal: number) => {
+    setTotalPitchInput(String(currentTotal ?? 0));
+    setShowTotalPitchModal(true);
+  };
+
   // ★ 追加：見出しが収まらない時に小さくする判定用
   const [isNarrow, setIsNarrow] = useState(false);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
@@ -119,6 +127,20 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({ onChangeDefense, onSwitch
   const synthRef = useRef(window.speechSynthesis);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [scoreOverwrite, setScoreOverwrite] = useState(true);
+  const handleScoreInput = (digit: string) => {
+    setInputScore(prev => {
+      const p = String(prev ?? "");
+      // 最初の1回は上書き
+      if (scoreOverwrite) return digit;
+      // 2桁まで
+      if (p.length >= 2) return p;
+      // 0 → 2 のとき "02" にしない
+      if (p === "0") return digit;
+      return p + digit;
+    });
+    setScoreOverwrite(false);
+  };
   // 臨時代走が居るときの「先出し」モーダル
   const [showTempReentryModal, setShowTempReentryModal] = useState(false);
 
@@ -225,28 +247,48 @@ useEffect(() => {
 
 // 🔸 アナウンス用氏名（重複姓ならフルネーム／カナもフル）
 const getAnnounceNameParts = (p: any) => {
-  const ln = String(p?.lastName ?? "");
-  const fn = String(p?.firstName ?? "");
-  const lnKana = String(p?.lastNameKana ?? "");
-  const fnKana = String(p?.firstNameKana ?? "");
+  const ln = String(p?.lastName ?? "").trim();
+  const fn = String(p?.firstName ?? "").trim();
+  const lnKana = String(p?.lastNameKana ?? "").trim();
+  const fnKana = String(p?.firstNameKana ?? "").trim();
+
   const forceFull = ln && dupLastNames.has(ln);
-  return forceFull
-    ? { name: `${ln}${fn}`, kana: `${lnKana}${fnKana}` }
-    : { name: ln || "投手", kana: lnKana || "とうしゅ" };
+
+  if (forceFull) {
+    return {
+      name: fn ? `${ln}${fn}` : ln,                 // 名が無ければ付けない
+      kana: (lnKana || fnKana) ? `${lnKana}${fnKana}` : "" // かな無ければ空
+    };
+  }
+
+  return {
+    name: ln,          // ← "投手" にしない
+    kana: lnKana       // ← "とうしゅ" にしない
+  };
 };
 
 // 🔸 画面用の <ruby>…</ruby>（重複姓なら「姓」「名」別ルビ）
 const nameRubyHTML = (p: any) => {
-  const ln = String(p?.lastName ?? "");
-  const fn = String(p?.firstName ?? "");
-  const lnKana = String(p?.lastNameKana ?? "");
-  const fnKana = String(p?.firstNameKana ?? "");
+  const ln = String(p?.lastName ?? "").trim();
+  const fn = String(p?.firstName ?? "").trim();
+  const lnKana = String(p?.lastNameKana ?? "").trim();
+  const fnKana = String(p?.firstNameKana ?? "").trim();
+
   const forceFull = ln && dupLastNames.has(ln);
+
+  const ruby = (txt: string, kana: string) =>
+    kana ? `<ruby>${txt}<rt>${kana}</rt></ruby>` : `<ruby>${txt}</ruby>`;
+
   if (forceFull) {
-    return `<ruby>${ln}<rt>${lnKana}</rt></ruby><ruby>${fn}<rt>${fnKana}</rt></ruby>`;
+    const lastPart = ln ? ruby(ln, lnKana) : "";
+    const firstPart = fn ? ruby(fn, fnKana) : "";
+    return (firstPart ? `${lastPart}${firstPart}` : lastPart) || "";
   }
-  return `<ruby>${ln || "投手"}<rt>${lnKana || "とうしゅ"}</rt></ruby>`;
+
+  // 重複姓でない場合：姓だけ（かなが無ければ rt なし）
+  return ln ? ruby(ln, lnKana) : "";
 };
+
 
 
 
@@ -533,127 +575,116 @@ await localForage.setItem("pitchCounts", {
  // 画面離脱時は必ず停止
  useEffect(() => () => { ttsStop(); }, []);
   
-  const addPitch = async () => {
-    const newCurrent = currentPitchCount + 1;
-    const newTotal = totalPitchCount + 1;
-    setCurrentPitchCount(newCurrent);
-    setTotalPitchCount(newTotal);
+const addPitch = async () => {
+  const pitcherId = assignments["投"];
 
-    const pitcherId = assignments['投'];
+  const newCurrent = currentPitchCount + 1;
 
-    // 🔽 matchInfo を取得
-    const savedMatchInfo = await localForage.getItem<{
-      inning?: number;
-      isTop?: boolean;
-    }>('matchInfo');
+  // ★ まず pitcherTotals（唯一の正）を更新して newTotal を決める
+  let newTotal = totalPitchCount; // fallback
+  if (typeof pitcherId === "number") {
+    const map =
+      (await localForage.getItem<Record<number, number>>("pitcherTotals")) || {};
+    const next = (map[pitcherId] ?? 0) + 1;
+    map[pitcherId] = next;
 
-    const isSameInning =
-      savedMatchInfo?.inning === inning && savedMatchInfo?.isTop === isTop;
+    await localForage.setItem("pitcherTotals", map);
+    setPitcherTotals({ ...map });
 
-    // 保存
-    await localForage.setItem('pitchCounts', {
-      current: newCurrent,
-      total: newTotal,
-      pitcherId: pitcherId ?? null
-    });
+    newTotal = next;              // ★これが累計の正
+    setTotalPitchCount(newTotal); // ★画面表示もこれに揃える
+  } else {
+    // pitcherId が取れない時は累計をいじらない（または +1 したいなら要件次第）
+    setTotalPitchCount(totalPitchCount);
+  }
 
-  const pitcher = teamPlayers.find(p => p.id === pitcherId);
-  const pitcherName = pitcher?.lastName ?? '投手';
-  const pitcherKana = pitcher?.lastNameKana ?? 'とうしゅ';
-  const pitcherSuffix = pitcher?.isFemale ? "さん" : "くん";
-  const pitcherRuby = nameRubyHTML(pitcher); // ★ ルビは重複姓でフルに
+  // この回の投球数
+  setCurrentPitchCount(newCurrent);
+
+  // 保存（pitchCounts.total も newTotal に揃える）
+  await localForage.setItem("pitchCounts", {
+    current: newCurrent,
+    total: newTotal,
+    pitcherId: pitcherId ?? null,
+  });
+
+  // --- アナウンス作成（あなたの既存ロジックは newCurrent/newTotal を使うだけ） ---
+  const pitcher = teamPlayers.find((p) => p.id === pitcherId);
+  if (!pitcher) return;
+
+  const pitcherSuffix = pitcher.isFemale ? "さん" : "くん";
+  const pitcherRuby = nameRubyHTML(pitcher);
+
   const newMessages: string[] = [];
+  newMessages.push(`ピッチャー${pitcherRuby}${pitcherSuffix}、この回の投球数は${newCurrent}球です。`);
 
-  // ✅ この回の投球数は常に表示（ふりがな付き）
-  newMessages.push(
+  if (newCurrent !== newTotal) {
+    newMessages.push(`トータル${newTotal}球です。`);
+  }
 
-    `ピッチャー${pitcherRuby}${pitcherSuffix}、この回の投球数は${newCurrent}球です。`
-  );
+  // ★ 警告判定も newTotal を基準にする（そのまま）
+  const warn1 = Math.max(0, pitchLimitSelected - 10);
+  const warn2 = pitchLimitSelected;
 
-    // ✅ イニングが変わっている時だけトータルも表示
-    if (newCurrent !== newTotal) {
-      newMessages.push(`トータル${newTotal}球です。`);
-    }
+  if (newTotal === warn1 || newTotal === warn2) {
+    const pitcherParts = getAnnounceNameParts(pitcher);
+    const specialMsg =
+      newTotal === warn2
+        ? `ピッチャー${pitcherParts.name}${pitcherSuffix}、ただいまの投球で${newTotal}球に到達しました。`
+        : `ピッチャー${pitcherParts.name}${pitcherSuffix}、ただいまの投球で${newTotal}球です。`;
 
-    // ★ ポップアップ用： (selected-10) と selected ちょうどのとき
-    const warn1 = Math.max(0, pitchLimitSelected - 10);
-    const warn2 = pitchLimitSelected;
+    setPitchLimitMessages([specialMsg]);
+    setShowPitchLimitModal(true);
+  }
 
-    if (newTotal === warn1 || newTotal === warn2) {
-      // ▼ 追加：テキスト用（重複姓なら「姓+名」、そうでなければ苗字のみ）
-      const pitcherParts = getAnnounceNameParts(pitcher);
-
-      const specialMsg =
-        newTotal === warn2
-          ? `ピッチャー${pitcherParts.name}${pitcherSuffix}、ただいまの投球で${newTotal}球に到達しました。`
-          : `ピッチャー${pitcherParts.name}${pitcherSuffix}、ただいまの投球で${newTotal}球です。`;
-
-
-      setPitchLimitMessages([specialMsg]);
-      setShowPitchLimitModal(true);
-    }
-    setAnnounceMessages(newMessages);
-
-    // 投手別累計を更新
-    if (typeof pitcherId === "number") {
-      const map =
-        (await localForage.getItem<Record<number, number>>("pitcherTotals")) || {};
-      map[pitcherId] = (map[pitcherId] ?? 0) + 1;
-      setPitcherTotals({ ...map });
-      await localForage.setItem("pitcherTotals", map);
-    }
-
-  };
-
-  const subtractPitch = async () => {
-    const newCurrent = Math.max(currentPitchCount - 1, 0);
-    const newTotal = Math.max(totalPitchCount - 1, 0);
-    setCurrentPitchCount(newCurrent);
-    setTotalPitchCount(newTotal);
-
-    const pitcherId = assignments['投'];
-
-    // 🔽 matchInfo を取得して現在の回と比較
-    const savedMatchInfo = await localForage.getItem<{
-      inning?: number;
-      isTop?: boolean;
-    }>('matchInfo');
-
-    const isSameInning =
-      savedMatchInfo?.inning === inning && savedMatchInfo?.isTop === isTop;
-
-    // 保存
-    await localForage.setItem('pitchCounts', {
-      current: newCurrent,
-      total: newTotal,
-      pitcherId: pitcherId ?? null
-    });
-
-    const pitcher = teamPlayers.find(p => p.id === pitcherId);
-    const pitcherLastName = pitcher?.lastName ?? '投手';
-    const pitcherKana = pitcher?.lastNameKana ?? 'とうしゅ';
-    const pitcherSuffix = pitcher?.isFemale ? "さん" : "くん";
-
-    const newMessages = [
-        `ピッチャー<ruby>${pitcherLastName}<rt>${pitcherKana}</rt></ruby>${pitcherSuffix}、この回の投球数は${newCurrent}球です。`
-    ];
-
-    // ✅ イニングが変わっていたらトータルも表示
-    if (newCurrent !== newTotal) {
-      newMessages.push(`トータル${newTotal}球です。`);
-    }
-    setAnnounceMessages(newMessages);
-    
-    if (typeof pitcherId === "number") {
-      const map =
-        (await localForage.getItem<Record<number, number>>("pitcherTotals")) || {};
-      const next = Math.max((map[pitcherId] ?? 0) - 1, 0);
-      map[pitcherId] = next;
-      setPitcherTotals({ ...map });
-      await localForage.setItem("pitcherTotals", map);
-    }
-
+  setAnnounceMessages(newMessages);
 };
+const subtractPitch = async () => {
+  const pitcherId = assignments["投"];
+
+  const newCurrent = Math.max(currentPitchCount - 1, 0);
+
+  // ★ pitcherTotals（唯一の正）を更新して newTotal を決める
+  let newTotal = totalPitchCount; // fallback
+  if (typeof pitcherId === "number") {
+    const map =
+      (await localForage.getItem<Record<number, number>>("pitcherTotals")) || {};
+    const next = Math.max((map[pitcherId] ?? 0) - 1, 0);
+    map[pitcherId] = next;
+
+    await localForage.setItem("pitcherTotals", map);
+    setPitcherTotals({ ...map });
+
+    newTotal = next;
+    setTotalPitchCount(newTotal);
+  } else {
+    setTotalPitchCount(totalPitchCount);
+  }
+
+  setCurrentPitchCount(newCurrent);
+
+  await localForage.setItem("pitchCounts", {
+    current: newCurrent,
+    total: newTotal,
+    pitcherId: pitcherId ?? null,
+  });
+
+  const pitcher = teamPlayers.find((p) => p.id === pitcherId);
+  if (!pitcher) return;
+
+  const suffix = pitcher.isFemale ? "さん" : "くん";
+  const pitcherRuby = nameRubyHTML(pitcher);
+
+  const newMessages: string[] = [];
+  newMessages.push(`ピッチャー${pitcherRuby}${suffix}、この回の投球数は${newCurrent}球です。`);
+
+  if (newCurrent !== newTotal) {
+    newMessages.push(`トータル${newTotal}球です。`);
+  }
+
+  setAnnounceMessages(newMessages);
+};
+
 
  // 日本語音声の優先選択
  const pickJaVoice = () => {
@@ -678,6 +709,29 @@ await localForage.setItem("pitchCounts", {
     setScores(newScores);
     await localForage.setItem('scores', newScores);
   };
+
+  const changeRun = async (delta: number) => {
+  try {
+    const idx = Number(inning) - 1;                 // ★ scoresは0始まり（0=1回）
+    const half: "top" | "bottom" = isTop ? "top" : "bottom";
+
+    const prevHalfVal = scores?.[idx]?.[half] ?? 0;
+    const nextVal = Math.max(0, prevHalfVal + delta);
+
+    const nextScores: Scores = {
+      ...scores,
+      [idx]: {
+        ...(scores?.[idx] ?? {}),
+        [half]: nextVal,
+      },
+    };
+
+    setScores(nextScores);
+    await localForage.setItem("scores", nextScores);
+  } catch (e) {
+    console.error("changeRun error", e);
+  }
+};
 
 const confirmScore = async () => {
   const score = parseInt(inputScore || "0", 10);
@@ -780,11 +834,22 @@ const totalRuns = () => {
 };
 
 
-  const getPlayerNameNumber = (id: number | null) => {
-    if (id === null) return null;
-    const p = teamPlayers.find(pl => pl.id === id);
-    return p?.name ?? `${p?.lastName ?? ''}${p?.firstName ?? ''} #${p?.number}`;
-  };
+const getPlayerNameNumber = (id: number | null) => {
+  if (id === null) return null;
+
+  const p = teamPlayers.find(pl => pl.id === id);
+  if (!p) return null;
+
+  const ln = (p.lastName ?? "").trim();
+  const fn = (p.firstName ?? "").trim();
+  const num = (p.number ?? "").trim();
+
+  const name = fn ? `${ln}${fn}` : ln;
+  const badge = num ? `#${num}` : "#";
+
+  return `${name} ${badge}`;
+};
+
 
   // ★ TTS用にテキストを整形（ふりがな優先＆用語の読みを固定）
 const normalizeForTTS = (input: string) => {
@@ -1053,13 +1118,27 @@ const handleStop = () => { ttsStop(); };
     </strong>
   </p>
 
-  {/* 累計投球数 */}
-  <p className="mt-0.5 whitespace-nowrap leading-none tracking-tight text-[clamp(12px,3.2vw,16px)]">
-    <span className="font-semibold align-middle">累計投球数:</span>{" "}
-    <strong className="tabular-nums align-middle text-[clamp(13px,3.8vw,18px)]">
-      {totalPitchCount}
-    </strong>
-  </p>
+{/* 累計投球数（タップで変更） */}
+<button
+  type="button"
+  onClick={() => openTotalPitchModal(totalPitchCount)}
+  className="
+    mt-1 inline-flex items-center gap-2
+    rounded-full bg-emerald-600 text-white
+    px-3 py-1.5
+    shadow-md
+    active:scale-[0.97]
+    focus:outline-none
+  "
+>
+  <span className="text-xs opacity-90">累計投球数</span>
+  <span className="font-bold tabular-nums text-base">
+    {totalPitchCount}
+  </span>
+  <span className="text-xs opacity-80">球</span>
+</button>
+
+
 </div>
 
 
@@ -1125,37 +1204,92 @@ const handleStop = () => { ttsStop(); };
   </div>
 )}
 
-{/* 🔽 守備交代 + イニング終了 */}
-<div className="my-6 grid grid-cols-10 gap-2">
-  {/* 守備交代：幅3 */}
+{/* 🔽 守備交代 + 得点±1 + イニング終了（1行固定） */}
+<div className="my-6 flex gap-2">
+  {/* 守備交代 */}
   <button
+    type="button"
     onClick={onChangeDefense}
-    className="col-span-3 h-12 bg-orange-500 text-white rounded shadow hover:bg-orange-600 font-semibold flex items-center justify-center"
+    className="
+      flex-1 h-14
+      bg-orange-500 hover:bg-orange-600
+      text-white font-bold
+      rounded-xl shadow-lg
+      flex items-center justify-center
+      transform hover:scale-[1.02] active:scale-[0.97]
+      transition-all duration-150
+    "
   >
-    🔀守備交代
+    🔀 守備交代
   </button>
 
+  {/* 得点 -1 */}
+  <button
+    type="button"
+    onClick={() => changeRun(-1)}
+    className="
+      flex-1 h-14
+      bg-red-600 hover:bg-red-700
+      text-white font-extrabold text-lg
+      rounded-xl shadow-lg
+      flex items-center justify-center
+      transform hover:scale-[1.02] active:scale-[0.97]
+      transition-all duration-150
+      ring-4 ring-red-400/40
+    "
+  >
+    得点 −1
+  </button>
 
-{/* イニング終了：幅7（強調版） */}
-<button 
-  onClick={async () => {
-    setShowModal(true);
-  }}
-  className="
-    col-span-7 h-14
-    bg-black hover:bg-gray-900
-    text-white font-extrabold text-lg tracking-widest
-    rounded-2xl shadow-lg
-    transform hover:scale-[1.03] active:scale-[0.97]
-    transition-all duration-150
-    flex items-center justify-center gap-2
-    ring-4 ring-gray-500/50
-  "
->
-  ⚾ イニング終了 ⚾
-</button>
+  {/* 得点 +1 */}
+  <button
+    type="button"
+    onClick={() => changeRun(+1)}
+    className="
+      flex-1 h-14
+      bg-blue-600 hover:bg-blue-700
+      text-white font-extrabold text-lg
+      rounded-xl shadow-lg
+      flex items-center justify-center
+      transform hover:scale-[1.02] active:scale-[0.97]
+      transition-all duration-150
+      ring-4 ring-blue-400/40
+    "
+  >
+    得点 ＋1
+  </button>
 
+  {/* イニング終了（右端） */}
+  <button
+    type="button"
+    onClick={async () => {
+      const idx = Number(inning) - 1;
+      const half: "top" | "bottom" = isTop ? "top" : "bottom";
+      const currentScore = scores?.[idx]?.[half] ?? 0;
+
+      setInputScore(String(currentScore));
+      setScoreOverwrite(true);
+      setEditInning(null);
+      setEditTopBottom(null);
+
+      setShowModal(true);
+    }}
+    className="
+      flex-[1.4] h-14
+      bg-black hover:bg-gray-900
+      text-white font-extrabold text-lg tracking-wider
+      rounded-xl shadow-lg
+      flex items-center justify-center gap-2
+      transform hover:scale-[1.02] active:scale-[0.97]
+      transition-all duration-150
+      ring-4 ring-gray-400/40
+    "
+  >
+    ⚾ イニング終了 ⚾
+  </button>
 </div>
+
+
 
 {/* ✅ 臨時代走確認モーダル（スマホ風・中央表示・機能そのまま） */}
 {showTempReentryModal && (
@@ -1632,7 +1766,7 @@ if (typeof reEntryTarget?.index === "number") {
         {/* 固定ヘッダー（他モーダルと統一トーン） */}
         <div className="sticky top-0 z-10 px-4 py-3 flex items-center justify-between
                         bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
-          <h2 className="text-lg font-extrabold tracking-wide">得点を入力してください</h2>
+          <h2 className="text-lg font-extrabold tracking-wide">この回の得点を入力してください</h2>
           {/* ×は置かず機能据え置き */}
           <div className="w-9 h-9" />
         </div>
@@ -1653,11 +1787,7 @@ if (typeof reEntryTarget?.index === "number") {
             {[..."1234567890"].map((digit) => (
               <button
                 key={digit}
-                onClick={() => {
-                  if (inputScore.length < 2) {
-                    setInputScore((prev) => prev + digit);
-                  }
-                }}
+                onClick={() => handleScoreInput(digit)}   // ★ ここが唯一の変更点
                 aria-label={`数字${digit}`}
                 className={[
                   "h-14 rounded-xl text-xl font-bold text-white",
@@ -1669,6 +1799,7 @@ if (typeof reEntryTarget?.index === "number") {
               </button>
             ))}
           </div>
+
         </div>
 
         {/* 固定フッター（OK / クリア / キャンセル） */}
@@ -1705,6 +1836,158 @@ if (typeof reEntryTarget?.index === "number") {
     </div>
   </div>
 )}
+
+{/* ✅ 累計投球数入力時のポップアップ（スマホ風・中央配置・機能そのまま） */}
+{showTotalPitchModal && (
+  <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+    {/* 背景 */}
+    <div
+      className="absolute inset-0 bg-black/50"
+      onClick={() => setShowTotalPitchModal(false)}
+    />
+
+    {/* モーダル本体 */}
+    <div
+      className="relative w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl p-4 shadow-xl"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* ヘッダー：タイトル中央、閉じる右 */}
+      <div className="relative flex items-center justify-center">
+        <div className="text-lg font-semibold">累計投球数を変更</div>
+        <button
+          type="button"
+          className="absolute right-0 px-3 py-2 rounded-lg bg-slate-100 text-slate-700"
+          onClick={() => setShowTotalPitchModal(false)}
+        >
+          閉じる
+        </button>
+      </div>
+
+      {/* 現在値ボックス */}
+      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-center">
+        <div className="text-sm text-slate-500">現在の累計投球数</div>
+        <div className="mt-2 text-4xl font-bold tabular-nums">
+          {totalPitchInput?.trim() ? totalPitchInput : "0"}
+        </div>
+      </div>
+
+      {/* -1 / クリア / +1 */}
+      <div className="mt-4 grid grid-cols-3 gap-3">
+        <button
+          type="button"
+          className="py-3 rounded-xl bg-red-600 text-white font-semibold active:scale-[0.99]"
+          onClick={() => {
+            const n = Number(totalPitchInput || "0");
+            const next = Number.isFinite(n) ? Math.max(0, Math.floor(n) - 1) : 0;
+            setTotalPitchInput(String(next));
+          }}
+        >
+          −1球
+        </button>
+
+        <button
+          type="button"
+          className="py-3 rounded-xl bg-slate-900 text-white font-semibold active:scale-[0.99]"
+          onClick={() => setTotalPitchInput("")}
+        >
+          クリア
+        </button>
+
+        <button
+          type="button"
+          className="py-3 rounded-xl bg-blue-600 text-white font-semibold active:scale-[0.99]"
+          onClick={() => {
+            const n = Number(totalPitchInput || "0");
+            const next = Number.isFinite(n) ? Math.max(0, Math.floor(n) + 1) : 1;
+            setTotalPitchInput(String(next));
+          }}
+        >
+          ＋1球
+        </button>
+      </div>
+
+      {/* 10キー＋確定 */}
+      <div className="mt-4 grid grid-cols-3 gap-3">
+        {["1","2","3","4","5","6","7","8","9"].map((d) => (
+          <button
+            key={d}
+            type="button"
+            className="py-5 rounded-2xl bg-slate-200 text-2xl font-semibold active:scale-[0.99]"
+            onClick={() => {
+              setTotalPitchInput((prev) => {
+                const next = ((prev ?? "") + d).replace(/^0+(?=\d)/, "");
+                return next.slice(0, 4); // 上限4桁（必要なら変更）
+              });
+            }}
+          >
+            {d}
+          </button>
+        ))}
+
+        {/* 0（左下） */}
+        <button
+          type="button"
+          className="py-5 rounded-2xl bg-slate-200 text-2xl font-semibold active:scale-[0.99]"
+          onClick={() => setTotalPitchInput((prev) => (prev ? prev + "0" : "0"))}
+        >
+          0
+        </button>
+
+        {/* 確定（右下：2列分） */}
+        <button
+          type="button"
+          className="col-span-2 py-5 rounded-2xl bg-emerald-600 text-white text-2xl font-semibold active:scale-[0.99]"
+          onClick={async () => {
+            const n = Number(totalPitchInput || "0");
+            const safe = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+
+            const pitcherId = assignments["投"];
+            if (typeof pitcherId !== "number") {
+              setShowTotalPitchModal(false);
+              return;
+            }
+
+            // ① まず state（唯一の正）を更新
+            setPitcherTotals((prev) => ({ ...prev, [pitcherId]: safe }));
+            // ② 表示用 totalPitchCount を残すなら揃える（派生にできるなら不要）
+            setTotalPitchCount(safe);
+            // ③ localForage に保存（その他モーダルと一致させる）
+            const map =
+              (await localForage.getItem<Record<number, number>>("pitcherTotals")) || {};
+            map[pitcherId] = safe;
+            await localForage.setItem("pitcherTotals", map);
+            // ④ pitchCounts.total も揃える（守備画面再読込でも一致）
+            await localForage.setItem("pitchCounts", {
+              current: currentPitchCount, // この回の投球数はそのまま
+              total: safe,
+              pitcherId,
+            });
+
+            // --- アナウンス更新（確定時） ---
+            const pitcher = teamPlayers.find((p) => p.id === pitcherId);
+
+            if (pitcher) {
+              const suffix = pitcher.isFemale ? "さん" : "くん";
+              const pitcherRuby = nameRubyHTML(pitcher); // ふりがなルビ（名なしなら姓だけになる実装にしている前提）
+
+              const msgs: string[] = [];
+              msgs.push(`ピッチャー${pitcherRuby}${suffix}、この回の投球数は${currentPitchCount}球です。`);
+              msgs.push(`トータル${safe}球です。`);
+
+              setAnnounceMessages(msgs);
+            }
+
+            setShowTotalPitchModal(false);
+          }}
+        >
+          確定
+        </button>
+
+      </div>
+    </div>
+  </div>
+)}
+
 
 
     </div>

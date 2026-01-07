@@ -203,6 +203,7 @@ const proceedStart = async () => {
   await localForage.removeItem("runnerInfo");
   await localForage.removeItem("pitchCounts");
   await localForage.removeItem("pitcherTotals");
+  await localForage.removeItem("pitcherOrder");
   await localForage.removeItem("scores");
   await localForage.removeItem("lastBatterIndex");
   await localForage.removeItem("nextBatterIndex");
@@ -510,7 +511,7 @@ return (
                 alt="試合開始ボタン"
                 className="inline-block h-6 md:h-8 align-middle"
               />
-              ボタンを押してください
+                 ボタンを押してください
             </p>
 
             <button

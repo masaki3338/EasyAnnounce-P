@@ -85,7 +85,13 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
   const startingIds = battingOrder.map((e) => e.id);
   const [benchOutIds, setBenchOutIds] = useState<number[]>([]);
 
-
+　// ✅ DHあり判定：指名打者が割り当てられているか
+  const dhActive = assignments["指"] != null;
+  // ✅ 投手ID（守備の投手）
+  const pitcherId = assignments["投"];
+  // ✅ DHありで、投手が打順に入っていない場合だけ「投手を追加アナウンス」
+  const shouldAnnouncePitcher =
+    dhActive && typeof pitcherId === "number" && !startingIds.includes(pitcherId);
 
 
 
@@ -300,28 +306,61 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
             {battingOrder.map((entry, idx) => {
               const p = teamPlayers.find((pl) => pl.id === entry.id);
               if (!p) return null;
-              const pos = Object.entries(assignments).find(([_, pid]) => pid === p.id)?.[0] || "-";
+
+              const pos =
+                Object.entries(assignments).find(([_, pid]) => pid === p.id)?.[0] || "-";
               const posName = getPositionName(pos);
               const honorific = getHonorific(p);
+
+              const num = (p.number ?? "").trim(); // ★追加：背番号（空白なら空）
+
               return (
                 <p key={entry.id} className="text-white whitespace-pre-wrap leading-relaxed">
-                  {idx + 1}番 {posName} {renderFullName(p)}{honorific}、<br />  {posName} {renderLastName(p)}{honorific} 背番号{p.number}。
+                  {idx + 1}番 {posName} {renderFullName(p)}{honorific}、<br />
+                  {posName} {renderLastName(p)}{honorific}
+                  {num ? ` 背番号${num}。` : "。"}
                 </p>
               );
             })}
           </div>
+          
+          {/* ✅ DHありの場合：9番の後に投手を追加 */}
+          {shouldAnnouncePitcher && (() => {
+            const p = teamPlayers.find((pl) => pl.id === pitcherId);
+            if (!p) return null;
+
+            const honorific = getHonorific(p);
+            const num = (p.number ?? "").trim();
+
+            return (
+              <p className="text-white whitespace-pre-wrap leading-relaxed">
+                ピッチャーは {renderFullName(p)}{honorific}、<br />
+                ピッチャー {renderLastName(p)}{honorific}
+                {num ? ` 背番号${num}。` : "。"}
+              </p>
+            );
+          })()}
 
           {/* 控え */}
           <p className="mt-3 text-white">ベンチ入りの選手をお知らせいたします。</p>
-          <div className="mt-1 space-y-1">
+          <div className="mt-1 space-y-1">            
             {teamPlayers
-              .filter((p) => !startingIds.includes(p.id) && !benchOutIds.includes(p.id))
-              .map((p) => (
-                <p key={p.id} className="text-white whitespace-pre-wrap leading-relaxed">
-                  {renderFullName(p)}{getHonorific(p)}、背番号{p.number}、
-                </p>
-              ))}
+              .filter((p) =>
+                !startingIds.includes(p.id) &&
+                !benchOutIds.includes(p.id) &&
+                !(shouldAnnouncePitcher && p.id === pitcherId) // ✅ DH時の投手をベンチから外す
+              )
+              .map((p) => {
+                const num = (p.number ?? "").trim(); // ★背番号空欄対応
+                return (
+                  <p key={p.id} className="text-white whitespace-pre-wrap leading-relaxed">
+                    {renderFullName(p)}{getHonorific(p)}
+                    {num ? `、背番号${num}、` : "、"}
+                  </p>
+                );
+              })}
           </div>
+
 
           {/* 審判（後攻時に続けて告知） */}
           {!isHomeTeamFirstAttack && (
