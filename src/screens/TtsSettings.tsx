@@ -213,9 +213,8 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
               max={2.0}
               step={0.1}
               value={pitch}
-              onChange={(e) => setPitch(Number(e.target.value))}
-              onBlur={() => localStorage.setItem("tts:pitch", String(pitch))}
-              className={`w-full accent-fuchsia-400 ${isPitchLikelyUnsupported(selectedName || undefined) ? "opacity-70" : ""}`}
+              onChange={(e) => handlePitchChange(Number(e.target.value))}
+              className={`w-full accent-fuchsia-400 ${pitchUnsupported ? "opacity-70" : ""}`}
             />
 
             {isPitchLikelyUnsupported(selectedName || undefined) && (
