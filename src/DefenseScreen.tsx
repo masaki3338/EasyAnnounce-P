@@ -516,12 +516,12 @@ if (currentPitcherId !== undefined && currentPitcherId === previousPitcherId) {
   total = savedPitchCount.total ?? 0;
 
   const msgs = [
-    `ピッチャー${pitcherRuby}${pitcherSuffix}、この回の投球数は${current}球です。`
+    `ピッチャー${pitcherRuby}${pitcherSuffix}、この回の投球数は${current}球です`
   ];
 
  
   if (!isSameInning) {
-    msgs.push(`トータル${total}球です。`);
+    msgs.push(`トータル${total}球です`);
   }
   setAnnounceMessages(msgs);
 } else {
@@ -536,8 +536,8 @@ if (currentPitcherId !== undefined && currentPitcherId === previousPitcherId) {
 
   const msgs = [
     `ピッチャー<ruby>${pitcherName}<rt>${pitcherKana}</rt></ruby>${pitcherSuffix}、`,
-    `この回の投球数は0球です。`,
-    `トータル${total}球です。`
+    `この回の投球数は0球です`,
+    `トータル${total}球です`
   ];
   setAnnounceMessages(msgs);
 }
@@ -616,10 +616,10 @@ const addPitch = async () => {
   const pitcherRuby = nameRubyHTML(pitcher);
 
   const newMessages: string[] = [];
-  newMessages.push(`ピッチャー${pitcherRuby}${pitcherSuffix}、この回の投球数は${newCurrent}球です。`);
+  newMessages.push(`ピッチャー${pitcherRuby}${pitcherSuffix}、この回の投球数は${newCurrent}球です`);
 
   if (newCurrent !== newTotal) {
-    newMessages.push(`トータル${newTotal}球です。`);
+    newMessages.push(`トータル${newTotal}球です`);
   }
 
   // ★ 警告判定も newTotal を基準にする（そのまま）
@@ -676,10 +676,10 @@ const subtractPitch = async () => {
   const pitcherRuby = nameRubyHTML(pitcher);
 
   const newMessages: string[] = [];
-  newMessages.push(`ピッチャー${pitcherRuby}${suffix}、この回の投球数は${newCurrent}球です。`);
+  newMessages.push(`ピッチャー${pitcherRuby}${suffix}、この回の投球数は${newCurrent}球です`);
 
   if (newCurrent !== newTotal) {
-    newMessages.push(`トータル${newTotal}球です。`);
+    newMessages.push(`トータル${newTotal}球です`);
   }
 
   setAnnounceMessages(newMessages);
@@ -1977,8 +1977,8 @@ if (typeof reEntryTarget?.index === "number") {
               const pitcherRuby = nameRubyHTML(pitcher); // ふりがなルビ（名なしなら姓だけになる実装にしている前提）
 
               const msgs: string[] = [];
-              msgs.push(`ピッチャー${pitcherRuby}${suffix}、この回の投球数は${currentPitchCount}球です。`);
-              msgs.push(`トータル${safe}球です。`);
+              msgs.push(`ピッチャー${pitcherRuby}${suffix}、この回の投球数は${currentPitchCount}球です`);
+              msgs.push(`トータル${safe}球です`);
 
               setAnnounceMessages(msgs);
             }

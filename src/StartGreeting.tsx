@@ -78,7 +78,7 @@ const StartGreeting: React.FC<Props> = ({ onNavigate, onBack }) => {
     `まもなくかいしでございます。`;
 
   const message =
-    `お待たせいたしました。\n${tournamentName}\n` +
+    `お待たせいたしました \n${tournamentName}\n` +
     `本日の第${matchNumber}試合、\n` +
     `${team1st} 対 ${team3rd} の試合、\n` +
     `まもなく開始でございます。`;

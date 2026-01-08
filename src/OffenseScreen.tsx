@@ -1684,9 +1684,23 @@ useEffect(() => {
                   // 未来の回は空
                   if (i + 1 > nInning) return "";
 
-                  // 同じ回でも「未来の半回」（例: 表のときの裏）は空
-                  const currentHalf: "top" | "bottom" = isTop ? "top" : "bottom";
-                  if (i + 1 === nInning && target !== currentHalf) return "";
+                  {(() => {
+                    const nInning = Number(inning);
+
+                    // 未来の回は空
+                    if (i + 1 > nInning) return "";
+
+                    // ✅ 同じ回の「未来の半回」だけ空にする（表のときだけ裏を空にする）
+                    const currentHalfIndex = isTop ? 0 : 1; // 表=0, 裏=1
+                    const targetHalfIndex = target === "top" ? 0 : 1;
+
+                    if (i + 1 === nInning && targetHalfIndex > currentHalfIndex) return "";
+
+                    // 表示値
+                    const v = val ?? "";
+                    return v;
+                  })()}
+
 
                   // 表示値（現在の黄色セルも含めて表示）
                   const v = val ?? "";
