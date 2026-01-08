@@ -264,6 +264,15 @@ const OffenseScreen: React.FC<OffenseScreenProps> = ({
   const [announcement, setAnnouncement] = useState<React.ReactNode>(null);
   const [announcementOverride, setAnnouncementOverride] = useState<React.ReactNode | null>(null);
   const [scores, setScores] = useState<{ [inning: number]: { top: number; bottom: number } }>({});
+  const trimScoresAfterInning = (all: Scores, keepThroughInning: number) => {
+  const next: Scores = {};
+  Object.entries(all).forEach(([k, v]) => {
+    const inningNo = Number(k) + 1; // scoresは 0=1回
+    if (inningNo <= keepThroughInning) next[Number(k)] = v;
+  });
+  return next;
+};
+
   const [isLeadingBatter, setIsLeadingBatter] = useState(true);
   const [announcedPlayerIds, setAnnouncedPlayerIds] = useState<number[]>([]);
   const [substitutedIndices, setSubstitutedIndices] = useState<number[]>([]);
@@ -1548,7 +1557,25 @@ useEffect(() => {
       </h2>
         <div className="flex justify-between items-center mb-2">
           <div className="flex items-center gap-2">
-            <select value={inning} onChange={(e) => setInning(Number(e.target.value))}>
+          <select
+            value={inning}
+            onChange={async (e) => {
+              const nextInning = Number(e.target.value);
+
+              // 戻した時だけ、以降イニングをクリア
+              if (nextInning < inning) {
+                const trimmed = trimScoresAfterInning(scores, nextInning);
+                setScores(trimmed);
+                await localForage.setItem("scores", trimmed);
+              }
+
+              setInning(nextInning);
+
+              // matchInfoも合わせておく（任意だがおすすめ）
+              await saveMatchInfo({ inning: nextInning });
+            }}
+          >
+
               {[...Array(9)].map((_, i) => (
                 <option key={i} value={i + 1}>{i + 1}</option>
               ))}
@@ -1715,14 +1742,27 @@ useEffect(() => {
             );
           })}
           {/* ── 計 ── */}
-          <td className="border font-bold">
-            {Object.values(scores).reduce((sum, s) => {
-              const v = row.isMyTeam
-                ? isHome ? s.bottom ?? 0 : s.top ?? 0
-                : isHome ? s.top ?? 0    : s.bottom ?? 0;
-              return sum + v;
-            }, 0)}
-          </td>
+<td className="border font-bold">
+  {(() => {
+    const nInning = Number(inning);
+
+    const rowHalf: "top" | "bottom" = row.isMyTeam
+      ? (isHome ? "bottom" : "top")
+      : (isHome ? "top" : "bottom");
+
+    return Object.values(scores).reduce((sum, s, idx) => {
+      const inningNo = idx + 1;
+
+      // 選択した回より先は足さない
+      if (inningNo > nInning) return sum;
+
+      // ★ 半回（isTop）による除外はしない
+      return sum + (s?.[rowHalf] ?? 0);
+    }, 0);
+  })()}
+</td>
+
+
         </tr>
       ))}
   </tbody>

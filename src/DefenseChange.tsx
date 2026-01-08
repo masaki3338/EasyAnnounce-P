@@ -191,12 +191,12 @@ const fullNameWithHonor = (p: Player): string => `${lastRuby(p)}${firstRuby(p)}$
 // ================================================================
 
  /* ================================= */
-// ✅ 「先ほど◯◯致しました」を安全生成（未定義→代打にフォールバック）
+// ✅ 「先ほど◯◯いたしました」を安全生成（未定義→代打にフォールバック）
 const recentHead = (reason?: string) => {
   const kind =
-    reason === "代走" ? "代走致しました" :
+    reason === "代走" ? "代走いたしました" :
     reason === "臨時代走" ? "臨時代走" :
-    "代打致しました"; // 既定は“代打”
+    "代打いたしました"; // 既定は“代打”
   return `先ほど${kind}`;
 };
 
@@ -409,8 +409,8 @@ if (isOriginalStarter || isBackToSameStarter) {
   // 理由は usedPlayerInfo 由来を優先
   const latestReason = (pinchReasonById as any)?.[latestPinchId] || info.reason;
   const reasonText =
-    latestReason === "代打" ? "代打致しました" :
-    latestReason === "臨時代走" ? "臨時代走" : "代走致しました";
+    latestReason === "代打" ? "代打いたしました" :
+    latestReason === "臨時代走" ? "臨時代走" : "代走いたしました";
 
   // ---- 本文（末尾は後段で句点付与）----
   console.log("[SAME-POS-PINCH] add line (sono-mama)", { latestPinchId, currentId, posSym });
@@ -483,7 +483,7 @@ Object.entries(usedPlayerInfo || {}).forEach(([origIdStr, info]) => {
   // subId→理由 の逆引き（上の方で作っているマップを再利用）
   const latestReason = latestPlayer ? (pinchReasonById[latestPlayer.id] ?? reasonMap[latestPlayer.id]) : undefined;
 
-  // ★ “相手にする選手” と “先ほど◯◯致しました” の文言を決定
+  // ★ “相手にする選手” と “先ほど◯◯いたしました” の文言を決定
   // 1) replaceから拾えた相手がA2と別人（= 直前はたとえばCだった）→ その人を採用
   // 2) それが拾えない・同一なら、usedPlayerInfoの末端（CがいればC、いなければA）を採用
   let refPlayer: Player | undefined;
@@ -521,11 +521,11 @@ const useSimpleForm =
   (refReason === "代走" || refReason === "臨時代走") &&
   currentRefReason === "途中出場";
 
-// 直後でなければ「先ほど〜致しました」を使わず、位置付きの通常形にする
+// 直後でなければ「先ほど〜いたしました」を使わず、位置付きの通常形にする
 const firstLine = useSimpleForm
   ? `${posFull2} ${nameWithHonor(efPlayer)}に代わりまして、` +
     `${nameWithHonor(B2)}がリエントリーで ${posFull2}に入ります。`
-  : `先ほど${phrase}致しました${nameWithHonor(refPlayer)}に代わりまして、` +
+  : `先ほど${phrase}いたしました${nameWithHonor(refPlayer)}に代わりまして、` +
     `${nameWithHonor(B2)}がリエントリーで ${posFull2}に入ります。`;
 
 //result.push(firstLine);
@@ -724,7 +724,7 @@ if (isBOnField) continue;
     const lines: string[] = [];
 
     // ✅ 文言を切り替える
-    const reasonText = entry.reason === "代打" ? "代打致しました" : "代走致しました";
+    const reasonText = entry.reason === "代打" ? "代打いたしました" : "代走いたしました";
 
     // 1行目：控えが別守備に入る（★打順は書かない）
     lines.push(
@@ -748,11 +748,11 @@ if (isBOnField) continue;
 
     if (movedTrueReason === "代走" || movedTrueReason === "臨時代走") {
       // 代走で入った選手が守備へ → 専用文言（句点で締めて追加入力を防ぐ）
-      lines.push(`先ほど代走致しました${nameWithHonor(movedPlayer)}が ${posJP[movedToPos]}へ。`);
+      lines.push(`先ほど代走いたしました${nameWithHonor(movedPlayer)}が ${posJP[movedToPos]}へ。`);
       console.log("[SPECIAL] 2nd-line as DAISO");
     } else if (movedTrueReason === "代打") {
       // 代打で入った選手が守備へ
-      lines.push(`先ほど代打致しました${nameWithHonor(movedPlayer)}が ${posJP[movedToPos]}へ。`);
+      lines.push(`先ほど代打いたしました${nameWithHonor(movedPlayer)}が ${posJP[movedToPos]}へ。`);
       console.log("[SPECIAL] 2nd-line as DAIDA");
     } else {
       // 通常シフト
@@ -878,7 +878,7 @@ if (fromA && toA && otherId) {
 
   const headById = (id: number) => {
     const r = ((usedPlayerInfo as any)[id]?.reason) || (pinchReasonById[id] || reasonMap[id]);
-    return r === "代走" ? "代走致しました" : r === "臨時代走" ? "臨時代走" : "代打致しました";
+    return r === "代走" ? "代走いたしました" : r === "臨時代走" ? "臨時代走" : "代打いたしました";
   };
 
 
@@ -915,7 +915,7 @@ result.push(combined);
 
   // ★ 相手が通常選手の場合は従来通り
 // ★ 相手が通常選手の場合は従来通り（2行に分割 + 重複スキップ登録）
-result.push(`先ほど${entry.reason}致しました${nameWithHonor(pinchPlayer)}が${posJP[pos]}、`);
+result.push(`先ほど${entry.reason}いたしました${nameWithHonor(pinchPlayer)}が${posJP[pos]}、`);
 result.push(`${posJP[pos]}の${nameWithHonor(movedPlayer)}が ${posJP[movedToPos]}、`);
 
 // 以降の shift ループで同じ「movedPlayer のシフト」を出さない
@@ -990,7 +990,7 @@ battingOrder.forEach((entry, idx) => {
 
     pinchInSamePos.push({
       reason: (entry.reason === "代打" ? "代打" : "代走"),
-      text: `${head}${entry.reason}致しました${ruby}がそのまま入り ${posJP[pos]}`
+      text: `${head}${entry.reason}いたしました${ruby}がそのまま入り ${posJP[pos]}`
     });
 
     // 打順行は従来どおり
@@ -1250,7 +1250,7 @@ if (pinchFromUsed && isSamePosition) {
 
   // ✅ 確定の一文（末尾はここでは句点なし：後段の終端調整で「。」を付与）
   replaceLines.push(
-    `先ほど${phrase}致しました${nameWithHonor(r.from)}に代わりまして、${orderPart}${fullNameWithHonor(r.to)}がそのまま入り${posJP[r.pos]}`
+    `先ほど${phrase}いたしました${nameWithHonor(r.from)}に代わりまして、${orderPart}${fullNameWithHonor(r.to)}がそのまま入り${posJP[r.pos]}`
   );
 
   
@@ -1331,7 +1331,7 @@ if (isReentrySameOrder) {
 
   // 「代打本人が守備に入る」ケースは別ブロックで処理済みなので、
   // ここは「代打に代わって控えが入る」専用にする
-  line = `先ほど${reasonOfFrom}致しました${nameWithHonor(r.from)}に代わりまして、` +
+  line = `先ほど${reasonOfFrom}いたしました${nameWithHonor(r.from)}に代わりまして、` +
          `${orderPart}${fullNameWithHonor(r.to)}が入り ${posJP[r.pos]}`;
 } else {
   line = `${posJP[r.pos]} ${nameWithHonor(r.from)}に代わりまして、${fullNameWithHonor(r.to)}`;
@@ -1427,7 +1427,7 @@ const getEnterReason = (pid: number): string | undefined => {
   return inOrder ? String(inOrder).trim() : undefined;
 };
 
-// ヘッダー生成：代打/代走なら「先ほど◯◯致しました清水くん に代わりまして、」
+// ヘッダー生成：代打/代走なら「先ほど◯◯いたしました清水くん に代わりまして、」
 // それ以外（ベンチから守備で入っていた 等）は「〈守備〉の 清水くん に代わりまして、」
 const buildFromHead = (fromId: number, fromPosSym: string | undefined): string => {
   const p = teamPlayers.find(pl => pl.id === fromId);
@@ -1438,9 +1438,9 @@ const buildFromHead = (fromId: number, fromPosSym: string | undefined): string =
 
   const reason = getEnterReason(fromId);
   if (reason === "代打" || reason === "代走" || reason === "臨時代走") {
-    const kind = reason === "代走" ? "代走致しました"
+    const kind = reason === "代走" ? "代走いたしました"
               : reason === "臨時代走" ? "臨時代走"
-              : "代打致しました";
+              : "代打いたしました";
     return `先ほど${kind}${p ? nameWithHonor(p) : ""}に代わりまして、`;
   }
   const posFull = fromPosSymSafe ? posJP[fromPosSymSafe as keyof typeof posJP] : "";
@@ -1558,9 +1558,9 @@ if (
 
   if (isPinchFrom) {
     const phrase =
-      fromReason === "代走" ? "代走致しました" :
+      fromReason === "代走" ? "代走いたしました" :
       fromReason === "臨時代走" ? "臨時代走" :
-      "代打致しました"; // ←「しました」にしたい場合はここを変更
+      "代打いたしました"; // ←「しました」にしたい場合はここを変更
 
     addReplaceLine(
       `先ほど${phrase}${nameWithHonor(r.from)}に代わりまして、${r.order}番に${fullNameWithHonor(r.to)}が入り${posJP[r.toPos]}へ`,
@@ -1707,7 +1707,7 @@ if (pinchEntry) {
       const r =
         Object.values(usedPlayerInfo || {}).find((x: any) => x?.subId === id)?.reason ||
         battingOrder.find((e) => e.id === id)?.reason;
-      return r === "代走" ? "代走致しました" : r === "臨時代走" ? "臨時代走" : "代打致しました";
+      return r === "代走" ? "代走いたしました" : r === "臨時代走" ? "臨時代走" : "代打いたしました";
     };
 
     const playerA = s.player;
@@ -1757,10 +1757,10 @@ if (pinchEntry) {
   // 相互入替えでなければ従来の単独出力
   const phrase =
     pinchEntry.reason === "代打"
-      ? "代打致しました"
+      ? "代打いたしました"
       : pinchEntry.reason === "臨時代走"
       ? "臨時代走"
-      : "代走致しました";
+      : "代走いたしました";
 
   const hasPriorSame = result.some(
     (ln) => ln.includes(`先ほど${phrase}`) || ln.includes(`同じく先ほど${phrase}`)
@@ -1828,7 +1828,7 @@ if (
     return s.length > 0 && !isHeader(s) && !isLineup(s) && !isClosing(s);
   };
   const isPinchHead = (t: string) =>
-    /^((同じく)?先ほど(代打|代走|臨時代走)(致しました|に出ました))/.test(t.trim());
+    /^((同じく)?先ほど(代打|代走|臨時代走)(いたしました|に出ました))/.test(t.trim());
 
   // 既存 result を分類して並べ替え
   const headers: string[] = [];
@@ -1944,7 +1944,7 @@ if (
   }
 }
 
-// 🆕 「先ほど◯◯致しました／に出ました」が連続するとき、後続行の先頭を「同じく先ほど◯◯…」に置換
+// 🆕 「先ほど◯◯いたしました／に出ました」が連続するとき、後続行の先頭を「同じく先ほど◯◯…」に置換
 {
   const isBody = (t: string) =>
     !/^\d+番 /.test(t) &&                // 打順行は除外
@@ -1959,8 +1959,8 @@ if (
     const line = result[i].trim();
     if (!isBody(line)) { lastReason = null; continue; }
 
-    // 先頭が「先ほど◯◯致しました…」または「先ほど◯◯に出ました…」かを判定
-    const m = line.match(/^先ほど(代打|代走|臨時代走)(?:致しました|に出ました)/);
+    // 先頭が「先ほど◯◯いたしました…」または「先ほど◯◯に出ました…」かを判定
+    const m = line.match(/^先ほど(代打|代走|臨時代走)(?:いたしました|に出ました)/);
     // 「先ほど…」以外の本文行が間に入っても、同じ理由の連続とみなす
     if (!m) { continue; }
 
@@ -1969,7 +1969,7 @@ if (
     if (lastReason === reason) {
       // 2 行目以降：先頭を「同じく先ほど◯◯…」に置換
       result[i] = line.replace(
-        /^先ほど(代打|代走|臨時代走)((?:致しました|に出ました))/,
+        /^先ほど(代打|代走|臨時代走)((?:いたしました|に出ました))/,
         (_all, r, suf) => `同じく先ほど${r}${suf}`
       );
     }

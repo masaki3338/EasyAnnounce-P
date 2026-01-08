@@ -86,6 +86,15 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({ onChangeDefense, onSwitch
   const [currentPitchCount, setCurrentPitchCount] = useState(0);
   const [totalPitchCount, setTotalPitchCount] = useState(0);
   const [scores, setScores] = useState<Scores>({});
+  const trimScoresAfterInning = (all: Scores, keepThroughInning: number) => {
+  const next: Scores = {};
+    Object.entries(all).forEach(([k, v]) => {
+      const inningNo = Number(k) + 1; // scoresは 0=1回
+      if (inningNo <= keepThroughInning) next[Number(k)] = v;
+    });
+    return next;
+  };
+
   const [inning, setInning] = useState(1);
   const [isTop, setIsTop] = useState(true);
   const [pitchLimitSelected, setPitchLimitSelected] = useState<number>(75);
@@ -935,7 +944,25 @@ const handleStop = () => { ttsStop(); };
         <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
           {/* 左：状態（縮む・折り返さない） */}
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            <select value={inning} onChange={(e) => setInning(Number(e.target.value))}>
+            <select
+              value={inning}
+              onChange={async (e) => {
+                const nextInning = Number(e.target.value);
+
+                // 戻した時だけ、以降イニングをクリア
+                if (nextInning < inning) {
+                  const trimmed = trimScoresAfterInning(scores, nextInning);
+                  setScores(trimmed);
+                  await localForage.setItem("scores", trimmed);
+                }
+
+                setInning(nextInning);
+
+                // matchInfoも合わせておく（任意だがおすすめ）
+                await saveMatchInfo({ inning: nextInning });
+              }}
+            >
+
               {[...Array(9)].map((_, i) => (
                 <option key={i} value={i + 1}>{i + 1}</option>
               ))}
@@ -1060,17 +1087,21 @@ const handleStop = () => { ttsStop(); };
             );
           })}
           <td className="border font-bold text-center">
-            {Object.values(scores).reduce((sum, s) => {
-              const v = row.isMyTeam
-                ? isHome
-                  ? s.bottom ?? 0
-                  : s.top ?? 0
-                : isHome
-                ? s.top ?? 0
-                : s.bottom ?? 0;
-              return sum + v;
-            }, 0)}
+            {(() => {
+              const nInning = Number(inning);
+
+              const rowHalf: "top" | "bottom" = row.isMyTeam
+                ? (isHome ? "bottom" : "top")
+                : (isHome ? "top" : "bottom");
+
+              return Object.values(scores).reduce((sum, s, idx) => {
+                const inningNo = idx + 1;
+                if (inningNo > nInning) return sum; // ★選択回より先は足さない
+                return sum + (s?.[rowHalf] ?? 0);
+              }, 0);
+            })()}
           </td>
+
         </tr>
       );
     })}
