@@ -617,14 +617,17 @@ const handleDropToPosition = (e: React.DragEvent<HTMLDivElement>, toPos: string)
   setAssignments(next);
 
 
-  // 打順の更新：DHが居れば「投手の代わりにDH」
+  // 打順の更新：仕様（理想）
+  // ✅ DHなし：投手に置いたら投手も打順(1〜9)に入る
+  // ✅ DHあり：DHを置いた瞬間に投手は打順から外れ、後ろが繰り上がる（＝投手を“削除”）
   setBattingOrder((prev) => {
     let updated = [...prev];
 
     const dhId = next[DH] ?? null;
     const pitcherId = next["投"] ?? null;
 
-    // まず、今回動かした選手がリストに居なければ追加（ただしDHが関わる移動は追加しない）
+    // まず、今回動かした選手がリストに居なければ追加
+    // ※DHへの移動はここでは追加しない（後段の整合処理で入れる）
     const isDHMove = toPos === DH || fromPos === DH;
     if (!isDHMove && !updated.some((e) => e.id === playerId)) {
       if (prevPlayerIdAtTo !== null) {
@@ -636,77 +639,81 @@ const handleDropToPosition = (e: React.DragEvent<HTMLDivElement>, toPos: string)
       }
     }
 
+    // ここから「DHの有無」で打順を整合させる
+    const fieldIds = positions
+      .map((pos) => next[pos])
+      .filter((id): id is number => typeof id === "number");
 
-// ── DHルール（打順固定）：投手枠とDHの“中身だけ”入れ替える ──
-// 変更前のDHを退避（変数名を oldDhId として新規定義）
-const oldDhId = assignments[DH] ?? null;
+    const fieldSet = new Set(fieldIds);
 
-if (pitcherId) {
-  if (dhId) {
-    const pIdx = updated.findIndex((e) => e.id === pitcherId);
-    const dIdx = updated.findIndex((e) => e.id === dhId);
+    if (!dhId) {
+      // -------------------------
+      // ✅ DHなし：打順＝フィールド9人（投手含む）
+      // -------------------------
 
-    if (pIdx !== -1 && dIdx === -1) {
-      // DHが打順に未登場：投手の“その枠”をDHに差し替え（順序はそのまま）
-      updated[pIdx] = { id: dhId, reason: "スタメン" };
-    } else if (pIdx !== -1 && dIdx !== -1 && pIdx !== dIdx) {
-      // 既に両方が並んでいる：順序は固定で“IDだけ”入れ替え（スワップ）
-      const tmp = updated[pIdx].id;
-      updated[pIdx].id = updated[dIdx].id;
-      updated[dIdx].id = tmp;
-    }
-    // pIdx === -1（投手が打順にいない）は何もしない＝打順固定
-  } else if (oldDhId) {
-    // DHが外れた：打順上の“DHが居た枠”を投手に戻す（順序は変えない）
-    const dIdx = updated.findIndex((e) => e.id === oldDhId);
-    if (dIdx !== -1) {
-      updated[dIdx] = { id: pitcherId, reason: "スタメン" };
-    }
-  }
-}
+      // フィールド外の選手が打順に混ざっていたら除去（これで「9人埋まってて投手が入らない」を防ぐ）
+      updated = updated.filter((e) => fieldSet.has(e.id));
 
-// ✅ 追加：DHが打順にいるとき、投手が打順に入っていたら「フィールドで打順にいない選手」と入替
-if (dhId && pitcherId) {
-  const pIdx = updated.findIndex((e) => e.id === pitcherId);
-
-  if (pIdx !== -1) {
-    // フィールド（守備9人）にいるのに打順にいない選手を探す（投手以外）
-    const orderSet = new Set(updated.map((e) => e.id));
-
-    // positions は ["投","捕","一","二","三","遊","左","中","右"]
-    // ここでは投手を除外して候補を順に探す
-    const candidateId =
-      positions
-        .filter((pos) => pos !== "投")
-        .map((pos) => next[pos])
-        .find((id) => typeof id === "number" && !orderSet.has(id)) ?? null;
-
-    if (typeof candidateId === "number") {
-      // 打順上の投手を、打順に入っていないフィールド選手に差し替える
-      updated[pIdx] = { id: candidateId, reason: "スタメン" };
+      // フィールドにいるのに打順にいない選手（投手含む）を末尾に補完
+      for (const id of fieldIds) {
+        if (!updated.some((e) => e.id === id)) {
+          updated.push({ id, reason: "スタメン" });
+        }
+      }
     } else {
-      // 候補がいない＝異常状態（念のため投手を消してDHを優先）
-      // ※ DHが既に打順にいるはずだが、保険として書いておく
-      updated = updated.filter((e) => e.id !== pitcherId);
+      // -------------------------
+      // ✅ DHあり：打順＝（投手を除くフィールド8人）＋DH
+      //    → DHを置いた瞬間に投手は打順から外れる（繰り上げ）
+      // -------------------------
+
+      // ① まず投手が打順にいたら削除（＝後ろが繰り上がる）
+      if (pitcherId) {
+        updated = updated.filter((e) => e.id !== pitcherId);
+      }
+
+      // ② 打順に残してよい集合：フィールド（投手以外）＋DH
+      const fieldNoPitcherSet = new Set(
+        fieldIds.filter((id) => id !== pitcherId)
+      );
+
+      updated = updated.filter(
+        (e) => fieldNoPitcherSet.has(e.id) || e.id === dhId
+      );
+
+      // ③ フィールド（投手以外）にいるのに打順にいない選手を補完（最大9まで）
+      for (const id of fieldIds) {
+        if (id === pitcherId) continue;
+        if (updated.length >= 9) break;
+        if (!updated.some((e) => e.id === id)) {
+          updated.push({ id, reason: "スタメン" });
+        }
+      }
+
+      // ④ DHを打順へ入れる（DHに置かれた時点で必ず入る）
       if (!updated.some((e) => e.id === dhId)) {
-        updated.push({ id: dhId, reason: "スタメン" });
+        if (updated.length < 9) {
+          updated.push({ id: dhId, reason: "スタメン" });
+        } else {
+          // 念のため：9人埋まってたら最後をDHにする（基本ここには来ない想定）
+          updated[updated.length - 1] = { id: dhId, reason: "スタメン" };
+        }
       }
     }
-  }
-}
 
-
-
-    // 重複除去 & 9人制限
+    // 重複除去 & 9人制限（元の処理を維持）
     const seen = new Set<number>();
-    updated = updated.filter((e) => {
-      if (seen.has(e.id)) return false;
-      seen.add(e.id);
-      return true;
-    }).slice(0, 9);
+    updated = updated
+      .filter((e) => {
+        if (seen.has(e.id)) return false;
+        seen.add(e.id);
+        return true;
+      })
+      .slice(0, 9);
 
     return updated;
   });
+
+
    // ★ フィールドに入ったら「出場しない選手」から外す
   setBenchOutIds((prev) => prev.filter((id) => id !== playerId));
   // ★ ドロップ完了時はハイライトを確実に解除
@@ -747,16 +754,43 @@ const handleDropToBenchOut = (e: React.DragEvent<HTMLDivElement>) => {
   setBenchOutIds((prev) => (prev.includes(playerId) ? prev : [...prev, playerId]));
 
   // ② 守備配置から完全に外す（DH含む、同一選手がどこに居てもnullへ）
-  setAssignments((prev) => {
-    const next = { ...prev };
-    for (const k of Object.keys(next)) {
-      if (next[k] === playerId) next[k] = null;
+  //    ※後で投手IDを参照したいので、next をここで作って setAssignments する
+  const oldDhId = assignments[DH] ?? null;
+
+  const next = { ...assignments };
+  for (const k of Object.keys(next)) {
+    if (next[k] === playerId) next[k] = null;
+  }
+  setAssignments(next);
+
+  // ③ 打順更新：
+  //    - まずその選手を打順から外す
+  //    - もし「外した選手がDHだった」なら、DHなしに戻るので投手を打順へ追加して9人に戻す
+  setBattingOrder((prev) => {
+    let updated = prev.filter((e) => e.id !== playerId);
+
+    // ✅ DH→出場しない に戻した場合：投手を打順へ戻す
+    if (oldDhId === playerId) {
+      const pitcherId = next["投"] ?? null;
+      // 投手が存在し、かつ打順にいなければ追加（末尾に追加＝簡単で事故が少ない）
+      if (pitcherId && !updated.some((e) => e.id === pitcherId)) {
+        updated.push({ id: pitcherId, reason: "スタメン" });
+      }
     }
-    return next;
+
+    // 重複除去 & 9人制限
+    const seen = new Set<number>();
+    updated = updated
+      .filter((e) => {
+        if (seen.has(e.id)) return false;
+        seen.add(e.id);
+        return true;
+      })
+      .slice(0, 9);
+
+    return updated;
   });
 
-  // ③ 打順からも外す（固定打順のまま、該当選手だけ除去）
-  setBattingOrder((prev) => prev.filter((e) => e.id !== playerId));
 };
 
 const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
@@ -784,30 +818,36 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
   const next = { ...assignments, [DH]: null };
   setAssignments(next);
 
-  // ④ 打順（固定）：DHがいなくなったら投手をDHの枠に戻す
+  // ④ 打順：DHを控えに戻したら、DHを打順から外して「投手を打順へ戻す」
   setBattingOrder((prev) => {
     let updated = [...prev];
-    const pitcherId = next["投"] ?? null;
 
-    if (pitcherId) {
-      const dIdx = oldDhId ? updated.findIndex((e) => e.id === oldDhId) : -1;
-      if (dIdx !== -1) {
-        updated[dIdx] = { id: pitcherId, reason: "スタメン" };
-      } else if (!updated.some((e) => e.id === pitcherId)) {
-        updated.push({ id: pitcherId, reason: "スタメン" });
-      }
+    // 1) DHだった選手を打順から除去（8人になる原因はここまでしかやってないこと）
+    if (oldDhId) {
+      updated = updated.filter((e) => e.id !== oldDhId);
     }
 
-    // 重複除去 & 9人制限
+    // 2) ✅ DHなしになるので、投手を打順に追加（すでにいれば追加しない）
+    const pitcherId = next["投"] ?? null;
+    if (pitcherId && !updated.some((e) => e.id === pitcherId)) {
+      updated.push({ id: pitcherId, reason: "スタメン" }); // ← ここで 8→9 に戻る
+    }
+
+    // 3) 重複除去 & 9人制限（いつものやつ）
     const seen = new Set<number>();
-    updated = updated.filter((e) => {
-      if (seen.has(e.id)) return false;
-      seen.add(e.id);
-      return true;
-    }).slice(0, 9);
+    updated = updated
+      .filter((e) => {
+        if (seen.has(e.id)) return false;
+        seen.add(e.id);
+        return true;
+      })
+      .slice(0, 9);
 
     return updated;
   });
+
+
+
 };
 
 

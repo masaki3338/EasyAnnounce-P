@@ -406,34 +406,66 @@ if (isOriginalStarter || isBackToSameStarter) {
   const latestPinchPlayer = teamPlayers.find(p => p.id === latestPinchId);
   if (!latestPinchPlayer) return;
 
-  // 理由は usedPlayerInfo 由来を優先
-  const latestReason = (pinchReasonById as any)?.[latestPinchId] || info.reason;
-  const reasonText =
-    latestReason === "代打" ? "代打いたしました" :
-    latestReason === "臨時代走" ? "臨時代走" : "代走いたしました";
+// ★現在の理由（確定後はここが「途中出場」や空になる想定）を優先して見る
+const currentReasonNow =
+  (battingOrder?.find((e: any) => Number(e?.id) === Number(latestPinchId))?.reason) ??
+  (reasonMap as any)?.[Number(latestPinchId)] ??
+  "";
 
-  // ---- 本文（末尾は後段で句点付与）----
-  console.log("[SAME-POS-PINCH] add line (sono-mama)", { latestPinchId, currentId, posSym });
+// ★フォールバック：過去理由（usedPlayerInfo/pinchReasonById）
+const latestReasonPast = (pinchReasonById as any)?.[latestPinchId] || info.reason;
+
+// 「直後」判定：いまも代打/代走扱いなら先ほど文言を出す
+const isJustNowPinch = ["代打", "代走", "臨時代走"].includes(String(currentReasonNow).trim());
+
+// 表示用の語尾
+const reasonBase = (isJustNowPinch ? currentReasonNow : latestReasonPast);
+const reasonText =
+  String(reasonBase).trim() === "代打" ? "代打いたしました" :
+  String(reasonBase).trim() === "臨時代走" ? "臨時代走" :
+  "代走いたしました";
+
+// ★デバッグ（確認用）
+console.log("[SAME-POS-PINCH] reason check", {
+  latestPinchId,
+  currentReasonNow,
+  latestReasonPast,
+  isJustNowPinch,
+  posSym,
+});
+
+// ---- 本文（末尾は後段で句点付与）----
+if (isJustNowPinch) {
+  // 直後だけ「先ほど…」
   result.push(
-  `先ほど${reasonText}${nameWithHonor(latestPinchPlayer)}に代わりまして、` +
-  `${orderPart}${fullNameWithHonor(subPlayer)}がそのまま入り${posJP[posSym]}、`
-  ); 
+    `先ほど${reasonText}${nameWithHonor(latestPinchPlayer)}に代わりまして、` +
+    `${fullNameWithHonor(subPlayer)}がそのまま入り${posJP[posSym]}、`
+  );
+} else {
+  // 確定後は「指名打者の◯◯くんに代わりまして、」
+  result.push(
+    `${posJP[posSym]}の ${nameWithHonor(latestPinchPlayer)}に代わりまして、` +
+    `${fullNameWithHonor(subPlayer)}がそのまま入り${posJP[posSym]}、`
+  );
+}
 
-// ★ 打順は subPlayer 本人の現在の打順を優先
-const subOrderIdx = battingOrder.findIndex(e => e.id === subPlayer.id);
-if (subOrderIdx >= 0) {
-  const subOrder = subOrderIdx + 1;
-  if (!lineupLines.some(l => l.order === subOrder && l.text.includes(posJP[posSym]))) {
-    lineupLines.push({
-      order: subOrder,
-      text: `${subOrder}番 ${posJP[posSym]} ${fullNameWithHonor(subPlayer)} 背番号 ${subPlayer.number}`,
-    });
+
+// ★ 打順は「代打/代走で入っていた打順枠（latestPinchId）」を使う
+const pinchOrderIdx = battingOrder.findIndex(e => e.id === latestPinchId);
+if (pinchOrderIdx >= 0) {
+  const lineupOrder = pinchOrderIdx + 1;
+
+  const text = `${lineupOrder}番 ${posJP[posSym]} ${fullNameWithHonor(subPlayer)} 背番号 ${subPlayer.number}`;
+
+  if (!lineupLines.some(l => l.order === lineupOrder && l.text.includes(posJP[posSym]))) {
+    lineupLines.push({ order: lineupOrder, text });
   }
 }
 
 
+
   // ヘッダー抑止＆通常処理に回さない
-  skipHeader = true;
+  //skipHeader = true;
   handledPlayerIds.add(subPlayer.id);
   handledPositions.add(posSym);
 });
@@ -523,7 +555,7 @@ const useSimpleForm =
 
 // 直後でなければ「先ほど〜いたしました」を使わず、位置付きの通常形にする
 const firstLine = useSimpleForm
-  ? `${posFull2} ${nameWithHonor(efPlayer)}に代わりまして、` +
+  ? `${posFull2} ${nameWithHonor(refPlayer)}に代わりまして、` +
     `${nameWithHonor(B2)}がリエントリーで ${posFull2}に入ります。`
   : `先ほど${phrase}いたしました${nameWithHonor(refPlayer)}に代わりまして、` +
     `${nameWithHonor(B2)}がリエントリーで ${posFull2}に入ります。`;
@@ -1249,18 +1281,55 @@ if (pinchFromUsed && isSamePosition) {
     "代打";
 
   // ✅ 確定の一文（末尾はここでは句点なし：後段の終端調整で「。」を付与）
+// いまこの選手が「現在」どんな理由になっているか（直後判定用）
+const currentFromReasonNow: string | undefined =
+  (battingOrder?.find((b: any) => Number(b?.id) === Number(r.from.id))?.reason as any) ??
+  ((reasonMap as any)?.[Number(r.from.id)] as any);
+
+const isStillJustPinch =
+  ["代打", "代走", "臨時代走"].includes(String(currentFromReasonNow || "").trim());
+
+// 直後でないなら「先ほど〜」を使わず通常形へ
+if (!isStillJustPinch) {
+  const head = buildFromHead(r.from.id, r.pos); // ←「指名打者の◯◯に代わりまして、」になる
+  replaceLines.push(
+    `${head}${orderPart}${fullNameWithHonor(r.to)}が入り ${posJP[r.pos]}`
+  );
+} else {
+  // 従来通り「先ほど〜」を使う（直後だけ）
+// ★ 直後判定：今この選手が「代打/代走扱いのまま」か？
+const currentReasonNow =
+  (battingOrder?.find((b: any) => Number(b?.id) === Number(r.from.id))?.reason) ??
+  (reasonMap as any)?.[Number(r.from.id)];
+
+const isJustNowPinch = ["代打", "代走", "臨時代走"].includes(String(currentReasonNow || "").trim());
+
+// ✅ 確定の一文（末尾はここでは句点なし：後段の終端調整で「。」を付与）
+if (isJustNowPinch) {
+  // 「直後」だけ：先ほど文言あり
   replaceLines.push(
     `先ほど${phrase}いたしました${nameWithHonor(r.from)}に代わりまして、${orderPart}${fullNameWithHonor(r.to)}がそのまま入り${posJP[r.pos]}`
   );
+} else {
+  // 「一度確定した後」：通常文（あなたの理想）
+  replaceLines.push(
+    `${posJP[r.pos]} ${nameWithHonor(r.from)}に代わりまして、${orderPart}${fullNameWithHonor(r.to)}が入り ${posJP[r.pos]}`
+  );
+}
 
-  
+return;
+
+}
+
+
+
   // 重複抑止
   handledPlayerIds.add(r.from.id);
   handledPlayerIds.add(r.to.id);
   handledPositions.add(r.pos);
 
   // このケースではヘッダー不要
-  skipHeader = true;
+  //skipHeader = true;
 
   // この r は処理完了（通常分岐へは行かない）
   return;
@@ -1297,7 +1366,17 @@ const getPinchReasonOf = (pid: number | string): string | undefined => {
 };
 
 // === ここから各 r（= replace レコード）に対する処理 ===
-const reasonOfFrom = getPinchReasonOf(r.from.id);
+
+// ★ まず「現在の打順（battingOrder）」の reason を優先して見る
+const reasonNowInOrder = (() => {
+  const inOrder = battingOrder?.find((b: any) => b?.id === Number(r.from.id));
+  return inOrder?.reason ? String(inOrder.reason).trim() : "";
+})();
+
+// ★ battingOrder に reason があればそれを採用、なければ従来ロジック（usedPlayerInfo→reasonMap）へ
+const reasonOfFrom = reasonNowInOrder || getPinchReasonOf(r.from.id);
+
+// ★ 「先ほど代打/代走…」は、“現在のreasonが代打/代走系”の時だけ
 const isPinchFrom = ["代打", "代走", "臨時代走"].includes((reasonOfFrom || "").trim());
 
 // デバッグ（一時的）
@@ -1429,23 +1508,38 @@ const getEnterReason = (pid: number): string | undefined => {
 
 // ヘッダー生成：代打/代走なら「先ほど◯◯いたしました清水くん に代わりまして、」
 // それ以外（ベンチから守備で入っていた 等）は「〈守備〉の 清水くん に代わりまして、」
-const buildFromHead = (fromId: number, fromPosSym: string | undefined): string => {
-  const p = teamPlayers.find(pl => pl.id === fromId);
-  // from の守備が undefined の場合は assignments から推定
-  const fromPosSymSafe =
-    fromPosSym ??
-    (Object.keys(assignments ?? {}).find(k => Number((assignments as any)[k]) === Number(fromId)) as string | undefined);
+// ヘッダー生成：代打/代走なら「先ほど◯◯いたしました◯◯くんに代わりまして、」
+// ただし “画面を開いた時点で既に出場中の選手” は、あとから交代しても「先ほど…」は使わない
+const buildFromHead = (fromId: number, fromPosSym?: string) => {
+  const p = teamPlayers.find(pp => Number(pp.id) === Number(fromId));
+  const fromName = p ? nameWithHonor(p) : "";
+
+  // ✅「この守備交代画面の基準（＝initialAssignments）に既に居るなら、もう“先ほど”ではない」
+  const alreadyOnFieldWhenOpened = Object.values(initialAssignments ?? {}).some(
+    (id) => Number(id) === Number(fromId)
+  );
+
+  const fromPosSymSafe = fromPosSym || "";
+  const fromFull = fromPosSymSafe ? posJP[fromPosSymSafe as keyof typeof posJP] : "";
+
+  // すでに出場中扱いなら、理由が代打/代走でも「指名打者の〜に代わりまして」に寄せる
+  if (alreadyOnFieldWhenOpened) {
+    return `${fromFull ? `${fromFull}の ` : ""}${fromName}に代わりまして、`;
+  }
 
   const reason = getEnterReason(fromId);
   if (reason === "代打" || reason === "代走" || reason === "臨時代走") {
-    const kind = reason === "代走" ? "代走いたしました"
-              : reason === "臨時代走" ? "臨時代走"
-              : "代打いたしました";
-    return `先ほど${kind}${p ? nameWithHonor(p) : ""}に代わりまして、`;
+    const phrase =
+      reason === "代走" ? "代走いたしました" :
+      reason === "臨時代走" ? "臨時代走" :
+      "代打いたしました";
+    return `先ほど${phrase}${fromName}に代わりまして、`;
   }
-  const posFull = fromPosSymSafe ? posJP[fromPosSymSafe as keyof typeof posJP] : "";
-  return `${posFull ? `${posFull}の ` : ""}${p ? nameWithHonor(p) : ""}に代わりまして、`;
+
+  return `${fromFull ? `${fromFull}の ` : ""}${fromName}に代わりまして、`;
 };
+
+
 
 mixed.forEach((r, i) => {
 
@@ -1552,34 +1646,19 @@ if (
   }
 
 
-  // ✅ アナウンス文作成（代打/代走は fromPos を使わず「先ほど…」にする）
-  const fromReason = reasonMap[r.from.id]; // battingOrder 由来
-  const isPinchFrom = ["代打", "代走", "臨時代走"].includes(fromReason as any);
+// ✅ アナウンス文作成：from側の文言は buildFromHead に集約（確定後は“先ほど”禁止もここで効く）
+const fromSym =
+  r.fromPos ||
+  (Object.entries(assignments)
+    .find(([k, id]) => Number(id) === Number(r.from.id))?.[0] as any);
 
-  if (isPinchFrom) {
-    const phrase =
-      fromReason === "代走" ? "代走いたしました" :
-      fromReason === "臨時代走" ? "臨時代走" :
-      "代打いたしました"; // ←「しました」にしたい場合はここを変更
+const head = buildFromHead(r.from.id, fromSym);
 
-    addReplaceLine(
-      `先ほど${phrase}${nameWithHonor(r.from)}に代わりまして、${r.order}番に${fullNameWithHonor(r.to)}が入り${posJP[r.toPos]}へ`,
-      i === mixed.length - 1 && shift.length === 0
-    );
-  } else {
-  // fromPos が無いときは assignments から逆引き、無ければ「◯◯の」を省略
-  const fromSym =
-    r.fromPos ||
-    (Object.entries(assignments)
-      .find(([k, id]) => Number(id) === Number(r.from.id))?.[0] as any);
-  const fromFull = fromSym ? posJP[fromSym] : "";
+addReplaceLine(
+  `${head}${r.order}番に${fullNameWithHonor(r.to)}が入り ${posJP[r.toPos]}へ`,
+  i === mixed.length - 1 && shift.length === 0
+);
 
-  addReplaceLine(
-    `${fromFull ? `${fromFull}の ` : ""}${nameWithHonor(r.from)}に代わりまして、${r.order}番に${fullNameWithHonor(r.to)}が入り ${posJP[r.toPos]}へ`,
-    i === mixed.length - 1 && shift.length === 0
-  );
-
-}
 
 // ✅ lineupLines（重複防止付き）
 // 既存 if (...) { lineupLines.push(...) } の直前～直後を以下に置換
@@ -1678,82 +1757,15 @@ const pinchEntry =
   ) ||
   (pinchInfoForShift ? ({ reason: pinchInfoForShift.reason } as any) : undefined);
 
-if (pinchEntry) {
-  // usedPlayerInfo: { originalId : { fromPos, subId, reason: "代打|代走|臨時代走", ... } }
-  const subFromPosById = new Map<number, string>();
-  Object.values(usedPlayerInfo || {}).forEach((info: any) => {
-    if (!info) return;
-    const r = info.reason as string | undefined;
-    if ((r === "代打" || r === "代走" || r === "臨時代走") && typeof info.subId === "number") {
-      const sym = (posNameToSymbol as any)[info.fromPos] ?? info.fromPos; // 例: "ライト"→"右"
-      subFromPosById.set(info.subId, sym);
-    }
-  });
+// ★追加：この守備交代画面を開いた時点ですでに出場していた＝「先ほど」は不要
+const alreadyOnFieldWhenOpened = Object.values(initialAssignments ?? {}).some(
+  (id) => Number(id) === Number(s.player.id)
+);
 
-  const curPosOf = (id: number) =>
-    (Object.entries(assignments).find(([k, v]) => v === id)?.[0] as string | undefined);
-
-  // A=このシフトの代打
-  const fromA = subFromPosById.get(s.player.id);         // 代打Aが元々置き換えた守備
-  const toA   = curPosOf(s.player.id) ?? s.toPos;        // 代打Aの今の守備（= s.toPos のはず）
-
-  // B=相手の代打（toA→fromA へ動いた代打）
-  const otherId = [...subFromPosById.entries()]
-    .find(([id, fromB]) => id !== s.player.id && fromB === toA && curPosOf(id) === fromA)?.[0];
-
-  if (fromA && toA && otherId) {
-    const phraseOfId = (id: number) => {
-      // usedPlayerInfo 由来を優先（battingOrder は途中で「途中出場」に変わり得るため）
-      const r =
-        Object.values(usedPlayerInfo || {}).find((x: any) => x?.subId === id)?.reason ||
-        battingOrder.find((e) => e.id === id)?.reason;
-      return r === "代走" ? "代走いたしました" : r === "臨時代走" ? "臨時代走" : "代打いたしました";
-    };
-
-    const playerA = s.player;
-    const playerB = teamPlayers.find((p) => p.id === otherId)!;
-
-    // ★ 2人分を1行で必ず出す
-    const phraseA = phraseOfId(playerA.id);
-    const phraseB = phraseOfId(playerB.id);
-    const prefixB = phraseA === phraseB ? "同じく先ほど" : "先ほど";
-
-    result.push(
-      `先ほど${phraseA}${nameWithHonor(playerA)}が ${posJP[toA]}、` +
-      `${prefixB}${phraseB}${nameWithHonor(playerB)}が ${posJP[fromA]}。`
-    );
-
-    // 打順行（重複しないようガード）
-    if (
-      typeof s.order === "number" &&
-      !lineupLines.some((l) => l.order === s.order && l.text.includes(posJP[toA]) && l.text.includes(nameRuby(playerA)))
-    ) {
-      lineupLines.push({ order: s.order, text: `${s.order}番 ${posJP[toA]} ${nameWithHonor(playerA)}` });
-    }
-    const otherOrder = battingOrder.findIndex((e) => e.id === playerB.id);
-    if (
-      otherOrder >= 0 &&
-      !lineupLines.some((l) => l.order === otherOrder + 1 && l.text.includes(posJP[fromA]) && l.text.includes(nameRuby(playerB)))
-    ) {
-      lineupLines.push({ order: otherOrder + 1, text: `${otherOrder + 1}番 ${posJP[fromA]} ${nameWithHonor(playerB)}` });
-    }
-
-    // 後段の通常処理に流れないよう両者＆両ポジションを処理済みに
-    if (typeof skipShiftPairs !== "undefined") {
-      skipShiftPairs.add(`${playerA.id}|${fromA}|${toA}`);
-      skipShiftPairs.add(`${playerB.id}|${toA}|${fromA}`);
-    }
-    if (typeof handledPlayerIds !== "undefined") {
-      handledPlayerIds.add(playerA.id);
-      handledPlayerIds.add(playerB.id);
-    }
-    if (typeof handledPositions !== "undefined") {
-      handledPositions.add(toA);
-      handledPositions.add(fromA);
-    }
-    return; // ← 相互入替えはここで完結
-  }
-
+// ★ここを変更：確定後（alreadyOnFieldWhenOpened=true）は pinchEntry でも通常文に落とす
+if (pinchEntry && !alreadyOnFieldWhenOpened) {
+  // -------------- ここから下は「今までの pinchEntry ブロック」をそのまま残す --------------
+  // 相互入替えの特別処理...
   // 相互入替えでなければ従来の単独出力
   const phrase =
     pinchEntry.reason === "代打"
@@ -1766,13 +1778,13 @@ if (pinchEntry) {
     (ln) => ln.includes(`先ほど${phrase}`) || ln.includes(`同じく先ほど${phrase}`)
   );
   const headText = hasPriorSame ? `同じく先ほど${phrase}` : `先ほど${phrase}`;
-  // 「…が センターへ、」の形にする（最後は終端調整で句点）
+
   result.push(`${headText}${nameWithHonor(s.player)}が ${tail}へ${ends}`);
 } else {
-  // 通常のシフト出力（従来どおり）
+  // ✅確定後はこちらに落ちる：普通に「指名打者の◯◯くんが 二塁、」など
   result.push(`${head}の${nameRuby(s.player)}${h}が ${tail} ${ends}`);
 }
-// ↑↑↑ ここまで置き換え ↑↑↑
+
 
 
 
@@ -3211,8 +3223,10 @@ try {
 // ==== draggingFrom の補完＆正規化（「控え」もベンチ扱いにする）====
 const normalizeFrom = (s?: string | null) => {
   if (!s) return s;
-  return /^(控え|ベンチ|bench)$/i.test(s) ? "ベンチ" : s;
+  if (s === "控え" || s === "ベンチ" || s === "bench") return BENCH;
+  return s;
 };
+
 srcFrom = normalizeFrom(srcFrom);
 const dtFromNorm = normalizeFrom(dtFrom);
 
@@ -3234,6 +3248,9 @@ const toId =
 
 const fromId = assignments[toPos] ?? null; // ここが null だと“空き枠ドロップ”
 
+const isNumber = (v: any): v is number =>
+  typeof v === "number" && !Number.isNaN(v);
+
 console.log("🧾 判定プレチェック", {
   toPos,
   srcFrom,
@@ -3248,7 +3265,8 @@ console.log("🧾 判定プレチェック", {
 if (!fromIsField && toPos !== BENCH) {
   resetBlue?.();
 
-  const isNumber = (v: any): v is number => typeof v === "number";
+
+
   let isReentryNow = false;
 
   if (isNumber(toId) && isNumber(fromId)) {
@@ -3271,7 +3289,14 @@ if (!fromIsField && toPos !== BENCH) {
       const startIdx = wasStarter
         ? startingOrderRef.current.findIndex((e) => e.id === (origIdForTo as number))
         : -1;
-      const fromOrderIdx = battingOrderDraft.findIndex((e) => e?.id === fromId);
+      const fromOrderIdx = (battingOrderDraft ?? []).findIndex((e) => {
+        const slotId = Number(e?.id);
+        if (!Number.isFinite(slotId)) return false;
+
+        const latest = resolveLatestSubId(slotId, (usedPlayerInfo as any) || {});
+        return latest === Number(fromId) || slotId === Number(fromId);
+      });
+
       const sameBattingSlot = startIdx >= 0 && fromOrderIdx >= 0 && fromOrderIdx === startIdx;
       const isOffField = !Object.values(assignments || {}).includes(Number(toId));
 
@@ -3284,9 +3309,10 @@ if (!fromIsField && toPos !== BENCH) {
         window.alert("リエントリー対象選手ではありません。");
         setHoverPos(null);
         setDraggingFrom(null);
-        e.dataTransfer.dropEffect = "none";
-        return prev; // 通常交代にも進ませない
+        try { e.dataTransfer.dropEffect = "none"; } catch {}
+        return; // ← これで真っ白画面は止まります
       }
+
     }
   }
 } else {
@@ -3302,7 +3328,7 @@ if (!fromIsField && toPos !== BENCH) {
 
     // ---- ここまで追加（判定・青枠・ログ）----
 
-    if (!draggingFrom) return;
+    if (!srcFrom) return;
 
     // 『指』にドロップされたら、DH解除の保留を取り消す（＝DH継続に戻す）
     if (toPos === "指" && (dhDisableDirty || pendingDisableDH)) {
@@ -3422,6 +3448,43 @@ if (!fromIsField && toPos !== BENCH) {
       const newAssignments = { ...prev };
       newAssignments[draggingFrom] = toId;
       newAssignments[toPos] = fromId;
+
+      // ★ DHありの状態で投手が別守備へ移動、または他守備が投手になる場合はDH解除
+      //   ルール: 投手が「投」から外れた時点でDH解除。DHの打順に“元投手”が入る。
+      //   ※ 確定時(confirmChange)に battingOrder を置換するため、ここで必ずスナップショットを残す。
+      const dhId = prev["指"];
+      const oldPitcherId = prev["投"]; // この入替の“直前”に投手だった選手
+
+      const shouldDisableDH =
+        toPos !== "指" &&
+        draggingFrom !== "指" &&
+        typeof dhId === "number" &&
+        typeof oldPitcherId === "number" &&
+        (
+          // 元投手が「投」から別守備へ移動
+          (draggingFrom === "投" && toPos !== "投") ||
+          // 他守備の選手が「投」になり、元投手が別守備へ回る（=「投」が入替）
+          (toPos === "投" && draggingFrom !== "投")
+        );
+
+      if (shouldDisableDH) {
+        // ✅ DH解除に必要なIDを保持（これが無いと確定時にDHの打順を置換できない）
+        setDhDisableSnapshot({ dhId, pitcherId: oldPitcherId });
+        setPendingDisableDH(true);
+        setDhDisableDirty(true);
+
+        // DH枠は空に（=DH選手は退場扱い）
+        newAssignments["指"] = null;
+
+        // 画面上は「DHの打順」に“元投手”を赤字で差し込んで見えるようにする
+        const dhIndex = battingOrder.findIndex((e) => e.id === dhId);
+        if (dhIndex !== -1) {
+          const p = teamPlayers.find((tp) => tp.id === oldPitcherId);
+          if (p) {
+            setBattingReplacements((prevRep) => ({ ...prevRep, [dhIndex]: p }));
+          }
+        }
+      }
 
       // ✅ フィールド同士の A↔B 戻しが成立したら解除
       if (fromId != null && pairLocks[fromId] === toId ||
@@ -4062,6 +4125,12 @@ onConfirmed?.();
 // 保存完了：スナップショット更新＆クリーン化
 snapshotRef.current = buildSnapshot();
 setIsDirty(false);
+// ✅ 確定後はこの画面内の“基準”を更新（これで次の操作から「先ほど」にならない）
+setInitialAssignments(finalAssignments);
+setAssignments(finalAssignments);
+setBattingOrder(updatedOrder);
+setBattingOrderDraft(updatedOrder);
+setDhEnabledAtStart(finalDhEnabledAtStart);
 
   console.log("✅ onConfirmed called");
 };
@@ -4217,16 +4286,20 @@ const handleSpeak = async () => {
 // 絶対条件のみで青枠にする
 const isReentryBlue = player ? alwaysReentryIds.has(player.id) : false;
 
+const canDropHere =
+  pos !== "指" || dhEnabledAtStart || dhDisableDirty || !!player;
+
   return (
     <div
       key={pos}
+      
       onDragEnter={() => setHoverPos(pos)}
       onDragLeave={() => setHoverPos((v) => (v === pos ? null : v))}
       onDragOver={(e) => {
-        if (pos !== "指" || (dhEnabledAtStart || dhDisableDirty)) e.preventDefault();
+        if (canDropHere) e.preventDefault();
       }}
       onDrop={(e) => {
-        if (pos !== "指" || (dhEnabledAtStart || dhDisableDirty)) {
+        if (canDropHere) {
           console.log("🪂 onDrop→handleDrop 呼び出し", { pos });
           handleDrop(pos, e);
         } else {
