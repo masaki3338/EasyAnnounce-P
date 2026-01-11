@@ -78,7 +78,9 @@ const StartingLineup = () => {
       assignments,
       battingOrder,
       benchOutIds,
+      ohtaniRule,
     });
+
 
     const navigate = useNavigate();
   // 試合情報画面（MatchCreate）のパスに合わせて調整して下さい
@@ -140,6 +142,8 @@ const makeFakeDragEvent = (payload: Record<string, string>) =>
 
 
   const [benchOutIds, setBenchOutIds] = useState<number[]>([]);
+  const [ohtaniRule, setOhtaniRule] = useState(false);
+  const prevDhIdRef = React.useRef<number | null>(null);
 
   const [showConfirm, setShowConfirm] = useState(false);
   const onClearClick = () => setShowConfirm(true);
@@ -147,6 +151,64 @@ const makeFakeDragEvent = (payload: Record<string, string>) =>
     setShowConfirm(false);
     await clearAssignments(); // 既存のクリア処理を実行
   };
+
+  useEffect(() => {
+    (async () => {
+      const saved = await localForage.getItem<boolean>("ohtaniRule");
+      if (typeof saved === "boolean") {
+        setOhtaniRule(saved);
+        return;
+      }
+      // 保存がない場合は、投=指 なら大谷ONとみなす（保険）
+      setOhtaniRule(
+        typeof assignments["投"] === "number" &&
+        assignments["投"] === assignments["指"]
+      );
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+useEffect(() => {
+  if (!ohtaniRule) return;
+
+  const newPitcherId = assignments["投"] ?? null;
+  const oldDhId = assignments["指"] ?? null; // 追従前のDH（= 旧投手のはず）
+
+  if (!newPitcherId) return;
+
+  // ① まず守備配置：指＝投 を同期
+  setAssignments((prev) => {
+    const p = prev["投"] ?? null;
+    if (prev["指"] === p) return prev;
+    return { ...prev, ["指"]: p };
+  });
+
+  // ② ついでに打順も同期（旧DH枠を新投手に差し替え）
+  setBattingOrder((prev) => {
+    let updated = [...prev];
+
+    // 新投手が既に打順にいたら重複防止で消す
+    updated = updated.filter((e) => e.id !== newPitcherId);
+
+    const idx = updated.findIndex((e) => e.id === oldDhId);
+    if (idx !== -1) {
+      updated[idx] = { id: newPitcherId, reason: "スタメン" };
+    } else if (!updated.some((e) => e.id === newPitcherId)) {
+      // 保険：見つからないなら末尾へ
+      updated.push({ id: newPitcherId, reason: "スタメン" });
+    }
+
+    // 念のため重複排除＆9人制限
+    const seen = new Set<number>();
+    updated = updated
+      .filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)))
+      .slice(0, 9);
+
+    return updated;
+  });
+}, [ohtaniRule, assignments["投"]]);
+
+
 
 useEffect(() => {
   const buttons = Array.from(document.querySelectorAll("button"));
@@ -1076,6 +1138,123 @@ return (
      <h2 className="font-semibold text-white">フィールド配置</h2>
    </div>
    <div className="relative">
+{/* ✅ DH / 大谷ルール（フィールド右下固定） */}
+<div className="absolute right-3 bottom-12 z-30 flex items-center gap-3">
+
+
+  <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-yellow-400/20 border border-yellow-300/50">
+    <input
+      type="checkbox"
+      className="w-5 h-5 accent-yellow-400"
+      checked={ohtaniRule}
+      onChange={(e) => {
+        const next = e.target.checked;
+
+        // ★ ここが重要：切替前の状態を先に捕まえる
+        const pitcherIdNow = assignments["投"] ?? null;
+        const dhIdNow = assignments["指"] ?? null; // ← 切替前DH（= もともとDHにいた選手）
+
+        setOhtaniRule(next);
+        localForage.setItem("ohtaniRule", next);
+
+        if (next) {
+          // ===== 大谷ルール ON：DH = 投手 にする =====
+          prevDhIdRef.current = dhIdNow;
+
+          setAssignments((prev) => {
+            const pitcherId = prev["投"] ?? null;
+            return { ...prev, ["指"]: pitcherId };
+          });
+
+          // ★ 追加：打順の「旧DH枠」を投手に差し替える（旧DHは打順から消す）
+          setBattingOrder((prev) => {
+            let updated = [...prev];
+
+            const pitcherId = pitcherIdNow;
+            const oldDhId = dhIdNow;
+
+            if (pitcherId) {
+              // 念のため投手が既に打順に居たら一旦除去（重複防止）
+              updated = updated.filter((e) => e.id !== pitcherId);
+
+              if (oldDhId) {
+                const dIdx = updated.findIndex((e) => e.id === oldDhId);
+                if (dIdx !== -1) {
+                  updated[dIdx] = { id: pitcherId, reason: "スタメン" };
+                } else {
+                  // 旧DHが打順に見つからない保険：投手を末尾に入れる
+                  updated.push({ id: pitcherId, reason: "スタメン" });
+                }
+              } else {
+                // 旧DHがいない（DH未配置でONにした）保険：投手を末尾に入れる
+                updated.push({ id: pitcherId, reason: "スタメン" });
+              }
+            }
+
+            // 重複除去 & 9人制限（既存流儀に合わせる）
+            const seen = new Set<number>();
+            updated = updated.filter((x) => {
+              if (seen.has(x.id)) return false;
+              seen.add(x.id);
+              return true;
+            }).slice(0, 9);
+
+            return updated;
+          });
+
+        } else {
+          // ===== 大谷ルール OFF：DHを元に戻す =====
+          const restoreDhId = prevDhIdRef.current ?? null;
+
+          setAssignments((prev) => {
+            return { ...prev, ["指"]: restoreDhId };
+          });
+
+          // ★ 追加：打順を戻す
+          setBattingOrder((prev) => {
+            let updated = [...prev];
+
+            const pitcherId = pitcherIdNow;
+            const dhId = restoreDhId;
+
+            if (pitcherId && dhId) {
+              // DHあり：投手は打順なしに戻す → 打順上の投手をDHに差し替え
+              const pIdx = updated.findIndex((e) => e.id === pitcherId);
+              if (pIdx !== -1) {
+                updated[pIdx] = { id: dhId, reason: "スタメン" };
+              } else if (!updated.some((e) => e.id === dhId)) {
+                updated.push({ id: dhId, reason: "スタメン" });
+              }
+              // 念のため：投手が残ってたら消す（差し替えできないケース保険）
+              updated = updated.filter((e) => e.id !== pitcherId);
+            } else if (pitcherId && !dhId) {
+              // DHなし：投手は打順に居る必要がある
+              if (!updated.some((e) => e.id === pitcherId)) {
+                updated.push({ id: pitcherId, reason: "スタメン" });
+              }
+            } else if (!pitcherId && dhId) {
+              // 投手未設定だけどDH復帰：とりあえずDHが打順に居るように
+              if (!updated.some((e) => e.id === dhId)) updated.push({ id: dhId, reason: "スタメン" });
+            }
+
+            const seen = new Set<number>();
+            updated = updated.filter((x) => {
+              if (seen.has(x.id)) return false;
+              seen.add(x.id);
+              return true;
+            }).slice(0, 9);
+
+            return updated;
+          });
+        }
+      }}
+
+    />
+    <span className="font-bold text-yellow-100 whitespace-nowrap">大谷ルール</span>
+  </label>
+</div>
+
+
     <img
       src="/field.png"
       alt="フィールド図"
@@ -1085,7 +1264,7 @@ return (
       {allSlots.map((pos) => {
         const playerId = assignments[pos];
         const player = teamPlayers.find((p) => p.id === playerId);
-        return (
+        return (          
           <div
             key={pos}
             draggable={!!player}
@@ -1238,6 +1417,11 @@ return (
             const player = teamPlayers.find((p) => p.id === entry.id);
             if (!player) return null;
             const pos = getPositionOfPlayer(entry.id);
+            // ✅表示だけ：大谷ルールON中は「投手＝DH表示」にする（DH未配置でも）
+            const displayPos =
+              ohtaniRule && assignments["投"] === entry.id
+                ? "指"
+                : pos;
 
             return (
               <div
@@ -1281,7 +1465,7 @@ return (
                   onTouchStart={(ev) => { ev.stopPropagation(); pos && setTouchDrag({ playerId: entry.id }); }}
                 >
 
-                {pos ? positionNames[pos] : "控え"}
+                {displayPos ? positionNames[displayPos] : "控え"}
                 </span>
 
                   {/* 選手名 → 右にずらす */}

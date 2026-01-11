@@ -102,12 +102,23 @@ const TBA_POS_JP: Record<string, string> = {
   "右": "ライト", "指": "指名打者",
 };
 const tbaHonor = (p: any) => (p?.isFemale ? "さん" : "くん");
-const tbaGetPos = (assignments: Record<string, number|null>, pid: number) => {
-  const hit = Object.entries(assignments || {}).find(([, v]) => v === pid);
+const tbaGetPos = (assignments: Record<string, number | null>, pid: number) => {
+  const pitcherId = assignments?.["投"];
+  const dhId = assignments?.["指"];
+  const isOhtani =
+    pitcherId != null && dhId != null && Number(pitcherId) === Number(dhId);
+
+  // ✅ 大谷ルール時：投手＝DHの選手は「指」を優先表示
+  if (isOhtani && Number(pid) === Number(pitcherId)) {
+    return TBA_POS_JP["指"] ?? "指";
+  }
+
+  const hit = Object.entries(assignments || {}).find(([, v]) => Number(v) === Number(pid));
   if (!hit) return "（守備未設定）";
   const key = hit[0];
   return TBA_POS_JP[key] ?? key;
 };
+
 const tbaSafeIdArray = (order: any[]): number[] =>
   (order || []).map((e: any) => (typeof e === "number" ? e : e?.id)).filter((x: any) => Number.isFinite(x));
 // === TIEBREAK OFFENSE ANNO: helpers end ===
@@ -1287,22 +1298,31 @@ const getPlayer = (id: number) =>
     // 位置ラベル（守備・代打・(臨時)代走）を一元判定
 // 位置ラベル（守備・代打・(臨時)代走）を一元判定
 // 守備位置 or 代打/代走/臨時代走 の表示用
-// 守備位置 or 代打/代走/臨時代走 の表示用
-// 守備位置 or 代打/代走/臨時代走 の表示用
 const getPosition = (id: number): string | null => {
-  // 1) 純粋な守備割当（IDは数値化して比較：保存時に文字列化していても拾える）
-  const posFromDefense =
-    Object.keys(assignments).find(
-      (k) => Number((assignments as any)[k]) === Number(id)
-    ) ?? null;
+  // ✅ 大谷ルール判定：投手IDとDH(指)IDが同一なら「打順表示は指を優先」
+  const pitcherId = (assignments as any)["投"];
+  const dhId      = (assignments as any)["指"];
+  const isOhtani  =
+    pitcherId != null &&
+    dhId != null &&
+    Number(pitcherId) === Number(dhId);
+
+  // 1) 純粋な守備割当（大谷ルール時は「投＝指」の選手だけ指を返す）
+  let posFromDefense: string | null = null;
+  if (isOhtani && Number(id) === Number(pitcherId)) {
+    posFromDefense = "指"; // ← ここがポイント
+  } else {
+    posFromDefense =
+      Object.keys(assignments).find(
+        (k) => Number((assignments as any)[k]) === Number(id)
+      ) ?? null;
+  }
 
   // 2) いま塁上に「代走として」出ているか
-  // runnerAssignments は { base: Player } なので v?.id で比較する
   const isRunnerNow = Object.values(runnerAssignments || {}).some(
     (v: any) => v?.id === id
   );
   if (isRunnerNow) {
-    // usedPlayerInfo で理由を確認（臨時代走を最優先）
     const info = Object.values(usedPlayerInfo as any).find(
       (x: any) =>
         x?.subId === id && (x?.reason === "臨時代走" || x?.reason === "代走")
@@ -1310,12 +1330,11 @@ const getPosition = (id: number): string | null => {
     return info?.reason === "臨時代走" ? "臨時代走" : "代走";
   }
 
-  // 3) 打順側の理由で表示（ここに "臨時代走" 分岐を追加）
+  // 3) 打順側の理由で表示
   const reasonInOrder = battingOrder.find((e) => e.id === id)?.reason;
   if (reasonInOrder === "代打") return "代打";
   if (reasonInOrder === "臨時代走") return "臨時代走";
   if (reasonInOrder === "代走") {
-    // usedPlayerInfo に「臨時代走」があれば上書き
     const info = Object.values(usedPlayerInfo as any).find(
       (x: any) => x?.subId === id && x?.reason === "臨時代走"
     );
@@ -1325,6 +1344,7 @@ const getPosition = (id: number): string | null => {
   // 4) どれでもなければ守備位置
   return posFromDefense;
 };
+
 
 
 const getFullName = (player: Player) => {

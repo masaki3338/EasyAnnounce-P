@@ -84,6 +84,7 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
 
   const startingIds = battingOrder.map((e) => e.id);
   const [benchOutIds, setBenchOutIds] = useState<number[]>([]);
+  const [ohtaniRule, setOhtaniRule] = useState(false);
 
 　// ✅ DHあり判定：指名打者が割り当てられているか
   const dhActive = assignments["指"] != null;
@@ -91,7 +92,10 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
   const pitcherId = assignments["投"];
   // ✅ DHありで、投手が打順に入っていない場合だけ「投手を追加アナウンス」
   const shouldAnnouncePitcher =
-    dhActive && typeof pitcherId === "number" && !startingIds.includes(pitcherId);
+    dhActive &&
+    typeof pitcherId === "number" &&
+    (!startingIds.includes(pitcherId) || ohtaniRule); // ★大谷ルール時は常に表示
+
 
 
 
@@ -123,10 +127,14 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
   
   useEffect(() => {
     const loadB = async () => {
-      const [team, matchInfo] = await Promise.all([
+      const [team, matchInfo, ohtani] = await Promise.all([
         localForage.getItem<{ name: string; players: Player[] }>("team"),
         localForage.getItem("matchInfo"),
+        localForage.getItem<boolean>("ohtaniRule"),
       ]);
+
+      setOhtaniRule(!!ohtani);
+
 
       const assignRaw =
         (await localForage.getItem<Record<string, number | null>>("startingassignments")) ??
@@ -163,7 +171,9 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
         setIsTwoUmpires(Boolean(mi.twoUmpires));
       }
     };
+    
     loadB();
+    
   }, []);
 
   /* === 表示ヘルパ === */
@@ -309,7 +319,12 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
 
               const pos =
                 Object.entries(assignments).find(([_, pid]) => pid === p.id)?.[0] || "-";
-              const posName = getPositionName(pos);
+
+              // ★追加：表示用ポジション（大谷ルール時は投手を“指”表示にする）
+              const displayPos =
+                ohtaniRule && assignments["投"] === p.id ? "指" : pos;
+
+              const posName = getPositionName(displayPos);
               const honorific = getHonorific(p);
 
               const num = (p.number ?? "").trim(); // ★追加：背番号（空白なら空）
