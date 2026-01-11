@@ -1139,7 +1139,7 @@ return (
    </div>
    <div className="relative">
 {/* ✅ DH / 大谷ルール（フィールド右下固定） */}
-<div className="absolute right-3 bottom-12 z-30 flex items-center gap-3">
+<div className="absolute left-3 bottom-4 z-30 flex items-center gap-3">
 
 
   <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-yellow-400/20 border border-yellow-300/50">
