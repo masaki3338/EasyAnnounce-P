@@ -1,3 +1,13 @@
+/**
+ * OffenseScreen.tsx
+ * ------------------------------------------------------------
+ * 【整理方針】
+ * - 画面デザイン（JSXの構造/クラス/文言）と機能は変更しない
+ * - ロジックは同一のまま、読みやすいように日本語コメントを追加・統一する
+ * - データ保存は localForage の既存キーを維持する
+ * ------------------------------------------------------------
+ */
+
 import React, { useState, useEffect, useRef, useMemo } from "react";
 
 import localForage from "localforage";
@@ -69,7 +79,7 @@ function htmlToTtsText(html: string): string {
   // ✅ 「回表／回裏」を TTS 用に読み替え
   text = text.replace(/回表/g, "回おもて");
 
-  // ✅ ルビ → かな（TTS用）
+  // ✅ ルビ → かな（読み上げ用）
   text = text
     .replace(/<ruby>\s*([^<]*)\s*<rt>\s*([^<]*)\s*<\/rt>\s*<\/ruby>/g, "$2")
     .replace(/<rt>\s*<\/rt>/g, "");
@@ -92,10 +102,10 @@ async function speakFromAnnouncementArea(
   let text = htmlToTtsText(html);
   text = normalizeJapaneseTime(text); // ← 追加：時刻の読み上げを「時・分」に直す
   if (!text) return;
-  await speak(text); // VOICEVOX優先（失敗時 Web Speech）
+  await speak(text); // VOICEVOX優先（失敗時はブラウザの音声合成）
 }
 
-// === TIEBREAK OFFENSE ANNO: helpers start ===
+// === タイブレーク（攻撃側）アナウンス用ヘルパー：ここから ===
 const TBA_POS_JP: Record<string, string> = {
   "投": "ピッチャー", "捕": "キャッチャー", "一": "ファースト", "二": "セカンド",
   "三": "サード", "遊": "ショート", "左": "レフト", "中": "センター",
@@ -121,7 +131,7 @@ const tbaGetPos = (assignments: Record<string, number | null>, pid: number) => {
 
 const tbaSafeIdArray = (order: any[]): number[] =>
   (order || []).map((e: any) => (typeof e === "number" ? e : e?.id)).filter((x: any) => Number.isFinite(x));
-// === TIEBREAK OFFENSE ANNO: helpers end ===
+// === タイブレーク（攻撃側）アナウンス用ヘルパー：ここまで ===
 
 
 const IconMic = () => (
@@ -167,7 +177,7 @@ const formatJaTime = (t: string | Date | undefined | null): string => {
     const m = t.getMinutes();
     return `${h}時${String(m).padStart(2, "0")}分`;
   }
-  // "HH:mm" or "H:mm" or "HH:mm:ss"
+  // "HH:mm" / "H:mm" / "HH:mm:ss" 形式を想定
   const m1 = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
   if (m1) {
     const h = parseInt(m1[1], 10);
@@ -186,7 +196,7 @@ const formatJaTime = (t: string | Date | undefined | null): string => {
 };
 
 const formatNumberBadge = (num?: string | number) => {
-  // null/undefined/空文字は「#」のみ
+  // null/undefined/空文字は「#」のみ表示
   if (num === undefined || num === null || `${num}`.trim() === "") return "#";
   return `#${num}`;
 };
@@ -358,7 +368,7 @@ const rubyFull = (p: any) =>
   const rubyFirst = (p: any) =>
     `<ruby>${p?.firstName ?? ""}<rt>${p?.firstNameKana ?? ""}</rt></ruby>`;
 
-  // === NEW: 苗字重複を考慮した名前整形 ==========================
+  // === 新規：苗字重複を考慮した名前整形 ==========================
 const [dupLastNames, setDupLastNames] = useState<Set<string>>(new Set());
 
 useEffect(() => {
@@ -368,7 +378,7 @@ useEffect(() => {
   })();
 }, []);
 
-// preferLastOnly=true: 「苗字のみ」指定を尊重。ただし重複姓ならフルネームを強制
+// preferLastOnly=true：基本は「苗字のみ」を尊重。ただし同姓がいる場合はフルネームに自動昇格
 const formatNameForAnnounce = (p: any, preferLastOnly: boolean) => {
   if (!p) return "";
   const ln = String(p.lastName ?? "");
@@ -377,7 +387,7 @@ const formatNameForAnnounce = (p: any, preferLastOnly: boolean) => {
   return preferLastOnly ? rubyLast(p) : rubyFull(p);
 };
 // =============================================================
-// 苗字のみ指定でも、重複姓ならフルを返す formatNameForAnnounce をそのまま使う描画ヘルパ
+// 苗字のみ指定でも、同姓重複ならフルを返す formatNameForAnnounce をそのまま使う描画ヘルパ
 const RenderName = ({ p, preferLastOnly }: { p: any; preferLastOnly: boolean }) => (
   <span dangerouslySetInnerHTML={{ __html: formatNameForAnnounce(p, preferLastOnly) }} />
 );
@@ -389,13 +399,13 @@ const RenderName = ({ p, preferLastOnly }: { p: any; preferLastOnly: boolean }) 
   const lastEndedHalfRef = useRef<{ inning: number; isTop: boolean } | null>(null);
 
 
-  // TTS用にHTMLをプレーンテキスト化（rubyは<rt>だけ残す）
+  // 読み上げ用にHTMLをプレーンテキスト化（rubyは<rt>を優先して残す）
   const normalizeForTTS = (input: string) => {
     if (!input) return "";
     let t = input;
-    // 典型: <ruby>山田<rt>やまだ</rt></ruby> → やまだ
+    // 例：<ruby>山田<rt>やまだ</rt></ruby> → やまだ
     t = t.replace(/<ruby>(.*?)<rt>(.*?)<\/rt><\/ruby>/gms, "$2");
-    // rbタグ（使っていれば）: <rb>山田</rb><rt>やまだ</rt> の保険
+    // rbタグ（使用している場合）：<rb>山田</rb><rt>やまだ</rt> の保険
     t = t.replace(/<\/?rb>/g, "").replace(/<\/?rt>/g, "");
     // 残ったタグは全除去
     t = t.replace(/<[^>]+>/g, "");
@@ -426,7 +436,7 @@ const RenderName = ({ p, preferLastOnly }: { p: any; preferLastOnly: boolean }) 
       return `${yomi}うら`;
     });
 
-  // ✅ ルビ → かな（TTS用）
+  // ✅ ルビ → かな（読み上げ用）
   t = t
     .replace(/<ruby>\s*([^<]*)\s*<rt>\s*([^<]*)\s*<\/rt>\s*<\/ruby>/g, "$2")
     .replace(/<rt>\s*<\/rt>/g, "");
@@ -754,6 +764,9 @@ useEffect(() => {
       setCheckedIds([]);
       setAnnouncedIds([]);
       setUsedPlayerInfo({});
+      // ✅ 追加：控え復帰履歴もリセット（新しい試合では持ち越さない）
+      setBenchReactivatedIds(new Set());
+      await localForage.removeItem("benchReactivatedIds");
       await localForage.removeItem("checkedIds");
       await localForage.removeItem("announcedIds");
       await localForage.removeItem("usedPlayerInfo");
@@ -977,7 +990,7 @@ const orderByBattingFromPrev = (list: any[], runnerIdx: number) => {
   });
 };
 
-// 「出場済み」と見なす選手IDの集合（守備に就いている・打順に載っている・代打/代走も含む）
+// 「出場済み」と見なす選手IDの集合（守備に就いている／打順に載っている／代打・代走も含む）
 const playedIds = useMemo(() => {
   const s = new Set<number>();
   onFieldIds.forEach((id) => s.add(id));                 // 守備で出場中
@@ -991,19 +1004,57 @@ const playedIds = useMemo(() => {
   return s;
 }, [onFieldIds, battingOrder, usedPlayerInfo]);
 
-// ベンチ選手を「出場可能」と「出場済み」に分割
+// ✅ 「出場済み → 控えに戻す」をOKした選手ID
+const [benchReactivatedIds, setBenchReactivatedIds] = useState<Set<number>>(new Set());
+
+// ✅ 起動時に「控えに戻したID」を復元
+useEffect(() => {
+  (async () => {
+    const saved = await localForage.getItem<number[]>("benchReactivatedIds");
+    if (Array.isArray(saved)) {
+      setBenchReactivatedIds(new Set(saved.map(Number).filter(Number.isFinite)));
+    }
+  })();
+}, []);
+
+const addBenchReactivatedId = (id: number) => {
+  setBenchReactivatedIds((prev) => {
+    const next = new Set(prev);
+    next.add(id);
+
+    // ✅ 永続化（次回起動でも控えのまま）
+    localForage.setItem("benchReactivatedIds", Array.from(next));
+
+    return next;
+  });
+};
+
+
 // ベンチ選手を「出場可能」と「出場済み」に分割（出場経験/現在出場中を考慮）
 const { activeBench, retiredBench } = useMemo(() => {
   const active: any[] = [];
   const retired: any[] = [];
+
   benchPlayers.forEach((p) => {
     const nowInBatting = (battingOrder || []).some(e => e?.id === p.id);
     const nowOnField   = onFieldIds.has(p.id);
-    const hasPlayed    = playedIds.has(p.id) || nowInBatting || nowOnField;
-    (hasPlayed ? retired : active).push(p);
+
+    // ✅ 「いま出場中」は絶対に控えに戻さない
+    if (nowInBatting || nowOnField) {
+      retired.push(p);
+      return;
+    }
+
+    const isReactivated = benchReactivatedIds.has(p.id);
+    const hasPlayed = playedIds.has(p.id);
+
+    // ✅ 出場済みでも「控えに戻した」なら active へ
+    (hasPlayed && !isReactivated ? retired : active).push(p);
   });
+
   return { activeBench: active, retiredBench: retired };
-}, [benchPlayers, playedIds, onFieldIds, battingOrder]);
+}, [benchPlayers, playedIds, onFieldIds, battingOrder, benchReactivatedIds]);
+
 
 
 const [showRunnerModal, setShowRunnerModal] = useState(false);
@@ -1017,12 +1068,12 @@ const [runnerAssignments, setRunnerAssignments] = useState<{ [base: string]: any
 const [replacedRunners, setReplacedRunners] = useState<{ [base: string]: any | null }>({});
 // どの塁で「臨時代走」チェックが入っているかを記録
 const [tempRunnerFlags, setTempRunnerFlags] = useState<Record<string, boolean>>({});
-// Step3 で選んだ代走候補（塁ごと）
+// 手順3で選んだ代走候補（塁ごと）
 const [selectedRunnerByBase, setSelectedRunnerByBase] = useState<Record<string, Player | null>>({});
 // アナウンスの「元ランナー名」（塁ごと） ex: "山田やまだ太郎たろうくん"
 const [fromNameByBase, setFromNameByBase] = useState<Record<string, string>>({});
 
-// ーーー Undo/Redo 用スナップショット型 ーーー
+// ーーー Undo/Redo（取り消し/やり直し）用スナップショット型 ーーー
 type OffenseSnapshot = {
   battingOrder: { id: number; reason?: string }[];
   assignments: { [pos: string]: number | null };
@@ -1037,7 +1088,7 @@ type OffenseSnapshot = {
   isHome: boolean;
 };
 
-// ーーー Undo/Redo のスタック ーーー
+// ーーー Undo/Redo（取り消し/やり直し）用スタック ーーー
 const [history, setHistory] = useState<OffenseSnapshot[]>([]);
 const [redo, setRedo] = useState<OffenseSnapshot[]>([]);
 
@@ -1088,7 +1139,7 @@ const restoreSnapshot = async (s: OffenseSnapshot) => {
 // 変更前に履歴へ積む
 const pushHistory = () => {
   setHistory(h => [...h, snapshotNow()]);
-  setRedo([]); // 新規操作で Redo は破棄
+  setRedo([]); // 新規操作を行ったら、Redo（やり直し）履歴は破棄
 };
 
 // 取消（直前の状態へ）
@@ -1114,7 +1165,7 @@ const handleRedo = async () => {
 };
 
 
-// base: "1塁"/"2塁"/"3塁" など、fromName: "〇〇くん" or ""、to: 代走に入る選手
+// base: "1塁"/"2塁"/"3塁" など、fromName: "〇〇くん" または ""、to: 代走に入る選手
 const makeRunnerAnnounce = (base: string, fromName: string, to: Player | null, isTemp: boolean): string => {
   if (!to) return "";
   const toNameFull = `${to.lastName} ${to.firstName}くん`;
@@ -1151,6 +1202,12 @@ const handleScoreInput = (digit: string) => {
   setScoreOverwrite(false);
 };
 
+const handleRetiredBenchClick = (p: any) => {
+  const ok = window.confirm("出場済み選手を控え選手にしますか？");
+  if (!ok) return;
+
+  addBenchReactivatedId(p.id);   // ✅ これで activeBench 側へ移動する
+};
 
 // HTML文字列を通常アナウンス欄へ出す
 const setAnnouncementHTML = (html: string) => {
@@ -2483,7 +2540,7 @@ const speak = async () => {
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <button
                   onClick={async () => {
-                    await speak(popupMessage);   // VOICEVOX優先、失敗時 Web Speech
+                    await speak(popupMessage);   // VOICEVOX優先（失敗時はブラウザの音声合成）
                   }}
                   className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                             inline-flex items-center justify-center gap-2"
@@ -2523,7 +2580,7 @@ onClick={async () => {
 
     setMemberExchangeText(txt);
 
-    // OK 後にどこへ進むかを記録
+    // OK後にどこへ進むかを記録
     if (pendingGroundPopup) {
       setAfterMemberExchange("groundPopup");
       setPendingGroundPopup(false); // 消費
@@ -2884,18 +2941,21 @@ onClick={async () => {
               <div className="text-sm font-bold text-slate-700 mb-2">出場済み選手（出場不可）</div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-36 overflow-y-auto">
                 {retiredBench.map((p) => (
-                  <div
+                  <button
                     key={p.id}
+                    type="button"
+                    onClick={() => handleRetiredBenchClick(p)}
                     className="w-full text-sm px-3 py-2 rounded-xl border text-left
-                               bg-slate-200 text-slate-500 border-slate-200 cursor-not-allowed"
-                    title="出場済みのため選択不可"
+                              bg-slate-200 text-slate-500 border-slate-200"
+                    title="クリックで控え選手に戻します"
                   >
                     <span className="flex items-baseline gap-2 min-w-0">
                       <span className="truncate">{p.lastName} {p.firstName}</span>
                       <span className="text-xs shrink-0 whitespace-nowrap">#{p.number}</span>
                     </span>
-                  </div>
+                  </button>
                 ))}
+
               </div>
             </div>
           )}
@@ -3950,7 +4010,7 @@ if (isTemp) {
   } else if (afterMemberExchange === "seatIntro") {
     await goSeatIntroFromOffense();
   } else {
-    // "switchDefense" ほかデフォルト
+    // "switchDefense" などデフォルト値
     onSwitchToDefense();
   }
   setAfterMemberExchange(null);

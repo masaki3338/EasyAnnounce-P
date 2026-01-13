@@ -1,3 +1,13 @@
+/**
+ * DefenseScreen.tsx
+ * ------------------------------------------------------------
+ * 【整理方針】
+ * - 画面デザイン（JSXの構造/クラス/文言）と機能は変更しない
+ * - ロジックは同一のまま、読みやすいように日本語コメントを追加する
+ * - データ保存は localForage の既存キーを維持する
+ * ------------------------------------------------------------
+ */
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import localForage from 'localforage';
 import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
@@ -74,6 +84,9 @@ type DefenseScreenProps = {
 
 
 
+/**
+ * 守備画面コンポーネント本体
+ */
 const DefenseScreen: React.FC<DefenseScreenProps> = ({ onChangeDefense, onSwitchToOffense,onGoToSeatIntroduction,}) => {  
   const [showModal, setShowModal] = useState(false);
   const [inputScore, setInputScore] = useState("");
@@ -432,7 +445,12 @@ useEffect(() => {
 }, [showTempReentryModal]);
 
 
-useEffect(() => {
+/**
+   * 初期読込：localForage から状態を復元
+   * - lineupAssignments / team / matchInfo / scores / pitchCounts 等
+   * - 代打/代走/臨時代走の有無で確認モーダルを表示
+   */
+  useEffect(() => {
 
   localForage.setItem("lastGameScreen", "defense");
   const loadData = async () => {
