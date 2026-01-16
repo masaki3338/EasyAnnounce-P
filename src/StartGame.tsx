@@ -208,6 +208,8 @@ const proceedStart = async () => {
   await localForage.removeItem("lastBatterIndex");
   await localForage.removeItem("nextBatterIndex");
   await localForage.removeItem("usedBatterIds");
+  await localForage.removeItem("benchReactivatedIds");
+
   // 打順チェックボックスをクリア
   await localForage.removeItem("checkedIds");
   // アナウンス済みチェックをクリア
@@ -321,6 +323,22 @@ await localForage.removeItem("startingBenchOutIds_draft");
   const pitcherId = (assignments as any)["投"] ?? null;
   const pitcher = pitcherId ? players.find((p) => Number(p.id) === Number(pitcherId)) : undefined;
 
+  // 表示用ポジション（大谷ルール対応）
+  // - 打順表示は「指」を優先（投手とDHが同一IDでも「指」と表示）
+  const getDisplayPos = (playerId: number | null | undefined) => {
+    const n = Number(playerId);
+    if (!Number.isFinite(n)) return "—";
+
+    // まずDH(指)を優先
+    const dh = (assignments as any)?.["指"];
+    if (dh != null && Number(dh) === n) return "指";
+
+    // それ以外は assignments から最初に一致したポジションを返す
+    const pos = Object.keys(assignments || {}).find(
+      (p) => Number((assignments as any)?.[p]) === n
+    );
+    return pos ?? "—";
+  };
 
 return (
   <div
@@ -407,7 +425,7 @@ return (
 
         <div className="text-sm leading-tight space-y-1">
           {battingOrder.slice(0, 9).map((entry, index) => {
-            const pos = Object.keys(assignments).find((p) => assignments[p] === entry.id) ?? "—";
+            const pos = getDisplayPos(entry?.id);
             const player = getPlayer(entry.id);
             return (
               <div key={entry.id ?? index} className="flex items-center gap-2">

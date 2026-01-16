@@ -498,16 +498,46 @@ setIsTop(savedMatchInfo.isTop ?? true);
 setIsDefense(savedMatchInfo.isDefense ?? true);
 setIsHome(savedMatchInfo.isHome ?? false);
 
+const isOhtani = !!(await localForage.getItem<boolean>("ohtaniRule"));
+
 // 既存：savedBattingOrder は上で set 済み
 const hasTempRunner = savedBattingOrder.some((e) => e.reason === "臨時代走");
-const hasOtherSubs  = savedBattingOrder.some((e) => e.reason === "代打" || e.reason === "代走");
 
-// 分岐：臨時代走がいれば“先出しモーダル”を優先
+// ✅ 代打/代走が「守備配置に存在しない」時だけモーダルを出す
+const onFieldIds = new Set(
+  Object.values(savedAssignments || {}).filter((v): v is number => typeof v === "number")
+);
+
+const hasOtherSubs = savedBattingOrder.some((e) => {
+  const r = e?.reason;
+
+  // ✅ 現在DH(指)に入っている選手ID
+  const dhId =
+    typeof savedAssignments?.["指"] === "number" ? Number(savedAssignments["指"]) : null;
+
+  // ✅ DHに「代走」した場合は、大谷ルール無しでも必ず促す
+  const isDhRunner = r === "代走" && dhId != null && Number(e?.id) === dhId;
+  if (isDhRunner) return true;
+
+  // ✅ 大谷ルールありで「代走」がいる場合は、DH(指)に入っていても必ず促す
+  if (isOhtani && r === "代走") return true;
+
+  // それ以外は従来どおり：「守備配置に存在しない代打/代走」だけ促す
+  const isPinch = r === "代打" || r === "代走";
+  if (!isPinch) return false;
+
+  return !onFieldIds.has(e.id);
+});
+
+
 if (hasTempRunner) {
   setShowTempReentryModal(true);
 } else if (hasOtherSubs) {
   setShowConfirmModal(true);
+} else {
+  setShowConfirmModal(false);
 }
+
 
 
 
@@ -1608,7 +1638,7 @@ if (typeof reEntryTarget?.index === "number") {
         <div className="px-4 py-4 space-y-4 overflow-y-auto">
           <h3 className="text-xl font-bold text-red-600 leading-tight text-center">
             <span>代打/代走の選手の守備位置を</span>{" "}
-            <span className="whitespace-nowrap">設定して下さい</span>
+            <span className="whitespace-nowrap">設定してください</span>
           </h3>
 
           {/* ▼ ここに結果をその場表示（機能は既存のまま） */}
