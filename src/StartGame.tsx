@@ -230,6 +230,15 @@ const adoptA = draftA ?? savedA ?? stateA ?? oldA ?? {};
 const normA: Record<string, number | null> = Object.fromEntries(
   Object.entries(adoptA).map(([k, v]) => [k, v == null ? null : Number(v)])
 );
+// ✅ 試合開始時：投手(投) と DH(指) が同一なら「大谷ルールあり」をONにする
+{
+  const p = normA["投"];
+  const d = normA["指"];
+  if (typeof p === "number" && typeof d === "number" && p === d) {
+    await localForage.setItem("ohtaniRule", true);
+    console.log("[OHTANI] auto ON at game start (P=DH)", { pitcherId: p });
+  }
+}
 
 const draftO = await localForage.getItem<Array<{ id: number; reason?: string }>>("startingBattingOrder_draft");
 const savedO = await localForage.getItem<Array<{ id: number; reason?: string }>>("startingBattingOrder");

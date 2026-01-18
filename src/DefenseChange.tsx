@@ -531,13 +531,22 @@ const hasPitcherOp =
   mixed.some(m => m.fromPos === "投" || m.toPos === "投") ||
   shift.some(s => s.fromPos === "投" || s.toPos === "投");
 
-if (posNowSym2 === "投" && !hasPitcherOp) {
+// 先に fromSym2 を作る（この行を if の前に追加）
+const fromSym2 = (posNameToSymbol as any)[info.fromPos] ?? info.fromPos;
+
+// 大谷ルールで「指」からの代打/代走なら、ここで return してはいけない（後段の特別処理に回す）
+const isOhtaniDhPinch =
+  ohtaniRule &&
+  fromSym2 === "指" &&
+  ["代打", "代走", "臨時代走"].includes(String(info.reason ?? ""));
+
+if (posNowSym2 === "投" && !hasPitcherOp && !isOhtaniDhPinch) {
   console.log("[REENTRY-LINE] skip: no pitcher op in this action", {
     origId,
     subId: info.subId,
     reason: info.reason,
   });
-  return; // ← この usedPlayerInfo エントリで投手リエントリー文を作らない
+  return;
 }
 
   // ★ replace配列から「このポジでBが入ったとき、誰から代わったか」を拾う（最優先）
@@ -547,7 +556,7 @@ if (posNowSym2 === "投" && !hasPitcherOp) {
 // ✅ 大谷ルールON：DHに代打を出しても「投手が守備から退いた」わけではない。
 // このケースで出る「投手リエントリー」文は誤りなので、
 // 「代打の選手がそのままDHに入る」文に置き換える。
-const fromSym2 = (posNameToSymbol as any)[info.fromPos] ?? info.fromPos;
+
 
 const startedAsOhtani2 =
   typeof initialAssignments?.["投"] === "number" &&
@@ -593,18 +602,39 @@ const dhNowId = (() => {
 
 
   // ✅ (1) まだDHが「代打Aのまま」なら、「Aがそのまま指名打者」だけを出して終了
-  if (dhNowId != null && dhNowId === pinch.id) {
-    const reasonForDH =
-      (reasonMap as any)?.[pinch.id] ??
-      (pinchReasonById as any)?.[pinch.id] ??
-      info.reason;
-    result.push(`${recentHead(reasonForDH)}${nameWithHonor(pinch)}がそのまま入り${dhFull2}。`);
+// ✅ (1) dhNowId が代打Aを指していても、Aが今「指」に居るとは限らない（他守備へ移動している場合がある）
+if (dhNowId != null && dhNowId === pinch.id) {
+  const reasonForDH =
+    (reasonMap as any)?.[pinch.id] ??
+    (pinchReasonById as any)?.[pinch.id] ??
+    info.reason;
+
+  // ★ 代打Aが現在いる守備位置（assignments上）を探す
+  const pinchNowPosSym =
+    Object.entries(assignments ?? {}).find(
+      ([, id]) => Number(id) === Number(pinch.id)
+    )?.[0] ?? undefined;
+
+  // ✅ 代打Aが「指」以外に居るなら、「そのまま指名打者」は誤りなので守備位置で言う
+  if (pinchNowPosSym && pinchNowPosSym !== "指") {
+    const posLabel = posJP[pinchNowPosSym as keyof typeof posJP] ?? pinchNowPosSym;
+    result.push(`${recentHead(reasonForDH)}${nameWithHonor(pinch)}が${posLabel}。`);
 
     handledPlayerIds.add(pinch.id);
-    handledPositions.add("指");
+    handledPositions.add(pinchNowPosSym);
     suppressTailClose = true;
     return;
   }
+
+  // ✅ 代打Aが本当にDH（指）に居るときだけ従来文
+  result.push(`${recentHead(reasonForDH)}${nameWithHonor(pinch)}がそのまま入り${dhFull2}。`);
+
+  handledPlayerIds.add(pinch.id);
+  handledPositions.add("指");
+  suppressTailClose = true;
+  return;
+}
+
 
   // ✅ (2) DHがすでに別の控え（◎◎）に変わっているなら、
   //      これは「投手リエントリー」ではないので、この usedPlayerInfo 由来の投手文は一切出さない。
@@ -663,11 +693,21 @@ if (pitcherStillSame2 && posNowSym2 === "投") {
     return null;
   })();
 
-  // ✅ 投手操作が一切ないのに「投手リエントリー」を作ろうとしている場合は誤判定なので何も出さない
-  if (!hasPitcherOp) {
-    if (dhNowId == null) return;          // DHが取れないなら、この投手リエントリーは採用しない
-    if (refPlayer?.id !== dhNowId) return; // DHが別の控え（清水など）に変わっている → 投手リエントリー文は不要
+// ✅ 投手操作が一切ないのに「投手リエントリー」を作ろうとしている場合は誤判定なので何も出さない
+// ただし「大谷ルール + 指(=DH)から代打/代走」は、この後段で「そのまま指名打者」を出すので return しない
+if (!hasPitcherOp) {
+  const fromSym =
+    info?.fromPos ? ((posNameToSymbol as any)[info.fromPos] ?? info.fromPos) : null;
+
+  const isDhPinch =
+    fromSym === "指" && ["代走", "臨時代走", "代打"].includes(String(refReason || ""));
+
+  if (!isDhPinch) {
+    if (dhNowId == null) return;            // DHが取れないなら、この投手リエントリーは採用しない
+    if (refPlayer?.id !== dhNowId) return;  // DHが別の控えに変わっている → 投手リエントリー文は不要
   }
+}
+
 
   // refPlayer が “いまDHにいる代走/代打本人” なら、「そのまま指名打者」だけ出して終了
   if (
@@ -913,15 +953,29 @@ if (mixedR) {
   // フォールバック：純粋なシフト（元々いた選手が他守備へ動いた）だけのとき
   const move = shift.find(s => s.fromPos === posNowSym);
   if (move) {
-    result.push(`${posFull}の${nameWithHonor(move.player)}が${posJP[move.toPos]}、`);
-    skipShiftPairs.add(`${move.player.id}|${move.fromPos}|${move.toPos}`);
+    // ✅ 大谷開始（投＝指）の場合、「指→投」は同一選手の見かけ上の移動なので喋らない
+    const isOhtaniStart =
+      ohtaniRule &&
+      typeof initialAssignments?.["投"] === "number" &&
+      typeof initialAssignments?.["指"] === "number" &&
+      Number(initialAssignments["投"]) === Number(initialAssignments["指"]);
 
-    const orderM = battingOrder.findIndex(e => e.id === move.player.id) + 1;
-    if (orderM > 0 && !lineupLines.some(l => l.order === orderM && l.text.includes(posJP[move.toPos]))) {
-      lineupLines.push({ order: orderM, text: `${orderM}番 ${posJP[move.toPos]} ${nameWithHonor(move.player)}` });
+    const isPseudoDhToPitcherShift =
+      isOhtaniStart &&
+      move.fromPos === "指" &&
+      move.toPos === "投" &&
+      typeof initialAssignments?.["投"] === "number" &&
+      Number(move.player.id) === Number(initialAssignments["投"]);
+
+    if (!isPseudoDhToPitcherShift) {
+      result.push(`${posFull}の${nameWithHonor(move.player)}が${posJP[move.toPos]}、`);
     }
+
+    // 重複抑止は入れておく（後段で同じ shift を出さないため）
+    skipShiftPairs.add(`${move.player.id}|${move.fromPos}|${move.toPos}`);
   }
 }
+
 
 
   // 後続の通常出力に載らないように最低限ブロック
@@ -1198,7 +1252,22 @@ result.push(combined);
   // ★ 相手が通常選手の場合は従来通り
 // ★ 相手が通常選手の場合は従来通り（2行に分割 + 重複スキップ登録）
 result.push(`先ほど${entry.reason}いたしました${nameWithHonor(pinchPlayer)}が${posJP[pos]}、`);
-result.push(`${posJP[pos]}の${nameWithHonor(movedPlayer)}が ${posJP[movedToPos]}、`);
+// ✅ 大谷ルール（投＝指）では「指名打者の◯◯がピッチャーに入ります」は不要
+const isOhtaniSameStarter =
+  ohtaniRule &&
+  typeof initialAssignments?.["投"] === "number" &&
+  typeof initialAssignments?.["指"] === "number" &&
+  initialAssignments["投"] === initialAssignments["指"];
+
+// pos が「指」で、移動先が「投」のときだけ抑止
+const suppressDhToPitcherLine =
+  isOhtaniSameStarter && pos === "指" && movedToPos === "投";
+
+if (!suppressDhToPitcherLine) {
+  result.push(`${posJP[pos]}の${nameWithHonor(movedPlayer)}が ${posJP[movedToPos]}、`);
+}
+
+
 
 // 以降の shift ループで同じ「movedPlayer のシフト」を出さない
 skipShiftPairs.add(`${movedPlayer.id}|${pos}|${movedToPos}`);
@@ -1713,12 +1782,17 @@ if (isOhtaniDhPinchHitFix) {
   const dhSym = "指";
   const dhLabel = posJP[dhSym as keyof typeof posJP];
 
+  // ✅ 代打（r.from）が「今どこの守備にいるか」を見る（指以外なら理想文にする）
+  const pinchNowPosSym = (Object.keys(assignments || {}) as any[]).find(
+    (sym) => Number((assignments as any)[sym]) === Number(r.from.id)
+  ) as string | undefined;
+
   // ✅ いま実際にDH（指）にいる選手
   const currentDhId =
     typeof assignments?.["指"] === "number" ? (assignments["指"] as number) : null;
 
   const currentDhPlayer = currentDhId
-    ? teamPlayers.find(p => Number(p.id) === Number(currentDhId))
+    ? teamPlayers.find((p) => Number(p.id) === Number(currentDhId))
     : null;
 
   // ✅ 「代打がそのままDH」なのか、「代打に代わって控えがDH」なのかを判定
@@ -1728,34 +1802,63 @@ if (isOhtaniDhPinchHitFix) {
   // 表示対象（DHにいる方を出す）
   const dhPlayer = replacedAfterPinch ? currentDhPlayer! : r.from;
 
-  // 1行目：理想の分岐
+  // ✅ 1行目：代打本人がDHにいない（＝別守備に置いた）なら、その守備位置で言う
+  if (pinchNowPosSym && pinchNowPosSym !== "指") {
+    const posLabel = posJP[pinchNowPosSym as keyof typeof posJP] ?? pinchNowPosSym;
+
+    // 例：先ほど代打いたしました堂林くんがファースト。
+    replaceLines.push(
+      `先ほど代打いたしました${nameWithHonor(r.from)}が${posLabel}。`
+    );
+
+    console.log("[ANN][OHTANI][DH_PINCH_FIX:pinch_moved]", {
+      pinchNowPosSym,
+      fromId: r.from.id,
+    });
+
+    // ✅ この r の通常処理（誤った投手リエントリー扱い）を止める
+    handledPlayerIds.add(r.from.id);
+    handledPlayerIds.add(r.to.id);
+    handledPositions.add(pinchNowPosSym);
+    return;
+  }
+
+  // ✅ 代打本人がDHのままなら、従来どおり「そのまま指名打者」
   const fixLine = replacedAfterPinch
-    ? `先ほど代打いたしました${nameWithHonor(r.from)}に代わりまして、${fullNameWithHonor(dhPlayer)}がそのまま入り ${dhLabel}`
+    ? `先ほど代打いたしました${nameWithHonor(r.from)}に代わりまして、${fullNameWithHonor(
+        dhPlayer
+      )}がそのまま入り ${dhLabel}`
     : `先ほど代打いたしました${nameWithHonor(r.from)}がそのまま入り ${dhLabel}`;
 
   replaceLines.push(fixLine);
-  console.log("[ANN][OHTANI][DH_PINCH_FIX:push]", { fixLine, replacedAfterPinch, fromId: r.from.id, dhId: dhPlayer.id });
+
+  console.log("[ANN][OHTANI][DH_PINCH_FIX:push]", {
+    fixLine,
+    replacedAfterPinch,
+    fromId: r.from.id,
+    dhId: dhPlayer.id,
+  });
 
   // 2行目：打順行（●番 指名打者 ●●くん）→ “いまDHにいる選手” のIDで探す
   const orderNum =
     r.order > 0
       ? r.order
       : (() => {
-          const idx = battingOrder.findIndex(e => Number(e.id) === Number(dhPlayer.id));
+          const idx = battingOrder.findIndex(
+            (e) => Number(e.id) === Number(dhPlayer.id)
+          );
           return idx >= 0 ? idx + 1 : 0;
         })();
 
   if (
     orderNum > 0 &&
-    !lineupLines.some(l =>
-      l.order === orderNum &&
-      l.text.includes(dhLabel) &&
-      l.text.includes(nameRuby(dhPlayer))
+    !lineupLines.some(
+      (l) => l.order === orderNum && l.text.includes(dhLabel) && l.text.includes(nameRuby(dhPlayer))
     )
   ) {
     lineupLines.push({
       order: orderNum,
-      text: `${orderNum}番 ${dhLabel} ${nameWithHonor(dhPlayer)}`
+      text: `${orderNum}番 ${dhLabel} ${nameWithHonor(dhPlayer)}`,
     });
   }
 
@@ -1766,6 +1869,7 @@ if (isOhtaniDhPinchHitFix) {
   handledPositions.add(dhSym);
   return;
 }
+
 
 
 
@@ -2204,8 +2308,20 @@ if (pinchEntry && !alreadyOnFieldWhenOpened) {
 
   result.push(`${headText}${nameWithHonor(s.player)}が ${tail}へ${ends}`);
 } else {
-  // ✅確定後はこちらに落ちる：普通に「指名打者の◯◯くんが 二塁、」など
-  result.push(`${head}の${nameRuby(s.player)}${h}が ${tail} ${ends}`);
+ // ✅ 「開始時に投＝指」だったかだけで判定（ohtaniRule には依存しない）
+  const startedAsOhtani =
+    typeof initialAssignments?.["投"] === "number" &&
+    typeof initialAssignments?.["指"] === "number" &&
+    Number(initialAssignments["投"]) === Number(initialAssignments["指"]);
+
+  const suppressDhToPitcherLine =
+    startedAsOhtani && s.fromPos === "指" && s.toPos === "投";
+
+  if (!suppressDhToPitcherLine) {
+    result.push(`${head}の${nameRuby(s.player)}${h}が ${tail} ${ends}`);
+  }
+
+
 }
 
 
@@ -2773,6 +2889,21 @@ const startingOrderRef = useRef<{ id: number; reason?: string }[]>([]);
   // 大谷ルール：この画面を開いた時点の値（「確定しないで戻る」場合に復元する）
   const ohtaniRuleAtOpenRef = useRef<boolean>(false);
 
+
+/* -------------------------
+   useEffect 群
+-------------------------- */
+
+useEffect(() => {
+  // 初期データロード
+}, []);
+
+useEffect(() => {
+  // 自動配置ロジック
+}, [assignments]);
+
+// ←★ このあたりが目印
+
   // DH解除を確定時にまとめて適用するための保留フラグ
   const [pendingDisableDH, setPendingDisableDH] = useState(false);
   const [dhDisableDirty, setDhDisableDirty] = useState(false);
@@ -3145,11 +3276,12 @@ const isDhPinchHit =
   ["代打"].includes(String(dhUsed.reason ?? ""));
 
 // 「代走時点で解除」が要件なので代走だけでもOK（代打も一緒に解除したければ || isDhPinchHit を残す）
-if (ohtaniNow && startedAsOhtani0 && (isDhPinchRun /* || isDhPinchHit */)) {
+// ✅ DHに代打/代走が出たら、大谷ルールは解除（投手は投手として残り、DHは代打側を表示したい）
+if (ohtaniNow && startedAsOhtani0 && (isDhPinchRun || isDhPinchHit)) {
   ohtaniNow = false;
   ohtaniRuleAtOpenRef.current = false; // 「確定せず戻る」で復活しないように
-  await localForage.setItem("ohtaniRule", false); // ✅ここ重要：永続化
-  console.log("[OHTANI] auto disabled by DH pinch", { dhUsed });
+  await localForage.setItem("ohtaniRule", false); // 永続化
+  console.log("[OHTANI] auto disabled by DH pinch (run/hit)", { dhUsed });
 }
 
 setOhtaniRule(ohtaniNow);
@@ -3187,32 +3319,32 @@ for (const [originalIdStr, info] of Object.entries(usedInfo)) {
     setBattingOrder(order);          // ← 既存
     setBattingOrderDraft(order);     // ← 追加：確定前用も同じ値で初期化
     // ✅ 大谷ルールON：DHに代打が出ているなら、フィールド図が参照する draft 側も代打IDに同期する
-if (initialOhtani) {
-  const dhStarterId = typeof originalAssignments?.["指"] === "number"
-    ? (originalAssignments["指"] as number)
-    : null;
+// ✅ 開始が「投＝指」なら、大谷ルールが解除されていてもDH表示は代打に同期する
+if (startedAsOhtani0) {
+  const dhStarterId =
+    typeof originalAssignments?.["指"] === "number"
+      ? (originalAssignments["指"] as number)
+      : null;
 
   if (dhStarterId != null) {
     const latestDhId = resolveLatestSubId(dhStarterId, usedInfo as any);
 
-    // 代打が出ている（=末端IDが変わっている）場合だけ、DH打順スロットの表示IDを差し替える
     if (latestDhId && latestDhId !== dhStarterId) {
-      let dhSlotIndex = startingOrderRef.current.findIndex(e => e.id === dhStarterId);
-      if (dhSlotIndex < 0) dhSlotIndex = order.findIndex(e => e.id === dhStarterId);
+      // フィールド図（assignments参照）のDHも代打IDにする
+      newAssignments["指"] = latestDhId;
+
+      let dhSlotIndex = startingOrderRef.current.findIndex((e) => e.id === dhStarterId);
+      if (dhSlotIndex < 0) dhSlotIndex = order.findIndex((e) => e.id === dhStarterId);
 
       if (dhSlotIndex >= 0) {
-        // フィールド図が見ている battingOrderDraft の該当スロットを「代打ID」にする
-        setBattingOrderDraft(prevDraft => {
-          const base = (prevDraft?.length ? [...prevDraft] : [...order]);
+        setBattingOrderDraft((prevDraft) => {
+          const base = prevDraft?.length ? [...prevDraft] : [...order];
           if (base[dhSlotIndex]) base[dhSlotIndex] = { ...base[dhSlotIndex], id: latestDhId };
           return base;
         });
 
-        // ついでに置換も入れておく（表示ブレ防止）
-        const dhPlayer = updatedTeamPlayers.find(p => p.id === latestDhId);
-        if (dhPlayer) {
-          setBattingReplacements(prev => ({ ...prev, [dhSlotIndex]: dhPlayer }));
-        }
+        const dhPlayer = updatedTeamPlayers.find((p) => p.id === latestDhId);
+        if (dhPlayer) setBattingReplacements((prev) => ({ ...prev, [dhSlotIndex]: dhPlayer }));
       }
     }
   }
@@ -4884,16 +5016,21 @@ const handleBackClick = () => {
 
 // DefenseChange.tsx 内
 const handleBackToDefense = () => {
-  console.log("[DefenseChange] go defense via onConfirmed()");
-  // 「確定せずに戻る」場合は、画面オープン時点の大谷ルールへ戻す（念のため storage も復元）
+  console.log("[DefenseChange] back to defense (no commit)");
+
+  // 「確定せずに戻る」場合は、画面オープン時点の大谷ルールへ戻す（storage も復元）
   if (ohtaniRule !== ohtaniRuleAtOpenRef.current) {
     setOhtaniRule(ohtaniRuleAtOpenRef.current);
-    void localForage.setItem("ohtaniRule", ohtaniRuleAtOpenRef.current).catch((e) => {
-      console.warn("failed to restore ohtaniRule on back", e);
-    });
+    void localForage
+      .setItem("ohtaniRule", ohtaniRuleAtOpenRef.current)
+      .catch((e) => console.warn("failed to restore ohtaniRule on back", e));
   }
+
+  // ✅ 守備画面へ戻すのは App.tsx 側の画面遷移（setScreen）で行う
   onConfirmed();
 };
+
+
 
 
 
@@ -4940,7 +5077,7 @@ const handleSpeak = async () => {
         <div className="h-14 flex items-center justify-between">
           <button
             type="button"
-            onClick={() => navigate(-1)}
+            onClick={handleBackClick}
             className="rounded-full w-9 h-9 flex items-center justify-center bg-white/15 hover:bg-white/25 active:bg-white/30 text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
             aria-label="戻る"
             title="戻る"

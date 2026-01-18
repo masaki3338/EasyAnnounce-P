@@ -891,6 +891,21 @@ const StartingLineup = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ✅ スタメン設定：投手とDHが同一なら大谷ルールを自動ON（チェックON）
+useEffect(() => {
+  const p = assignments["投"];
+  const d = assignments["指"];
+
+  // 両方がセットされ、かつ同一IDならON
+  if (typeof p === "number" && typeof d === "number" && p === d) {
+    if (!ohtaniRule) {
+      console.log("[OHTANI] auto ON (P=DH detected)", { pitcherId: p });
+      setOhtaniRule(true);
+      void localForage.setItem("ohtaniRule", true);
+    }
+  }
+}, [assignments["投"], assignments["指"], ohtaniRule]);
+
   // 大谷ルールON時：指＝投 を同期し、打順も同期（元仕様）
   useEffect(() => {
     if (!ohtaniRule) return;
