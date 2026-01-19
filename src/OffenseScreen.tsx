@@ -359,9 +359,19 @@ const OffenseScreen: React.FC<OffenseScreenProps> = ({
 
   // 🔸 ルビ整形
 // 苗字と名前の間に全角スペースを追加（読み上げ時も区切りやすくする）
+// フルネーム（姓＋名）ルビ
 const rubyFull = (p: any) =>
-  `<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby> ` +  // ← 半角スペース追加
+  `<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby>` +
   `<ruby>${p?.firstName ?? ""}<rt>${p?.firstNameKana ?? ""}</rt></ruby>`;
+
+// この選手が「同一姓対象」か？
+const isDupLastName = (p: any) => {
+  const ln = String(p?.lastName ?? "").trim();
+  return ln && dupLastNames.has(ln);
+};
+
+// リエントリー用：同一姓対象の選手だけフル、他は姓のみ
+const rubyReEntry = (p: any) => (isDupLastName(p) ? rubyFull(p) : rubyLast(p));
 
   const rubyLast = (p: any) =>
     `<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby>`;
@@ -386,6 +396,25 @@ const formatNameForAnnounce = (p: any, preferLastOnly: boolean) => {
   if (forceFull) return rubyFull(p);       // 同姓が複数 → フルネーム（ルビ付）
   return preferLastOnly ? rubyLast(p) : rubyFull(p);
 };
+
+// ✅ リエントリーの交代アナウンス用：
+// 出場選手＋控え選手の中に「同一姓」が1組でもある場合は、アナウンス内の選手名を全員フルネーム表示にする
+const hasAnyDupLastName = dupLastNames.size > 0;
+
+const formatNameForReEntryAnnounce = (p: any) => {
+  if (!p) return "";
+  return hasAnyDupLastName ? rubyFull(p) : rubyLast(p);
+};
+
+const formatKanaForReEntryAnnounce = (p: any) => {
+  if (!p) return "";
+  const ln = (p.lastNameKana || p.lastName || "").toString();
+  const fn = (p.firstNameKana || p.firstName || "").toString();
+  if (!hasAnyDupLastName) return ln;
+  return fn ? `${ln} ${fn}` : ln;
+};
+
+
 // =============================================================
 // 苗字のみ指定でも、同姓重複ならフルを返す formatNameForAnnounce をそのまま使う描画ヘルパ
 const RenderName = ({ p, preferLastOnly }: { p: any; preferLastOnly: boolean }) => (
@@ -2697,9 +2726,9 @@ onClick={async () => {
                   __html: `
                     ${teamName || "自チーム"}、選手の交代をお知らせいたします。<br/>
                     ${reEntryOrder1 ?? "?"}番
-                    ${reEntryFromPlayer ? rubyLast(reEntryFromPlayer) : ""}${reEntryFromPlayer?.isFemale ? "さん" : "くん"}に代わりまして
-                    ${reEntryTargetPlayer ? rubyLast(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"}がリエントリーで戻ります。<br/>
-                    バッターは ${reEntryTargetPlayer ? rubyLast(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"}。
+                    ${reEntryFromPlayer ? rubyReEntry(reEntryFromPlayer) : ""}${reEntryFromPlayer?.isFemale ? "さん" : "くん"}に代わりまして
+                    ${reEntryTargetPlayer ? rubyReEntry(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"}がリエントリーで戻ります。<br/>
+                    バッターは ${reEntryTargetPlayer ? rubyReEntry(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"}。
                   `.trim()
                 }}
               />
@@ -2708,19 +2737,34 @@ onClick={async () => {
 {/* 読み上げ・停止（1行横並び／アイコン右に文字） */}
 <div className="grid grid-cols-2 gap-2">
   <button
-    onClick={() => {
-      if (!reEntryTargetPlayer || reEntryOrder1 == null || !reEntryFromPlayer) return;
-      const honorA = reEntryFromPlayer.isFemale ? "さん" : "くん";
-      const honorB = reEntryTargetPlayer.isFemale ? "さん" : "くん";
-      const kanaALast = reEntryFromPlayer.lastNameKana || reEntryFromPlayer.lastName || "";
-      const kanaBLast = reEntryTargetPlayer.lastNameKana || reEntryTargetPlayer.lastName || "";
-      announce(
-        `${teamName || "自チーム"}、選手の交代をお知らせいたします。` +
-        `${reEntryOrder1}番 ${kanaALast}${honorA}に代わりまして ` +
-        `${kanaBLast}${honorB} がリエントリーで戻ります。` +
-        `バッターは ${kanaBLast}${honorB}。`
-      );
-    }}
+onClick={() => {
+  const isDupLastName = (p: any) => {
+  const ln = String(p?.lastName ?? "").trim();
+  return ln && dupLastNames.has(ln);
+};
+
+  const kanaForReEntry = (p: any) => {
+    const ln = String(p?.lastNameKana ?? p?.lastName ?? "").trim();
+    const fn = String(p?.firstNameKana ?? p?.firstName ?? "").trim();
+    return isDupLastName(p) ? `${ln}${fn}` : ln; // 同姓対象だけフル
+  };
+
+  if (!reEntryTargetPlayer || reEntryOrder1 == null || !reEntryFromPlayer) return;
+
+  const honorA = reEntryFromPlayer.isFemale ? "さん" : "くん";
+  const honorB = reEntryTargetPlayer.isFemale ? "さん" : "くん";
+
+  const kanaA = kanaForReEntry(reEntryFromPlayer);
+  const kanaB = kanaForReEntry(reEntryTargetPlayer);
+
+  announce(
+    `${teamName || "自チーム"}、選手の交代をお知らせいたします。` +
+    `${reEntryOrder1}番 ${kanaA}${honorA}に代わりまして ` +
+    `${kanaB}${honorB} がリエントリーで戻ります。` +
+    `バッターは ${kanaB}${honorB}。`
+  );
+}}
+
     className="w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-md inline-flex items-center justify-center gap-2"
   >
     <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />

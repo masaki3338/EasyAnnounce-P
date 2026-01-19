@@ -508,26 +508,23 @@ const onFieldIds = new Set(
   Object.values(savedAssignments || {}).filter((v): v is number => typeof v === "number")
 );
 
+const normReason = (r?: string) => (r ?? "").trim(); // 表記揺れ対策
+
 const hasOtherSubs = savedBattingOrder.some((e) => {
-  const r = e?.reason;
+  const r = normReason(e?.reason);
 
-  // ✅ 現在DH(指)に入っている選手ID
-  const dhId =
-    typeof savedAssignments?.["指"] === "number" ? Number(savedAssignments["指"]) : null;
+  // 「代走」は守備位置設定が必要なので、守備配置に居ても必ず促す
+  if (r === "代走") return true;
 
-  // ✅ DHに「代走」した場合は、大谷ルール無しでも必ず促す
-  const isDhRunner = r === "代走" && dhId != null && Number(e?.id) === dhId;
-  if (isDhRunner) return true;
+  // 必要なら「代打」も常に促す（要件次第）
+  // if (r === "代打") return true;
 
-  // ✅ 大谷ルールありで「代走」がいる場合は、DH(指)に入っていても必ず促す
-  if (isOhtani && r === "代走") return true;
-
-  // それ以外は従来どおり：「守備配置に存在しない代打/代走」だけ促す
-  const isPinch = r === "代打" || r === "代走";
-  if (!isPinch) return false;
+  // 従来どおり：「守備配置に存在しない代打」だけ促す（代走は上で除外済み）
+  if (r !== "代打") return false;
 
   return !onFieldIds.has(e.id);
 });
+
 
 
 if (hasTempRunner) {

@@ -175,38 +175,65 @@ const resolveLatestSubId = (
 const ruby = (kanji?: string, kana?: string): string =>
   kana ? `<ruby>${kanji}<rt>${kana}</rt></ruby>` : kanji ?? "";
 
-/* 姓・名それぞれのルビ */
-const lastRuby  = (p: Player): string => ruby(p.lastName,  p.lastNameKana);
-const firstRuby = (p: Player): string => ruby(p.firstName, p.firstNameKana);
+/* 姓・名それぞれのルビ：部分Playerでも roster から補完 */
+const resolvePlayer = (p: Player): Player => {
+  const roster: Player[] | undefined = (window as any).__teamPlayers;
+  const base = roster?.find(tp => Number(tp.id) === Number(p.id));
+  if (!base) return p;
 
-const honor = (p: Player): string => (p.isFemale ? "さん" : "くん");
+  const pick = (v: any, fallback: any) => {
+    const s = typeof v === "string" ? v.trim() : v;
+    return s ? v : fallback; // "" や "   " も欠け扱い
+  };
 
-/* 姓ルビ＋名ルビ（敬称なし） */
-const fullName = (p: Player): string => `${nameRuby(p)}${firstRuby(p)}`;
+  return {
+    ...base,
+    ...p,
+    lastName: pick(p.lastName, base.lastName),
+    firstName: pick(p.firstName, base.firstName),
+    lastNameKana: pick(p.lastNameKana, base.lastNameKana),
+    firstNameKana: pick(p.firstNameKana, base.firstNameKana),
+  };
+};
 
-/* 姓ルビ＋名ルビ＋敬称（控えから入る側） */
-const fullNameHonor = (p: Player): string => `${fullName(p)}${honor(p)}`;
+const lastRuby = (p: Player): string => {
+  const q = resolvePlayer(p);
+  return ruby(q.lastName, q.lastNameKana);
+};
 
-/* 姓ルビ＋敬称（移動／交代される側） */
-const lastWithHonor = (p: Player): string => `${nameRuby(p)}${honor(p)}`;
-// === 新規: 重複姓対応の名前ヘルパー ===============================
-// window.__dupLastNames（上の useEffect で設定）を参照します
+const firstRuby = (p: Player): string => {
+  const q = resolvePlayer(p);
+  return ruby(q.firstName, q.firstNameKana);
+};
+
+const honor = (p: Player): string => {
+  const q = resolvePlayer(p);
+  return q.isFemale ? "さん" : "くん";
+};
+
+// 同一姓（この選手の姓が重複対象か？）
 const isDupLast = (p?: Player) => {
-  if (!p || !p.lastName) return false;
+  if (!p) return false;
+  const q = typeof resolvePlayer === "function" ? resolvePlayer(p) : p;
+  const ln = String(q.lastName ?? "").trim();
   const set: Set<string> | undefined = (window as any).__dupLastNames;
-  return !!set && set.has(String(p.lastName));
+  return !!set && !!ln && set.has(ln);
 };
 
-/** 画面用：重複姓なら「姓ルビ＋名ルビ」、単独なら「姓ルビのみ」 */
-const nameRuby = (p: Player): string => {
-  return isDupLast(p) ? `${lastRuby(p)}${firstRuby(p)}` : lastRuby(p);
-};
+// 画面/本文共通：重複姓の選手だけ「姓+名」、それ以外は「姓のみ」
+const nameRuby = (p: Player): string =>
+  isDupLast(p) ? `${lastRuby(p)}${firstRuby(p)}` : lastRuby(p);
 
-/** 本文用：重複姓ならフル（姓＋名）＋敬称、単独なら姓のみ＋敬称 */
+// 常にフル（姓+名）
+const fullName = (p: Player): string => `${lastRuby(p)}${firstRuby(p)}`;
+
+// 本文用：重複姓の選手だけフル + 敬称
 const nameWithHonor = (p: Player): string => `${nameRuby(p)}${honor(p)}`;
 
-/** 常にフル（姓＋名）＋敬称（控えが入る側などフル固定にしたい時用） */
-const fullNameWithHonor = (p: Player): string => `${lastRuby(p)}${firstRuby(p)}${honor(p)}`;
+
+/** 常にフル＋敬称（控えが入る側など） */
+const fullNameWithHonor = (p: Player): string => `${fullName(p)}${honor(p)}`;
+
 // ================================================================
 
  /* ================================= */
@@ -237,7 +264,9 @@ const generateAnnouncementText = (
   reentryPreviewIds: Set<number> = new Set(),   // ★ 追加
   reentryFixedIds:   Set<number> = new Set()    // ★ 追加
 ): string => {
+  console.log("[ROSTERCHK]", teamPlayers.find(p => p.id === 1752049890942));
 
+ (window as any).__teamPlayers = teamPlayers;
    // ★ 追加：UIが青（プレビュー/確定）なら確定前でも「リエントリーで …」
     const isReentryBlue = (pid: number) =>
   reentryPreviewIds.has(pid) || reentryFixedIds.has(pid);
@@ -455,16 +484,25 @@ console.log("[SAME-POS-PINCH] reason check", {
 });
 
 // ---- 本文（末尾は後段で句点付与）----
+const hasDupLast = (() => {
+  const set: Set<string> | undefined = (window as any).__dupLastNames;
+  return !!set && set.size > 0; // 同一姓が1組でもいれば true
+})();
+
+const pinchName = hasDupLast
+  ? fullNameWithHonor(latestPinchPlayer)
+  : nameWithHonor(latestPinchPlayer);
+
 if (isJustNowPinch) {
   // 直後だけ「先ほど…」
   result.push(
-    `先ほど${reasonText}${nameWithHonor(latestPinchPlayer)}に代わりまして、` +
+    `先ほど${reasonText}${pinchName}に代わりまして、` +
     `${fullNameWithHonor(subPlayer)}がそのまま入り${posJP[posSym]}、`
   );
 } else {
   // 確定後は「指名打者の◯◯くんに代わりまして、」
   result.push(
-    `${posJP[posSym]}の ${nameWithHonor(latestPinchPlayer)}に代わりまして、` +
+    `${posJP[posSym]}の ${pinchName}に代わりまして、` +
     `${fullNameWithHonor(subPlayer)}がそのまま入り${posJP[posSym]}、`
   );
 }
@@ -1329,7 +1367,24 @@ battingOrder.forEach((entry, idx) => {
 
   if ((entry.reason === "代打" || entry.reason === "代走" || entry.reason === "臨時代走") && !wasReplaced && unchanged) {
     const honor = player.isFemale ? "さん" : "くん";
-    const ruby = `<ruby>${player.lastName}<rt>${player.lastNameKana ?? ""}</rt></ruby>${honor}`;
+
+    // ★ 変更：この選手の姓が重複しているか？
+    const set: Set<string> | undefined = (window as any).__dupLastNames;
+    const isDupLastName =
+      !!set &&
+      !!player.lastName &&
+      set.has(String(player.lastName).trim());
+
+    // last/first のルビ
+    const lastRuby  = `<ruby>${player.lastName}<rt>${player.lastNameKana ?? ""}</rt></ruby>`;
+    const firstRuby = `<ruby>${player.firstName ?? ""}<rt>${player.firstNameKana ?? ""}</rt></ruby>`;
+
+    // ★ 重複している選手だけフル（姓＋名）、それ以外は姓のみ
+    const nameRuby = isDupLastName ? `${lastRuby}${firstRuby}` : lastRuby;
+
+    const ruby = `${nameRuby}${honor}`;
+
+
 
     // 直前の行と理由（代打/代走）が同じなら「同じく先ほど」
     // 違うなら毎回「先ほど」
@@ -1823,12 +1878,23 @@ if (isOhtaniDhPinchHitFix) {
     return;
   }
 
+  const hasDup = (() => {
+    const set: Set<string> | undefined = (window as any).__dupLastNames;
+    return !!set && set.size > 0; // 同一姓が1組でもいれば true（仕様どおり）
+  })();
+
+  const fromP =
+    teamPlayers.find(p => Number(p.id) === Number(r.from.id)) ?? r.from;
+
+  const fromName = hasDup ? fullNameWithHonor(fromP) : nameWithHonor(fromP);
+
   // ✅ 代打本人がDHのままなら、従来どおり「そのまま指名打者」
   const fixLine = replacedAfterPinch
     ? `先ほど代打いたしました${nameWithHonor(r.from)}に代わりまして、${fullNameWithHonor(
         dhPlayer
       )}がそのまま入り ${dhLabel}`
-    : `先ほど代打いたしました${nameWithHonor(r.from)}がそのまま入り ${dhLabel}`;
+    : `先ほど代打いたしました${fromName}がそのまま入り ${dhLabel}`;
+
 
   replaceLines.push(fixLine);
 
@@ -2132,7 +2198,7 @@ if (
     // 例：「ライトの奥村くんに代わりまして、リエントリーで小池くんがライトへ」
     addReplaceLine(
       `${posJP[r.fromPos]}の ${nameWithHonor(r.from)}に代わりまして、` +
-      `${orderPart}${nameWithHonor(r.to)}がリエントリーで ${posJP[r.toPos]}へ`,
+      `${orderPart}${nameWithHonor(r.to)}がリエントリーで9 ${posJP[r.toPos]}へ`,
       i === mixed.length - 1 && shift.length === 0
     );
   
@@ -2679,6 +2745,7 @@ return result.join("\n");
 
 
 
+
 const positionStyles: Record<string, React.CSSProperties> = {
   投: { top: "62%", left: "50%" },
   捕: { top: "91%", left: "50%" },
@@ -2910,6 +2977,57 @@ useEffect(() => {
   const [dhDisableSnapshot, setDhDisableSnapshot] =
   useState<{ dhId: number; pitcherId: number } | null>(null);
   const [battingReplacements, setBattingReplacements] = useState<{ [index: number]: Player }>({});
+  // 同姓判定セット更新をアナウンス再計算へ反映させるためのトリガ
+  const [dupLastNamesTick, setDupLastNamesTick] = useState(0);
+  // 同一姓セットを「出場＋控え＋代打（battingReplacements）」から算出して共有
+  useEffect(() => {
+    const ids = new Set<number>();
+
+    // 打順（出場）
+    (battingOrder ?? []).forEach(e => {
+      if (e?.id != null) ids.add(Number(e.id));
+    });
+
+    // 守備配置（出場）
+    Object.values(assignments ?? {}).forEach(v => {
+      if (v != null) ids.add(Number(v));
+    });
+
+    // 控え
+    (benchPlayers ?? []).forEach(p => {
+      if (p?.id != null) ids.add(Number(p.id));
+    });
+
+    // 代打/代走（battingReplacements 側にいるケースを拾う）
+    Object.values(battingReplacements ?? {}).forEach(p => {
+      if (p?.id != null) ids.add(Number(p.id));
+    });
+
+    // id -> Player
+    const players = Array.from(ids)
+      .map(id => teamPlayers.find(tp => Number(tp.id) === Number(id)))
+      .filter(Boolean) as Player[];
+
+    // 姓の出現回数を数える
+    const count = new Map<string, number>();
+    for (const p of players) {
+      const ln = String(p.lastName ?? "").trim();
+      if (!ln) continue;
+      count.set(ln, (count.get(ln) ?? 0) + 1);
+    }
+
+    const dups = Array.from(count.entries())
+      .filter(([, c]) => c >= 2)
+      .map(([ln]) => ln);
+
+    console.log("[DUP-LN] dups:", dups, "setSize:", dups.length);  
+    (window as any).__dupLastNames = new Set<string>(dups);
+    void localForage.setItem("duplicateLastNames", dups);
+
+    // 重要：グローバル更新だけだとアナウンスuseMemoが再計算されないのでトリガを踏む
+    setDupLastNamesTick(t => t + 1);
+  }, [battingOrder, assignments, benchPlayers, battingReplacements, teamPlayers]);
+
   const [previousPositions, setPreviousPositions] = useState<{ [playerId: number]: string }>({});
   const [initialAssignments, setInitialAssignments] = useState<Record<string, number | null>>({});
 
@@ -3830,7 +3948,7 @@ if (reentryLines.length > 0) {
 return normalText;
 
 
-}, [battingOrder, assignments, initialAssignments, battingReplacements, teamName, teamPlayers,usedPlayerInfo]);
+}, [battingOrder, assignments, initialAssignments, battingReplacements, teamName, teamPlayers,usedPlayerInfo,dupLastNamesTick]);
 
 useEffect(() => {
   if (!battingOrder || !usedPlayerInfo) return;
@@ -5003,6 +5121,10 @@ useEffect(() => {
     ttsStop();
   };
 }, []);
+
+useEffect(() => {
+  (window as any).__teamPlayers = teamPlayers;
+}, [teamPlayers]);
 
 
 // “戻る”が押されたとき：変更があれば確認、なければそのまま戻る
