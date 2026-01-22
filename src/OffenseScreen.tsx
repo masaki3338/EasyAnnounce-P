@@ -983,6 +983,9 @@ const [editInning, setEditInning] = useState<number | null>(null);
 const [editTopBottom, setEditTopBottom] = useState<"top" | "bottom" | null>(null);
 const [showSubModal, setShowSubModal] = useState(false);
 const [selectedSubPlayer, setSelectedSubPlayer] = useState<any | null>(null);
+// 出場済み選手（retiredBench）を代打として使う際の確認
+const [showUsedPlayerSubConfirm, setShowUsedPlayerSubConfirm] = useState(false);
+const [pendingUsedSubPlayer, setPendingUsedSubPlayer] = useState<any | null>(null);
 const [benchPlayers, setBenchPlayers] = useState<any[]>([]);
 // いま守備に就いている選手IDの集合
 const onFieldIds = useMemo(() => {
@@ -1232,11 +1235,11 @@ const handleScoreInput = (digit: string) => {
 };
 
 const handleRetiredBenchClick = (p: any) => {
-  const ok = window.confirm("出場済み選手を控え選手にしますか？");
-  if (!ok) return;
-
-  addBenchReactivatedId(p.id);   // ✅ これで activeBench 側へ移動する
+  // 出場済み選手を代打で使うか確認（YES/NO）
+  setPendingUsedSubPlayer(p);
+  setShowUsedPlayerSubConfirm(true);
 };
+
 
 // HTML文字列を通常アナウンス欄へ出す
 const setAnnouncementHTML = (html: string) => {
@@ -3173,6 +3176,76 @@ onClick={() => {
   </div>
 )}
 
+{/* ✅ 出場済み選手を代打で使う確認モーダル（YES / NO） */}
+{showUsedPlayerSubConfirm && (
+  <div className="fixed inset-0 z-[60]" role="dialog" aria-modal="true">
+    <div
+      className="absolute inset-0 bg-black/55 backdrop-blur-sm"
+      onClick={() => {
+        setShowUsedPlayerSubConfirm(false);
+        setPendingUsedSubPlayer(null);
+      }}
+    />
+    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+      <div
+        className="bg-white shadow-2xl rounded-2xl w-full max-w-sm overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        <div className="px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold">
+          確認
+        </div>
+
+        <div className="px-4 py-5 text-slate-800 text-base leading-relaxed">
+          出場済み選手を代打にしますか？
+          {pendingUsedSubPlayer && (
+            <div className="mt-2 text-sm text-slate-600">
+              {pendingUsedSubPlayer.lastName} {pendingUsedSubPlayer.firstName} #{pendingUsedSubPlayer.number}
+            </div>
+          )}
+        </div>
+
+        <div className="px-4 pb-4 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              const p = pendingUsedSubPlayer;
+              if (!p) {
+                setShowUsedPlayerSubConfirm(false);
+                return;
+              }
+
+              // ✅ 出場済みでも「控えに戻した」扱いにして activeBench 側へ
+              addBenchReactivatedId(p.id);
+
+              // ✅ そのまま代打選択として反映
+              setSelectedSubPlayer(p);
+
+              setShowUsedPlayerSubConfirm(false);
+              setPendingUsedSubPlayer(null);
+            }}
+            className="h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md shadow-emerald-300/40"
+          >
+            YES
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowUsedPlayerSubConfirm(false);
+              setPendingUsedSubPlayer(null);
+            }}
+            className="h-12 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold"
+          >
+            NO
+          </button>
+        </div>
+
+        <div className="h-[max(env(safe-area-inset-bottom),12px)]" />
+      </div>
+    </div>
+  </div>
+)}
 
 {/* ✅ 代走モーダル（中央配置・カラフル・背番号は改行しない） */}
 {showRunnerModal && (
