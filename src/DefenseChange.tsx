@@ -271,6 +271,11 @@ const generateAnnouncementText = (
   reentryPreviewIds.has(pid) || reentryFixedIds.has(pid);
 
   /* ---------- 前処理 ---------- */
+  const backNoSuffix = (p?: { number?: string | number }) => {
+    const no = String((p as any)?.number ?? "").trim();
+    return no ? ` 背番号 ${no}` : "";
+  };
+
   const posJP: Record<string, string> = {
     投: "ピッチャー", 捕: "キャッチャー", 一: "ファースト", 二: "セカンド",
     三: "サード",   遊: "ショート",     左: "レフト",   中: "センター",  右: "ライト",   指: "指名打者", 
@@ -512,7 +517,8 @@ const pinchOrderIdx = battingOrder.findIndex(e => e.id === latestPinchId);
 if (pinchOrderIdx >= 0) {
   const lineupOrder = pinchOrderIdx + 1;
 
-  const text = `${lineupOrder}番 ${posJP[posSym]} ${fullNameWithHonor(subPlayer)} 背番号 ${subPlayer.number}`;
+  const text = `${lineupOrder}番 ${posJP[posSym]} ${fullNameWithHonor(subPlayer)}${backNoSuffix(subPlayer)}`;
+
 
   if (!lineupLines.some(l => l.order === lineupOrder && l.text.includes(posJP[posSym]))) {
     lineupLines.push({ order: lineupOrder, text });
@@ -978,7 +984,8 @@ if (mixedR) {
   if (orderTo > 0 && !lineupLines.some(l => l.order === orderTo && l.text.includes(posJP[mixedR.toPos]))) {
     lineupLines.push({
       order: orderTo,
-      text: `${orderTo}番 ${posJP[mixedR.toPos]} ${fullNameWithHonor(mixedR.to)} 背番号 ${mixedR.to.number}`,
+      text: `${orderTo}番 ${posJP[mixedR.toPos]} ${fullNameWithHonor(mixedR.to)}${backNoSuffix(mixedR.to)}`,
+
     });
   }
 
@@ -1152,7 +1159,7 @@ const pinchOrderIdx = battingOrder.findIndex(e => e.id === entry.id); // 例：6
 if (pinchOrderIdx >= 0) {
   lineup.push({
     order: pinchOrderIdx + 1,
-    txt: `${pinchOrderIdx + 1}番 ${posJP[subInPos]} ${fullNameWithHonor(subIn)} 背番号 ${subIn.number}`,
+    txt: `${pinchOrderIdx + 1}番 ${posJP[subInPos]} ${fullNameWithHonor(subIn)}${backNoSuffix(subIn)}`,
   });
 }
 
@@ -1594,7 +1601,7 @@ const pitcherUnchangedThisTurn =
       if (!lineupLines.some(l => l.text.includes("ピッチャー") && l.text.includes(nameRuby(r.to)))) {
         lineupLines.push({
           order: 999, // 末尾に回す
-          text: `ピッチャー ${fullNameWithHonor(r.to)} 背番号 ${r.to.number}`
+          text: `ピッチャー ${fullNameWithHonor(r.to)}${backNoSuffix(r.to)}`
         });
       }
     }
@@ -2026,9 +2033,9 @@ if (r.order > 0) {
   const num = (r.to as any)?.number ?? "";
   const text = isReentryTo
     ? `${r.order}番 ${posJP[r.pos]} ${nameWithHonor(r.to)}`
-    : `${r.order}番 ${posJP[r.pos]} ${fullNameWithHonor(r.to)} 背番号${num}`;
+    : `${r.order}番 ${posJP[r.pos]} ${fullNameWithHonor(r.to)}${backNoSuffix(r.to)}`;
 
-  const idx = lineupLines.findIndex(
+    const idx = lineupLines.findIndex(
     l => l.order === r.order && l.text.includes(posJP[r.pos])
   );
 
@@ -2290,7 +2297,7 @@ if (
       order: r.order,
       text: isReentryTo
         ? `${r.order}番 ${posJP[r.toPos]} ${nameWithHonor(r.to)}`
-        : `${r.order}番 ${posJP[r.toPos]} ${fullNameWithHonor(r.to)} 背番号 ${r.to.number}`
+        : `${r.order}番 ${posJP[r.toPos]} ${fullNameWithHonor(r.to)}${backNoSuffix(r.to)}`
     });
   }
 }
@@ -2368,6 +2375,12 @@ if (
   (!allowedPitcherShift && handledPlayerIds.has(s.player.id)) ||
   handledPositions.has(s.toPos) // 移動先だけ重複防止
 ) return;
+
+const toLabel = posJP[s.toPos];
+const alreadyMentionedSameTo = result.some(
+  (ln) => ln.includes(nameWithHonor(s.player)) && ln.includes(toLabel)
+);
+if (alreadyMentionedSameTo) return;
 
 
   const h = s.player.isFemale ? "さん" : "くん";
