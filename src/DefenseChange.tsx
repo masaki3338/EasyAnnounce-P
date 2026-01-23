@@ -50,7 +50,6 @@ function toReadable(root: HTMLElement): string {
 }
 
 
-let ChangeFlg = 0; // 初期値
 
 const getPlayerById = (players: Player[], id: number | null): Player | undefined => {
   if (id == null) return undefined;
@@ -2736,6 +2735,36 @@ if (
   }
 }
 
+// =====================================================
+// 代打/代走選手が「守備に就いた」場合の打順行補完
+// （守備位置を変えたケースで「◯番 ◯◯ Aくん」が欠けるのを防ぐ）
+// =====================================================
+battingOrder.forEach((entry, idx) => {
+  if (!["代打", "代走", "臨時代走"].includes(entry.reason)) return;
+
+  // 今この選手が就いている守備位置（投/捕/一...）を assignments から引く
+  const posSym = Object.entries(assignments).find(([_, id]) => id === entry.id)?.[0] as
+    | keyof typeof posJP
+    | undefined;
+  if (!posSym) return; // 守備についていない（=表示不要）
+
+  const order = idx + 1;
+  const p = teamPlayers.find(tp => tp.id === entry.id);
+  if (!p) return;
+
+  const expectedText = `${order}番 ${posJP[posSym]} ${nameWithHonor(p)}`;
+
+  // 既に同じ打順行があれば更新/追加しない（別位置で入っていた場合は更新）
+  const existsIdx = lineupLines.findIndex(l => l.order === order);
+  if (existsIdx >= 0) {
+    if (lineupLines[existsIdx].text !== expectedText) {
+      lineupLines[existsIdx] = { order, text: expectedText };
+    }
+  } else {
+    lineupLines.push({ order, text: expectedText });
+  }
+});
+
 /* ---- 打順行を最後にまとめて追加 ---- */
 
 // 交代件数
@@ -2955,9 +2984,7 @@ const speakVisibleAnnouncement = () => {
 
 
   const stopSpeaking  = () => ttsStop();
-  const pauseSpeaking = () => speechSynthesis.pause();
-  const resumeSpeaking = () => speechSynthesis.resume();
-  // ---- ここまで ----
+// ---- ここまで ----
 
   const [teamName, setTeamName] = useState("自チーム");
 
@@ -3024,18 +3051,6 @@ const startingOrderRef = useRef<{ id: number; reason?: string }[]>([]);
   // 大谷ルール：この画面を開いた時点の値（「確定しないで戻る」場合に復元する）
   const ohtaniRuleAtOpenRef = useRef<boolean>(false);
 
-
-/* -------------------------
-   useEffect 群
--------------------------- */
-
-useEffect(() => {
-  // 初期データロード
-}, []);
-
-useEffect(() => {
-  // 自動配置ロジック
-}, [assignments]);
 
 // ←★ このあたりが目印
 
@@ -4058,21 +4073,6 @@ useEffect(() => {
 
 
 // 代打/代走を assignments に反映する useEffect の後
-
-useEffect(() => {
-  if (!battingOrder || !usedPlayerInfo) return;
-  // ... 略 ...
-}, [battingOrder, usedPlayerInfo, initialAssignments]);
-
-// ★ ここにグローバルタッチ確定ハンドラの useEffect をコピペ
-
-// ✅ ベンチは“常に最新の assignments”から再計算する
-useEffect(() => {
-  if (!teamPlayers || teamPlayers.length === 0) return;
-  // ... 略 ...
-}, [assignments, teamPlayers]);
-
-
 // ✅ ベンチは“常に最新の assignments”から再計算する
 useEffect(() => {
   if (!teamPlayers || teamPlayers.length === 0) return;
@@ -5209,37 +5209,6 @@ console.log("✅ onConfirmed called");
   const showAnnouncement = () => {
     setShowSaveModal(true);
   };
-
-  useEffect(() => {
-  teamPlayers.slice(0, 9).forEach((player, index) => {
-    const currentPos = getPositionName(assignments, player.id);
-    const initialPos = getPositionName(initialAssignments, player.id);
-    const initialPlayerId = initialAssignments[initialPos];
-    const isSamePosition = currentPos === initialPos;
-    const isSamePlayer = assignments[currentPos] === initialPlayerId;
-    const isChanged = !(isSamePosition && isSamePlayer);    
-    const playerLabel = formatPlayerLabel(player);
-  });
-}, [assignments, initialAssignments, teamPlayers]);
-
-// === VOICEVOX 初期化・停止処理 ===
-useEffect(() => {
-  // 初回だけ VOICEVOX を温める（初回の待ち時間を短縮）
-  void prewarmTTS();
-}, []);
-
-useEffect(() => {
-  // コンポーネントがアンマウントされた時に確実に停止
-  return () => {
-    ttsStop();
-  };
-}, []);
-
-useEffect(() => {
-  (window as any).__teamPlayers = teamPlayers;
-}, [teamPlayers]);
-
-
 // “戻る”が押されたとき：変更があれば確認、なければそのまま戻る
 const handleBackClick = () => {
   if (isDirty) {
@@ -5264,36 +5233,9 @@ const handleBackToDefense = () => {
   // ✅ 守備画面へ戻すのは App.tsx 側の画面遷移（setScreen）で行う
   onConfirmed();
 };
-
-
-
-
-
-const handleSpeak = async () => {
-  const effectiveLogs = getEffectiveSubstitutionLogs(substitutionLogs);
-  if (effectiveLogs.length === 0) return;
-
-  const text = `守備交代をお知らせします。${effectiveLogs.join("、")}`;
-  try {
-    await ttsSpeak(text);   // VOICEVOX優先、失敗時は自動でWeb Speechにフォールバック
-  } catch (e) {
-    console.error("TTS failed:", e);
-  }
-};
-
-  const handleStop = () => {
-    ttsStop();
-  };
-
-
   if (isLoading) {
     return <div className="text-center text-gray-500 mt-10">読み込み中...</div>;
   }
- 
-
-  const effectiveLogs = getEffectiveSubstitutionLogs(substitutionLogs);
-
-  
   return (
     <div
       className="min-h-screen bg-slate-50 select-none"
@@ -5366,8 +5308,11 @@ const allowPinchOverride = !touchedFieldPos.has(pos);
 // 例：サード(fromPos=サード)で代打=浦野 → assignments["三"]=佐川でも浦野を表示
 // -------------------------
 const pinchLatestForPos = (() => {
+
   if (!allowPinchOverride) return null;
   for (const [origIdStr, info] of Object.entries(usedPlayerInfo || {})) {
+    //console.log("[PINCH-OVR] scan", { pos, origIdStr, reason: info?.reason, fromPos: info?.fromPos, subId: info?.subId });
+
     if (!info) continue;
     if (!["代打", "代走", "臨時代走"].includes(String(info.reason ?? ""))) continue;
 
@@ -5378,7 +5323,7 @@ const pinchLatestForPos = (() => {
     const origId = Number(origIdStr);
     // 代打で入った本人（subId）を最優先。念のため末端化もする
     const subId = typeof info.subId === "number" ? info.subId : null;
-    if (subId != null) return resolveLatestSubId(subId, usedPlayerInfo as any);
+     if (subId != null) return subId;
 
     // フォールバック（従来どおり）
     return resolveLatestSubId(origId, usedPlayerInfo as any);
@@ -5799,6 +5744,23 @@ ${(isReentryBlue)
                   const isPinchHitter = entry.reason === "代打";
                   const isPinchRunner = entry.reason === "代走";
                   const isPinch = isPinchHitter || isPinchRunner;
+                  const pinchReasons = ["代打", "代走", "臨時代走"] as const;
+
+                  // subId(=代打で出た選手ID)から「どの守備位置(fromPos)の代打か」を逆引き
+                  const resolvePinchFromPosSymBySubId = (subId: number): string => {
+                    for (const info of Object.values(usedPlayerInfo || {})) {
+                      if (!info) continue;
+                      if (!pinchReasons.includes(String((info as any).reason) as any)) continue;
+                      if ((info as any).subId !== subId) continue;
+
+                      const fromPos = (info as any).fromPos as string | undefined;
+                      if (!fromPos) return "";
+
+                      // fromPos は "セカンド" の可能性があるので sym に寄せる
+                      return (posNameToSymbol as any)[fromPos] ?? fromPos; // "二" など
+                    }
+                    return "";
+                  };
 
                   if (isPinchHitter && replaced && !Object.values(assignments).includes(replaced.id)) {
                     // ✅ DHの打順スロットに代打を出したケースは「代打：選手 ➡ DH指名打者」にする
@@ -5816,7 +5778,12 @@ ${(isReentryBlue)
                             </>
                           ) : (
                             <>
-                              代打 ➡ {replaced.lastName}{replaced.firstName} #{replaced.number}
+                              {(() => {
+                                const sym = resolvePinchFromPosSymBySubId(replaced.id);
+                                return sym
+                                  ? <>代打：{replaced.lastName}{replaced.firstName} #{replaced.number} ➡ {withFull(sym)}</>
+                                  : <>代打：{replaced.lastName}{replaced.firstName} #{replaced.number}</>;
+                              })()}
                             </>
                           )}
                         </li>
