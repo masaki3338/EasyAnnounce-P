@@ -5301,6 +5301,17 @@ const handleBackToDefense = () => {
       : assignments["指"];
 
 
+      // ✅ DHスロットの選手が「指以外」に配置されている場合は、フィールド図のDH表示を消す
+const dhIsPlacedElsewhere =
+  typeof dhCurrentId === "number" &&
+  Object.entries(assignments || {}).some(
+    ([sym, id]) => sym !== "指" && typeof id === "number" && id === dhCurrentId
+  );
+
+const dhDisplayId = dhIsPlacedElsewhere ? null : dhCurrentId;
+
+
+
 const allowPinchOverride = !touchedFieldPos.has(pos);
 
 // -------------------------
@@ -5335,9 +5346,10 @@ const pinchLatestForPos = (() => {
 
 // フィールド図で使うID
 const baseId =
-  (pos === "指" && ohtaniRule && dhSlotIndex >= 0)
-    ? dhCurrentId
+  (pos === "指")
+    ? dhDisplayId
     : (pinchLatestForPos ?? assignments[pos]);
+
 
 // フィールド図は「いまその守備に置いているID」をそのまま表示する。
 // （リエントリーで origId を置いたのに subId に戻されるのを防ぐ）
@@ -5522,6 +5534,21 @@ ${(isReentryBlue)
 
                 let currentPos = getOrderDisplayPos(assignments, displayId);
                 let initialPos = getOrderDisplayPos(initialAssignments, displayId);
+                // 🔧 代打/代走は守備に就いていないため "-" になりがち
+                // → subId === displayId の usedPlayerInfo から fromPos を拾う
+                if (!currentPos || currentPos === "－") {
+                    console.log("🔍IF currentPos=", currentPos);
+                  const pinchInfo = Object.values(usedPlayerInfo || {}).find(
+                    (info: any) =>
+                      info?.subId === displayId &&
+                      ["代打", "代走", "臨時代走"].includes(info?.reason)
+                  );
+
+                  if (pinchInfo?.fromPos) {
+                    currentPos = posNameToSymbol[pinchInfo.fromPos] ?? pinchInfo.fromPos;
+                    console.log("🔍CHANGE currentPos=", currentPos);
+                  }
+                }      
 
                 // ✅ 代打がDHに入った場合でも、DHスロットは赤字「指」表示にする（大谷ルールONでも通常と同じ）
                 if (dhActive && dhSlotIndex === index) {
@@ -5538,6 +5565,19 @@ ${(isReentryBlue)
                 const isPinchRunner = entry.reason === "代走";
                 const isPinch = isPinchHitter || isPinchRunner;
                 const pinchLabel = isPinchHitter ? "代打" : isPinchRunner ? "代走" : "";
+
+                // ✅ 特別代打などで「代打本人が守備についていない」場合、assignments からは "-" になってしまう。
+                // usedPlayerInfo は { [origStarterId]: { fromPos, subId, reason, ... } } の形なので、
+                // subId === displayId を満たすレコードを探し、その fromPos（例: "二"）を表示に使う。
+                if (isPinch && (!currentPos || currentPos === "-")) {
+                  const info = Object.values(usedPlayerInfo || {}).find((x: any) => x?.subId === displayId && (x?.reason === "代打" || x?.reason === "代走" || x?.reason === "臨時代走"));
+                  const fromPos = (info as any)?.fromPos as string | undefined;
+                  if (fromPos) {
+                    // fromPos が "セカンド" のようなフル名で入っている場合は "二" に寄せる
+                    const sym = (posNameToSymbol as any)[fromPos] ?? fromPos;
+                    currentPos = sym;
+                  }
+                }
 
                 return (
                   <li key={`${index}-${displayId}`} className="border border-slate-200 px-2 py-1 rounded bg-white">
