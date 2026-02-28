@@ -93,6 +93,7 @@ export default function VersionInfo({ version, onBack, onOpenContact }: Props) {
             <ul className="mt-2 text-base leading-7 list-disc ml-6">
               <li>2025.09.01　Vesion 0.10 β版 Release</li>
               <li>2026.01.07　Vesion 0.20 β版 追加仕様</li>
+              <li>2026.02.28　Vesion 0.21 β版 QA追加,タブレット対応</li>
             </ul>
           </div>
         </section>

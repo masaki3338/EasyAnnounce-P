@@ -46,8 +46,7 @@ export default function OperationSettings({ onNavigate, onOpenManual }: Props) {
       }}
     >
 {/* モバイルヘッダー（置き換え） */}
-<header className="w-full max-w-md">
-
+<header className="w-full max-w-2xl">
 
   {/* 下段：タイトルを大きく中央に */}
   <div className="mt-3 text-center select-none">
@@ -71,7 +70,7 @@ export default function OperationSettings({ onNavigate, onOpenManual }: Props) {
 
 
       {/* 中央配置の本体 */}
-      <div className="flex-1 w-full max-w-md flex flex-col justify-center gap-4">
+      <div className="flex-1 w-full max-w-2xl flex flex-col justify-center gap-4">
         <TileButton
           icon={<span className="text-2xl">⚾️</span>}
           title="規定投球数"
@@ -108,6 +107,13 @@ export default function OperationSettings({ onNavigate, onOpenManual }: Props) {
           onClick={() => onNavigate("tts-settings")}
         />
 
+        <TileButton
+          icon={<span className="text-2xl">❓</span>}
+          title="Q＆A"
+          desc="使い方・よくある質問"
+          onClick={() => onNavigate("qa")}
+        />
+        
         <TileButton
           icon={<span className="text-2xl">✉️</span>}
           title="お問い合わせ"
