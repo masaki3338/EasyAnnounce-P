@@ -350,16 +350,16 @@ await localForage.removeItem("startingBenchOutIds_draft");
   };
 
 return (
-  <div
-    className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
-    style={{
-      paddingTop: "max(16px, env(safe-area-inset-top))",
-      paddingBottom: "max(16px, env(safe-area-inset-bottom))",
-      WebkitTouchCallout: "none", // iOS Safariの長押しメニュー禁止
-      WebkitUserSelect: "none",   // iOS/Android テキスト選択禁止
-      userSelect: "none",         // 全体で禁止
-    }}
-  >
+    <div
+      className="min-h-[100dvh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
+      style={{
+        paddingTop: "max(16px, env(safe-area-inset-top))",
+        paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+        WebkitTouchCallout: "none",
+        WebkitUserSelect: "none",
+        userSelect: "none",
+      }}
+    >
     {/* ヘッダー：中央大タイトル＋細ライン */}
     <header className="w-full max-w-md text-center select-none mt-1">
       <h1 className="inline-flex items-center gap-2 text-3xl md:text-4xl font-extrabold tracking-wide leading-tight">
@@ -372,7 +372,7 @@ return (
     </header>
 
     {/* 本体：カード群 */}
-    <main className="w-full max-w-md mt-5 space-y-5">
+    <main className="w-full max-w-md md:max-w-none mt-5 space-y-5">
       {/* 試合情報 */}
       <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
         <div className="flex items-center justify-between">
@@ -499,8 +499,11 @@ return (
     <div aria-hidden className="h-36" />
 
     {/* 固定フッター操作カード */}
-    <footer className="fixed bottom-0 inset-x-0 z-40 px-4 pb-4">
-      <div className="max-w-md mx-auto rounded-2xl bg-white/10 border border-white/10 shadow-xl p-4 grid gap-3">
+    <footer
+      className="fixed bottom-0 inset-x-0 z-40 px-4"
+      style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}
+    >
+      <div className="w-full max-w-md md:max-w-none mx-auto rounded-2xl bg-white/10 border border-white/10 shadow-xl p-4 grid gap-3">
         <button
           onClick={onShowAnnouncement}
           className="w-full px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-base font-semibold shadow inline-flex items-center justify-center gap-2"

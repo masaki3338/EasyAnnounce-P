@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from "react";
 import localForage from "localforage";
 import { ScreenType } from "./App";
 import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
+import { pageStyle } from "./styles/pageStyle";
 
 /* ====== ミニSVGアイコン（依存なし） ====== */
 const IconBack = () => (
@@ -274,7 +275,7 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
     `${team3Read}はキャッチボールを開始してください。`;
 
   return (
-      <div
+      <div 
         className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
         style={{
           paddingTop: "max(16px, env(safe-area-inset-top))",
@@ -285,7 +286,7 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
         }}
       >
       {/* ヘッダー */}
-      <header className="w-full max-w-md">
+      <header className="w-full max-w-[720px]">
         <div className="flex items-center justify-between">
 
           <div className="w-10" />
@@ -305,7 +306,7 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
       </header>
 
       {/* 本体：カード群 */}
-      <main className="w-full max-w-md mt-6 space-y-5">
+      <main className="w-full max-w-[720px] mt-6 space-y-5">
         {/* 1 読み上げタイミング（黄） */}
         <StepCard step={1} icon={<IconInfo />} title="読み上げタイミング" accent="amber">
           <div className="text-amber-50/90 text-sm leading-relaxed">
@@ -482,7 +483,7 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
           </div>
         </div>
       )}
-    </div>
+      </div>
   );
 };
 

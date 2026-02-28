@@ -230,7 +230,7 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
 
   return (
       <div
-        className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
+        className="min-h-[100dvh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
         style={{
           paddingTop: "max(16px, env(safe-area-inset-top))",
           paddingBottom: "max(16px, env(safe-area-inset-bottom))",
@@ -241,7 +241,7 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
       >
 
       {/* ヘッダー */}
-      <header className="w-full max-w-md">
+      <header className="w-full max-w-md md:max-w-none">
         <div className="flex items-center justify-between">
 
           <div className="w-10" />
@@ -263,7 +263,7 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
       </header>
 
       {/* 本体 */}
-      <main className="w-full max-w-md mt-6 space-y-5">
+      <main className="w-full max-w-md md:max-w-none mt-6 space-y-5">
         {/* 注意/タイミングカード */}
         {isHomeTeamFirstAttack ? (
           <InfoCard

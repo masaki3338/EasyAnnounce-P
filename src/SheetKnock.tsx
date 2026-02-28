@@ -314,14 +314,14 @@ const handleStop = () => {
 
   return (
     <div
-      className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
+      className="min-h-[100dvh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
       style={{
         paddingTop: "max(16px, env(safe-area-inset-top))",
         paddingBottom: "max(16px, env(safe-area-inset-bottom))",
       }}
     >
       {/* ヘッダー */}
-      <header className="w-full max-w-md">
+      <header className="w-full max-w-md md:max-w-none">
         <div className="flex items-center justify-between">
 
           <div className="w-10" />
@@ -349,7 +349,7 @@ const handleStop = () => {
       {/* 本体：カード群（縦にステップ表示） */}
 {/* 本体：カード群（縦にステップ表示） */}
 
-<main className="w-full max-w-md mt-6 space-y-5">
+<main className="w-full max-w-md md:max-w-none mt-6 space-y-5">
   {/* ★ 先攻時だけ：一番最初に読み上げタイミングを表示 */}
   {hasTimingHint && (
     <StepCard step={1} icon={<IconAlert />} title="読み上げタイミング" accent="amber">
@@ -399,8 +399,7 @@ const handleStop = () => {
   {/* 注意メッセージ */}
   <div className="text-amber-50/90 text-sm leading-relaxed">
     最初のボールがノッカーの手から離れた時、<br />
-    もしくはボール回しから始まる場合はキャッチャーの手から<br />
-    ボールが離れてからスタート
+    もしくはボール回しから始まる場合はキャッチャーの手からボールが離れてからスタート
   </div>
 
   {/* 仕切り線 */}

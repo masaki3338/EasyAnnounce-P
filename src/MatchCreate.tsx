@@ -331,7 +331,7 @@ return (
         }}
   >
     {/* ヘッダー */}
-    <header className="w-full max-w-md">
+    <header className="w-full max-w-3xl">
 
 
       {/* 中央大タイトル */}
@@ -358,7 +358,7 @@ return (
     </header>
 
     {/* 本体：カード群 */}
-    <main className="w-full max-w-md mt-5 space-y-5">
+    <main className="w-full max-w-3xl mt-5 space-y-5">
 
 {/* 大会名（1行目） */}
 <div className="space-y-2">
@@ -739,7 +739,7 @@ return (
         <div className="absolute inset-x-0 bottom-0 sm:inset-0 sm:m-auto sm:h-auto
                         bg-gradient-to-b from-gray-900 to-gray-850 text-white
                         rounded-t-3xl sm:rounded-2xl shadow-2xl
-                        max-w-md w-full mx-auto p-5 sm:p-6">
+                        w-full max-w-[min(92vw,900px)] mx-auto p-5 sm:p-6">
     {/* ヘッダー行（両チップを横並びに） */}
     <div className="flex items-center justify-between mb-3 gap-3">
       <div className="flex items-center gap-2 flex-wrap">

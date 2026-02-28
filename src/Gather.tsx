@@ -57,7 +57,7 @@ const Gather: React.FC<Props> = ({ onNavigate }) => {
 
   return (
       <div
-        className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
+        className="min-h-[100dvh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
         style={{
           paddingTop: "max(16px, env(safe-area-inset-top))",
           paddingBottom: "max(16px, env(safe-area-inset-bottom))",
@@ -68,7 +68,7 @@ const Gather: React.FC<Props> = ({ onNavigate }) => {
       >
 
       {/* ヘッダー */}
-      <header className="w-full max-w-md">
+      <header className="w-full max-w-md md:max-w-none">
         <div className="flex items-center justify-between">
 
           <div className="w-10" />
@@ -91,7 +91,7 @@ const Gather: React.FC<Props> = ({ onNavigate }) => {
       </header>
 
       {/* 本体 */}
-      <main className="w-full max-w-md mt-6 space-y-5">
+      <main className="w-full max-w-md md:max-w-none mt-6 space-y-5">
         {/* 注意文（条件付きの案内） */}
         <section className="rounded-2xl p-4 shadow-lg text-left bg-gradient-to-br from-amber-400/20 via-amber-300/15 to-amber-200/10 border border-amber-300/60 ring-1 ring-inset ring-amber-300/30">
           <div className="flex items-center gap-3 mb-1">
