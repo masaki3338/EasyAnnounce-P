@@ -96,6 +96,69 @@ export default function Qa({ onBack }: Props) {
             </div>
           </QAItem>
 
+          <QAItem q="Q. どんなアプリですか？">
+            <p>
+              本アプリは、両チームがそれぞれ自チームのアナウンスを担当することを前提とした
+              アナウンス支援アプリです。
+              <br />
+              試合の流れに合わせて、自チームが行うべきアナウンス内容を画面に表示し、
+              読み上げをサポートします。
+            </p>
+          </QAItem>
+
+          <QAItem q="Q. アナウンスが全くわかりません">
+            <p>
+              ご安心ください。アナウンスは大きく分けて
+              <b>「試合前」「試合中」「試合後」</b>の3つの流れがあります。<br />
+              この流れに沿って操作を行い読み上げる文章が表示されます。
+            </p>
+
+            <div className="mt-3 space-y-3">
+
+              <Card>
+                <div className="font-semibold">● 試合開始前のアナウンス</div>
+                <ul className="list-disc pl-5 mt-2 space-y-1">
+                  <li>ウォーミングアップ、シートノックのお知らせ</li>
+                  <li>スターティングメンバー発表</li>
+                  <li>シート紹介など</li>
+                </ul>
+              </Card>
+
+              <Card>
+                <div className="font-semibold">● 試合中のアナウンス</div>
+
+                <div className="mt-2 font-semibold">▶ 攻撃時</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>打順の読み上げ</li>
+                  <li>代打・代走の紹介</li>
+                  <li>ファールボール注意喚起</li>
+                  <li>得点の読み上げ（無得点時はなし）</li>
+                </ul>
+
+                <div className="mt-2 font-semibold">▶ 守備時</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>選手交代・守備位置変更</li>
+                  <li>投球数の案内</li>
+                </ul>
+              </Card>
+
+              <Card>
+                <div className="font-semibold">● 試合終了のアナウンス</div>
+                <ul className="list-disc pl-5 mt-2 space-y-1">
+                  <li>試合結果の発表（勝利チームのみ）</li>
+                </ul>
+              </Card>
+
+              <Card>
+                <div className="font-semibold">● その他</div>
+                <ul className="list-disc pl-5 mt-2 space-y-1">
+                  <li>次の試合の案内</li>
+                  <li>タイブレーク開始など</li>
+                </ul>
+              </Card>
+            </div>
+          </QAItem>
+
           <QAItem q="Q. 試合中に画面を閉じてしまいました">
             <p>
               問題ありません。メニュー画面の【試合を継続する】ボタンで復帰できます。
