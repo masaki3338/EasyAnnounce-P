@@ -2873,6 +2873,203 @@ const numberToPosSymbol: Record<number, string> = {
   9: "右",
 };
 
+// --- 手書きメモ（保存しない・書く/消すだけ） ---
+type MiniScribblePadProps = {
+  value: string;                 // dataURL
+  onChange: (next: string) => void;
+};
+
+const MiniScribblePad: React.FC<MiniScribblePadProps> = ({ value, onChange }) => {
+  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
+  const drawingRef = React.useRef(false);
+  const lastRef = React.useRef<{ x: number; y: number } | null>(null);
+  const [isEraser, setIsEraser] = React.useState(false);
+
+  const getPos = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
+
+  const applyPenStyle = (ctx: CanvasRenderingContext2D) => {
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    if (isEraser) {
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 16;
+    } else {
+      ctx.strokeStyle = "#0f172a";
+      ctx.lineWidth = 3;
+    }
+  };
+
+  const saveToParent = React.useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    try {
+      const url = canvas.toDataURL("image/png");
+      onChange(url);
+    } catch {
+      // 念のため（iOSの制限など）
+    }
+  }, [onChange]);
+
+  const start = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    drawingRef.current = true;
+    canvas.setPointerCapture(e.pointerId);
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    applyPenStyle(ctx);
+    const { x, y } = getPos(e);
+    lastRef.current = { x, y };
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+
+  const move = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!drawingRef.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    applyPenStyle(ctx);
+
+    const { x, y } = getPos(e);
+    const last = lastRef.current;
+    if (!last) return;
+
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    lastRef.current = { x, y };
+  };
+
+  const end = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!drawingRef.current) return;
+    drawingRef.current = false;
+    lastRef.current = null;
+
+    const canvas = canvasRef.current;
+    if (canvas) {
+      try {
+        canvas.releasePointerCapture(e.pointerId);
+      } catch {}
+    }
+
+    // ★描き終わったタイミングで保存（モーダル閉じても残る）
+    saveToParent();
+  };
+
+  const clear = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    onChange(""); // ★親も空に
+  };
+
+  // Retina対策（リサイズで内容は消える＝直後に value から復元する）
+  React.useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const resize = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const cssW = canvas.clientWidth;
+      const cssH = canvas.clientHeight;
+
+      const nextW = Math.floor(cssW * dpr);
+      const nextH = Math.floor(cssH * dpr);
+      if (canvas.width === nextW && canvas.height === nextH) return;
+
+      canvas.width = nextW;
+      canvas.height = nextH;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    resize();
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, []);
+
+  // ★value（dataURL）が来たら復元
+  React.useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (!value) return;
+    const img = new Image();
+    img.onload = () => {
+      // CSS座標系で描ける状態になっている（setTransform済み）
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      ctx.drawImage(img, 0, 0, w, h);
+    };
+    img.src = value;
+  }, [value]);
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="text-xs font-bold text-slate-700">✍️ 手書きメモ</div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsEraser(false)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${
+              isEraser
+                ? "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                : "bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700"
+            }`}
+          >
+            ✏️
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsEraser(true)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${
+              isEraser
+                ? "bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700"
+                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+            }`}
+          >
+            🧽
+          </button>
+          <button
+            type="button"
+            onClick={clear}
+            className="px-3 py-1.5 rounded-lg bg-slate-700 text-white text-xs font-bold hover:bg-slate-800 active:bg-slate-900"
+          >
+            消去
+          </button>
+        </div>
+      </div>
+
+      <canvas
+        ref={canvasRef}
+        className="w-full h-24 rounded-xl bg-slate-50 border border-slate-200 touch-none"
+        onPointerDown={start}
+        onPointerMove={move}
+        onPointerUp={end}
+        onPointerCancel={end}
+      />
+    </div>
+  );
+};
+
 const formatPlayerLabel = (player?: { id: number; number?: string | number; lastName?: string; firstName?: string }) => {
   if (!player) return "未設定";
   return `${player.lastName ?? ""}${player.firstName ?? ""} #${player.number ?? "-"}`;
@@ -3135,6 +3332,8 @@ type PositionNumberChangeRow = {
   benchPlayerId: string;   // replaceのときに控え選手ID
 };
 const [showPosNumberModal, setShowPosNumberModal] = useState(false);
+// 手書きメモ（モーダルを閉じても保持、交代確定で消す）
+const [posNumberMemoDataUrl, setPosNumberMemoDataUrl] = useState<string>("");
 const [dirty, setDirty] = useState(false);
 const [posNumberRows, setPosNumberRows] = useState<PositionNumberChangeRow[]>(
   Array.from({ length: 9 }, () => ({ from: "", mode: "swap", to: "", benchPlayerId: "" }))
@@ -6670,6 +6869,10 @@ ${(isReentryBlue)
 
       {/* body */}
       <div className="max-h-[70vh] overflow-y-auto px-4 py-4">
+        <MiniScribblePad
+          value={posNumberMemoDataUrl}
+          onChange={setPosNumberMemoDataUrl}
+        />
          <div className="space-y-3">
 {posNumberRows.map((row, i) => {
   // 交代が何も入ってない行は薄く（任意）
