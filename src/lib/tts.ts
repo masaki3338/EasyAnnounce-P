@@ -14,6 +14,39 @@ let __wsUnlocked = false;
 let sessionCounter = 0;          // 停止でインクリメントして旧セッションを無効化
 let speaking = false;
 
+// ---- speech normalize ------------------------------------------------------
+const ORDER_KANA: Record<string, string> = {
+  "1": "いち",
+  "2": "に",
+  "3": "さん",
+  "4": "よ",
+  "5": "ご",
+  "6": "ろく",
+  "7": "なな",
+  "8": "はち",
+  "9": "きゅう",
+};
+
+function toHalfWidthDigits(s: string) {
+  return s.replace(/[０-９]/g, (c) => String(c.charCodeAt(0) - 0xfee0));
+}
+
+/**
+ * 読み上げ直前の文章を野球アナウンス向けに正規化する
+ * - 例: "4番" / "４番" / "4 番" → "よばん"
+ */
+function normalizeSpeechText(input: string): string {
+  let t = String(input);
+
+  // 「○番」を「(かな)ばん」に置換（番が付くものだけ）
+  t = t.replace(/[0-9０-９]\s*番/g, (m) => {
+    const d = toHalfWidthDigits(m.replace(/\s/g, "").replace("番", ""));
+    const kana = ORDER_KANA[d];
+    return kana ? `${kana}ばん` : m;
+  });
+
+  return t;
+}
 // ---- utilities -------------------------------------------------------------
 // 置き換え（既存の hardCancelSpeechSynthesis を以下に差し替え）
 function hardCancelSpeechSynthesis(deferred = false) {
@@ -79,6 +112,8 @@ async function unlockWebSpeech(voiceName?: string) {
 // ---- public API ------------------------------------------------------------
 export async function speak(text: string, options: SpeakOptions = {}) {
   if (!text || !text.trim()) return;
+
+  text = normalizeSpeechText(text); // ★追加（ここが一括適用ポイント）
 
   // ローカル設定の既定値
   // ローカル設定の既定値（LS未設定時のフォールバック）
