@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.easyannounce.pony",
+        "sha256_cert_fingerprints": ["5F:D0:E5:D4:73:DD:88:98:E0:83:1C:33:FC:FA:7D:E3:3E:53:F1:E5:07:C2:99:9B:B9:42:42:FB:3E:04:25:B4"]
+      }
+    }]
