@@ -97,7 +97,7 @@ export default function AnnounceMindset({ onBack }: Props) {
               <div className="mt-3 text-lg text-white/95">
                 そして、落ち着いて{" "}
                 <span className="font-extrabold text-rose-300">ゆっくり</span>{" "}
-                話そう。
+                話そう！
               </div>
             </section>
 
