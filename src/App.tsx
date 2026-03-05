@@ -37,7 +37,7 @@ import TtsSettings from "./screens/TtsSettings";
 import Qa from "./screens/Qa";
 import Tutorial from "./screens/Tutorial";
 import VersionInfo from "./screens/VersionInfo";
-
+import AnnounceMindset from "./AnnounceMindset";
 
 
 
@@ -64,6 +64,7 @@ type WakeLockSentinel = {
 // 画面の種類を列挙した型
 export type ScreenType =
   | "menu"
+  | "announceMindset"
   | "teamRegister"
   | "matchCreate"
   | "startingLineup"
@@ -377,6 +378,17 @@ const handleSpeak = async () => {
         />
       )}
 
+      {screen === "announceMindset" && (
+        <>
+          <button
+            className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
+            onClick={() => setScreen("menu")}
+          >
+            ← メニューに戻る
+          </button>
+          <AnnounceMindset />
+        </>
+      )}
 
       {screen === "teamRegister" && (
         <>
@@ -1623,44 +1635,67 @@ return (
 </div>
 
 
-      {/* アイコンカードのグリッド */}
-      <div className="w-full grid grid-cols-2 gap-4">
-        <button
-          onClick={() => onNavigate("teamRegister")}
-          className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
-        >
-          <div className="text-2xl">🧢</div>
-          <div className="mt-2 font-bold">チーム・選手登録</div>
-          <div className="text-xs opacity-80 mt-1">ふりがな,背番号登録</div>
-        </button>
+    {/* ✅ 野球アナウンスの心得（横長ボタン） */}
+      <button
+        onClick={() => onNavigate("announceMindset")}
+        className="
+          inline-flex items-center gap-3
+          mb-4
+          rounded-2xl
+          bg-gray-200 text-gray-900
+          py-3 px-6
+          shadow-lg
+          hover:bg-gray-100
+          transition
+        "
+      >
+      <span className="text-xl">📖</span>
+      <span
+        className="text-lg font-bold tracking-wide"
+        style={{ fontFamily: "'M PLUS Rounded 1c', sans-serif" }}
+      >
+        野球アナウンスの心得
+      </span>
+    </button>
 
-        <button
-          onClick={() => onNavigate("matchCreate")}
-          className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
-        >
-          <div className="text-2xl">🗓️</div>
-          <div className="mt-2 font-bold">試合作成</div>
-          <div className="text-xs opacity-80 mt-1">対戦相手,先攻後攻等</div>
-        </button>
+    {/* ✅ 4つだけのグリッド（2×2） */}
+    <div className="w-full grid grid-cols-2 gap-4">
+      <button
+        onClick={() => onNavigate("teamRegister")}
+        className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+      >
+        <div className="text-2xl">🧢</div>
+        <div className="mt-2 font-bold">チーム・選手登録</div>
+        <div className="text-xs opacity-80 mt-1">ふりがな,背番号登録</div>
+      </button>
 
-        <button
-          onClick={() => onNavigate("startGame")}
-          className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
-        >
-          <div className="text-2xl">🏁</div>
-          <div className="mt-2 font-bold">試合開始</div>
-          <div className="text-xs opacity-80 mt-1">攻守遷移,読み上げ</div>
-        </button>
+      <button
+        onClick={() => onNavigate("matchCreate")}
+        className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+      >
+        <div className="text-2xl">🗓️</div>
+        <div className="mt-2 font-bold">試合作成</div>
+        <div className="text-xs opacity-80 mt-1">対戦相手,先攻後攻等</div>
+      </button>
 
-        <button
-          onClick={() => onNavigate("operationSettings")}
-          className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
-        >
-          <div className="text-2xl">⚙️</div>
-          <div className="mt-2 font-bold">運用設定</div>
-          <div className="text-xs opacity-80 mt-1">投球数,タイブレーク等</div>
-        </button>
-      </div>
+      <button
+        onClick={() => onNavigate("startGame")}
+        className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+      >
+        <div className="text-2xl">🏁</div>
+        <div className="mt-2 font-bold">試合開始</div>
+        <div className="text-xs opacity-80 mt-1">攻守遷移,読み上げ</div>
+      </button>
+
+      <button
+        onClick={() => onNavigate("operationSettings")}
+        className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+      >
+        <div className="text-2xl">⚙️</div>
+        <div className="mt-2 font-bold">運用設定</div>
+        <div className="text-xs opacity-80 mt-1">投球数,タイブレーク等</div>
+      </button>
+    </div>
 
       {/* 試合継続ボタン（存在する時のみ表示） */}
       {canContinue && lastScreen && (
