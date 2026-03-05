@@ -37,19 +37,9 @@ type HistoryItem = {
 
 const historyData: HistoryItem[] = [
   {
-    date: "2025.09.01",
-    version: "Vesion 0.10β",
+    date: "2026.03.05",
+    version: "Vesion 1.00β",
     details: ["Release"],
-  },
-  {
-    date: "2026.02.28",
-    version: "Vesion 0.21β",
-    details: ["QA追加", "タブレット対応"],
-  },
-  {
-    date: "2026.03.04",
-    version: "Vesion 0.22β",
-    details: ["交代操作を守備番号で入力可能にする機能追加"],
   },
 ];
 
