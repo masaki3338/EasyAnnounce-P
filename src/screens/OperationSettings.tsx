@@ -108,9 +108,16 @@ export default function OperationSettings({ onNavigate, onOpenManual }: Props) {
         />
 
         <TileButton
+          icon={<span className="text-2xl">📔</span>}
+          title="チュートリアル"
+          desc="使い方"
+          onClick={() => onNavigate("tutorial")}
+        />
+
+        <TileButton
           icon={<span className="text-2xl">❓</span>}
           title="Q＆A"
-          desc="使い方・よくある質問"
+          desc="よくある質問"
           onClick={() => onNavigate("qa")}
         />
         
