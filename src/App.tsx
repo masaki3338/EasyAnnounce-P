@@ -35,13 +35,14 @@ import TiebreakRule from "./screens/TiebreakRule";
 import Contact from "./screens/Contact";
 import TtsSettings from "./screens/TtsSettings";
 import Qa from "./screens/Qa";
+import Tutorial from "./screens/Tutorial";
 import VersionInfo from "./screens/VersionInfo";
 
 
 
 
 // バージョン番号を定数で管理
-const APP_VERSION = "0.22 β"
+const APP_VERSION = "0.23 β"
 
 // iOS 判定を共通で使えるようにグローバル定数として定義
 const isIOS = (() => {
@@ -84,6 +85,7 @@ export type ScreenType =
   | "contact"
   | "tts-settings"
   | "qa"
+  | "tutorial"
   | "versionInfo";
 
 const screenMap: { [key: string]: ScreenType } = {
@@ -981,6 +983,10 @@ if (totalMyScore > totalOpponentScore) {
 
 {screen === "tts-settings" && (
   <TtsSettings onBack={() => setScreen("operationSettings")} />
+)}
+
+{screen === "tutorial" && (
+  <Tutorial onBack={() => setScreen("operationSettings")} />
 )}
 
 {screen === "qa" && (

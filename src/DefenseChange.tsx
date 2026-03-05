@@ -3057,7 +3057,7 @@ const MiniScribblePad: React.FC<MiniScribblePadProps> = ({ value, onChange }) =>
           </button>
         </div>
       </div>
-
+            
       <canvas
         ref={canvasRef}
         className="w-full h-40 rounded-xl bg-slate-50 border border-slate-200 touch-none"
