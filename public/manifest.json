@@ -1,12 +1,15 @@
 {
+  "id": "/",
   "name": "Easyアナウンス PONY",
   "short_name": "Easyアナウンス",
   "description": "野球の試合アナウンスを簡単に行えるアプリ",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#d32f2f",
+  "categories": ["sports", "utilities"],
   "icons": [
     {
       "src": "/EasyAnnounce-Pony-192x192.png",
