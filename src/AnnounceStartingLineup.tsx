@@ -74,6 +74,7 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
   const [awayTeamName, setAwayTeamName] = useState<string>("");
   const [opponentTeamFurigana, setOpponentTeamFurigana] = useState<string>("");
   const [isHomeTeamFirstAttack, setIsHomeTeamFirstAttack] = useState<boolean>(true);
+  const [benchSide, setBenchSide] = useState<"1塁側" | "3塁側">("1塁側");
   const [umpires, setUmpires] = useState<Umpire[]>([]);
   const [isTwoUmpires, setIsTwoUmpires] = useState<boolean>(false);
   const [speaking, setSpeaking] = useState(false);
@@ -85,6 +86,7 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
   const startingIds = battingOrder.map((e) => e.id);
   const [benchOutIds, setBenchOutIds] = useState<number[]>([]);
   const [ohtaniRule, setOhtaniRule] = useState(false);
+
 
 　// ✅ DHあり判定：指名打者が割り当てられているか
   const dhActive = assignments["指"] != null;
@@ -131,6 +133,7 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
         localForage.getItem<{ name: string; players: Player[] }>("team"),
         localForage.getItem("matchInfo"),
         localForage.getItem<boolean>("ohtaniRule"),
+        
       ]);
 
       setOhtaniRule(!!ohtani);
@@ -169,6 +172,7 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
         if (Array.isArray(mi.umpires)) setUmpires(mi.umpires);
         setOpponentTeamFurigana(mi.opponentTeamFurigana || "");
         setIsTwoUmpires(Boolean(mi.twoUmpires));
+        setBenchSide(mi.benchSide || "1塁側");
       }
     };
     
@@ -187,6 +191,23 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
   );
   const renderFullName = (p: Player) => (<>{renderFurigana(p.lastName, p.lastNameKana)}{renderFurigana(p.firstName, p.firstNameKana)}</>);
   const renderLastName = (p: Player) => renderFurigana(p.lastName, p.lastNameKana);
+
+  const team1stBaseName = benchSide === "1塁側" ? homeTeamName : awayTeamName;
+  const team3rdBaseName = benchSide === "3塁側" ? homeTeamName : awayTeamName;
+
+  const team1stBaseFurigana = benchSide === "1塁側" ? homeTeamFurigana : opponentTeamFurigana;
+  const team3rdBaseFurigana = benchSide === "3塁側" ? homeTeamFurigana : opponentTeamFurigana;
+
+  const renderTeam1stBase = () =>
+    team1stBaseFurigana
+      ? renderFurigana(team1stBaseName, team1stBaseFurigana)
+      : team1stBaseName;
+
+  const renderTeam3rdBase = () =>
+    team3rdBaseFurigana
+      ? renderFurigana(team3rdBaseName, team3rdBaseFurigana)
+      : team3rdBaseName;
+
 
   /* === 画面に見えている文言をそのまま読む（rubyはrtを採用） === */
   const getVisibleAnnounceText = (): string => {
@@ -295,9 +316,7 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
           {isHomeTeamFirstAttack && (
             <p className="text-white whitespace-pre-wrap leading-relaxed">
               お待たせいたしました、
-              {homeTeamFurigana ? renderFurigana(homeTeamName, homeTeamFurigana) : homeTeamName} 
-              {"対 "}
-              {opponentTeamFurigana ? renderFurigana(awayTeamName, opponentTeamFurigana) : awayTeamName}
+              {renderTeam1stBase()} {"対 "} {renderTeam3rdBase()}
               のスターティングラインナップ並びに審判員をお知らせいたします。
             </p>
           )}
