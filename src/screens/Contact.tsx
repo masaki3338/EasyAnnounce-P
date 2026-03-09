@@ -6,7 +6,9 @@ type Props = {
   version?: string; // App.tsx から渡す
 };
 
-const ENDPOINT = "https://getform.io/f/aolzdvrb";
+
+const ENDPOINT = "https://formspree.io/f/xyknkzpa";
+
 const SUBJECT  = "Easyアナウンスお問い合わせ";
 
 const IconBack = () => (
@@ -39,6 +41,7 @@ type Preview = { file: File; url: string };
 
 export default function Contact({ onBack, version = "0.0.1" }: Props) {
   const [text, setText] = useState("");
+  const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
 
   // 添付ファイル（画像のみ・タップ選択）
@@ -110,9 +113,14 @@ fd.append("_subject", SUBJECT);
 fd.append("subject", SUBJECT);
 fd.append("message", body);
 fd.append("version", version);
+fd.append("email", email.trim()); 
 
 // ★ ここを 'file' → 'files[]' に変更（複数添付の推奨形）
 files.forEach(p => fd.append("files[]", p.file, p.file.name));
+
+for (const [key, value] of fd.entries()) {
+  console.log(key, value);
+}
 
 const res = await fetch(ENDPOINT, {
   method: "POST",
@@ -212,65 +220,26 @@ const res = await fetch(ENDPOINT, {
             <div className="mt-1 text-right text-xs text-white/60">{count} 文字</div>
           </label>
 
-          {/* 添付：タップで写真選択（複数OK） */}
-          <div>
-            <div className="text-sm text-white/90 mb-2 font-semibold">
-              写真を選択して添付
-              <span className="ml-2 text-xs text-white/70">※ 最大10枚／1枚10MB／合計40MB</span>
-            </div>
+<label className="block">
+  <div className="text-sm text-white/90 mb-2 font-semibold">
+    返信用メールアドレス <span className="text-white/60">（任意）</span>
+  </div>
 
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 bg-white/15 hover:bg-white/20 border border-white/20"
-            >
-              <IconImage />
-              <span>フォトライブラリから選ぶ</span>
-            </button>
+  <input
+    type="email"
+    value={email}
+    onChange={(e) => setEmail(e.target.value)}
+    className="w-full rounded-2xl bg-white/90 text-gray-900 border border-white/70 shadow-sm
+               p-4 outline-none focus:ring-2 focus:ring-sky-400 placeholder-gray-600"
+    placeholder="返信が必要な場合のみ入力してください"
+  />
 
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={(e) => addFiles(e.target.files)}
-              className="hidden"
-            />
+  <div className="text-xs text-white/60 mt-1">
+    ※返信が必要な場合のみご入力ください
+  </div>
+</label>
 
-            {/* プレビュー */}
-            {files.length > 0 && (
-              <>
-                <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                  {files.map((p, i) => (
-                    <div key={i} className="relative group rounded-xl overflow-hidden border border-white/20 bg-white/10">
-                      <img
-                        src={p.url}
-                        alt={p.file.name}
-                        className="w-full h-32 object-cover"
-                        loading="lazy"
-                      />
-                      <button
-                        onClick={() => removeFile(i)}
-                        className="absolute top-1 right-1 inline-flex items-center gap-1 px-2 py-1 rounded-lg
-                                   bg-black/60 text-white text-xs opacity-0 group-hover:opacity-100 transition"
-                        title="この画像を削除"
-                        type="button"
-                      >
-                        <IconTrash />
-                        削除
-                      </button>
-                      <div className="absolute bottom-0 left-0 right-0 text-[10px] px-2 py-1 bg-black/50 text-white truncate">
-                        {p.file.name}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-2 text-xs text-white/60 text-right">
-                  合計サイズ: {totalSizeMB.toFixed(2)} MB
-                </div>
-              </>
-            )}
-          </div>
+
 
           {/* 送信 */}
           <div className="text-center">
