@@ -11,10 +11,9 @@ export default defineConfig({
       injectRegister: 'auto',
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff2,mp3,pdf}'],
-        maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10MB
+        maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
         clientsClaim: true,
         skipWaiting: true,
-        // ※ VOICEVOX廃止のため、/api の特例（navigateFallbackDenylist / runtimeCaching）は不要
       },
       includeAssets: [
         'favicon.svg',
@@ -28,27 +27,36 @@ export default defineConfig({
         'warning-icon.png',
         'manual.pdf',
         'Boysmanual.pdf',
+        'EasyAnnounce-icon-192x192-v2.png',
+        'EasyAnnounce-icon-512x512-v2.png',
+        'EasyAnnounce-icon-512-maskable-v2.png',
       ],
       manifest: {
         name: '野球アナウンス支援 Easyアナウンス',
         short_name: 'Easyアナウンス',
         description: '野球の試合アナウンスを簡単に行えるアプリ',
         start_url: '/',
+        scope: '/',
         display: 'standalone',
         orientation: 'portrait',
         background_color: '#ffffff',
         theme_color: '#d32f2f',
         icons: [
           {
-            src: 'EasyAnnounce-icon-192x192.png',
+            src: '/EasyAnnounce-icon-192x192-v2.png',
             sizes: '192x192',
             type: 'image/png'
           },
           {
-            src: 'EasyAnnounce-icon-512x512.png',
+            src: '/EasyAnnounce-icon-512x512-v2.png',
+            sizes: '512x512',
+            type: 'image/png'
+          },
+          {
+            src: '/EasyAnnounce-icon-512-maskable-v2.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any maskable'
+            purpose: 'maskable'
           }
         ]
       }
@@ -57,9 +65,6 @@ export default defineConfig({
   resolve: {
     dedupe: ['react', 'react-dom'],
   },
-  // ※ /api を使わないので開発プロキシも削除
-  // server: { proxy: { ... } },
-
   optimizeDeps: {
     include: ['@react-pdf-viewer/core/lib/styles/index.css'],
   },
