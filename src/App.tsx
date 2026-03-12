@@ -14,7 +14,7 @@ import { speak, stop } from "./lib/tts"; // ファイル先頭付近に追記
 
 import ManualViewer from "./ManualViewer"; // ← 追加
 const manualPdfURL = "/manual.pdf#zoom=page-fit"; // ページ全体にフィット
-
+const boysmanualPdfURL = "/Boysmanual.pdf#view=FitH"; // ページ全体にフィット
 
 // 各画面コンポーネントをインポート
 import TeamRegister from "./TeamRegister";
@@ -38,11 +38,14 @@ import Qa from "./screens/Qa";
 import Tutorial from "./screens/Tutorial";
 import VersionInfo from "./screens/VersionInfo";
 import AnnounceMindset from "./AnnounceMindset";
-
-
+import LeagueSettings from "./screens/LeagueSettings";
+import BoysPreGameAnnouncement from "./boys-pre-game-announcement";
+import BoysSheetKnock from "./BoysSheetKnock";
+import StartTimeAnnouncement from "./StartTimeAnnouncement";
+import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 
 // バージョン番号を定数で管理
-const APP_VERSION = "1.00 β"
+const APP_VERSION = "2.00 β"
 
 // iOS 判定を共通で使えるようにグローバル定数として定義
 const isIOS = (() => {
@@ -73,16 +76,19 @@ export type ScreenType =
   | "warmup"
   | "sheetKnock"
   | "announceStartingLineup"
-  | "operationSettings"
   | "offense"
   | "defense"
   | "defenseChange"
   | "gather"
   | "startGreeting"
   | "seatIntroduction"
-  |"operationSettings"
+  | "boysPreGameAnnouncement"
+  | "boysSheetKnock"
+  | "startTimeAnnouncement"
+  | "operationSettings"
   | "pitchLimit"
   | "tiebreakRule"
+  | "league-settings"
   | "contact"
   | "tts-settings"
   | "qa"
@@ -184,6 +190,8 @@ const BottomTab: React.FC<{
 
 const App = () => {
   const [screen, setScreen] = useState<ScreenType>("menu");
+  const [leagueMode, setLeagueMode] = useState<LeagueMode>("pony");
+  const isBoys = leagueMode === "boys";
   const fromGameRef = useRef(false);
   const lastOffenseRef = useRef(false);
   const [showEndGamePopup, setShowEndGamePopup] = useState(false);
@@ -195,8 +203,15 @@ const App = () => {
   const heatSpeakingRef = useRef(false);
   const [heatMessage] = useState("本日は気温が高く、熱中症が心配されますので、水分をこまめにとり、体調に気を付けてください。");
   const [otherOption, setOtherOption] = useState(""); // その他選択状態
+
+  const [intentionalWalkTrigger, setIntentionalWalkTrigger] = useState(0);
+
   const [showManualPopup, setShowManualPopup] = useState(false);
   const [showContinuationModal, setShowContinuationModal] = useState(false);
+  const [showSuspendPopup, setShowSuspendPopup] = useState(false);
+  const [showSuspendedGamePopup, setShowSuspendedGamePopup] = useState(false);
+  const [showBoysManualPopup, setShowBoysManualPopup] = useState(false);
+
   const [showTiebreakPopup, setShowTiebreakPopup] = useState(false);
   // ▼ タイブレーク開始後のヒントモーダル
   const [showTiebreakHint, setShowTiebreakHint] = useState(false);
@@ -207,6 +222,50 @@ const App = () => {
   const [pitchList, setPitchList] = useState<
     { name: string; number?: string; total: number }[]
   >([]);
+
+  const [showWaterBreakPopup, setShowWaterBreakPopup] = useState(false);
+  const [waterBreakMinutes, setWaterBreakMinutes] = useState<number>(3);
+  const [waterBreakRemaining, setWaterBreakRemaining] = useState<number>(3 * 60);
+  const [waterBreakRunning, setWaterBreakRunning] = useState(false);
+  const [waterBreakAnnounced, setWaterBreakAnnounced] = useState(false);
+  const [waterBreakPopupMessage, setWaterBreakPopupMessage] = useState("");
+  const [showWaterBreakPopupMessage, setShowWaterBreakPopupMessage] = useState(false);
+  const [waterBreakNotice, setWaterBreakNotice] = useState("");
+const [coolingPopupMessage, setCoolingPopupMessage] = useState("");
+const [showCoolingPopup, setShowCoolingPopup] = useState(false);
+const [seatIntroBackScreen, setSeatIntroBackScreen] = useState<"announcement" | "boysPreGameAnnouncement">("announcement");
+
+const showCoolingNoticePopup = (message: string) => {
+  setWaterBreakPopupMessage(message);
+  setShowWaterBreakPopupMessage(true);
+
+  setTimeout(() => {
+    setShowWaterBreakPopupMessage(false);
+  }, 3000);
+};
+
+
+const ponyOtherOptions: OtherOptionItem[] = [
+  { value: "end", label: "試合終了" },
+  { value: "tiebreak", label: "タイブレーク" },
+  { value: "continue", label: "継続試合" },
+  { value: "heat", label: "熱中症" },
+  { value: "manual", label: "連盟🎤マニュアル" },
+  { value: "pitchlist", label: "投球数⚾" },
+];
+
+const boysOtherOptions: OtherOptionItem[] = [
+  { value: "intentionalWalk", label: "申告敬遠" },
+  { value: "waterBreak", label: "給水タイム" },
+  { value: "tiebreak", label: "タイブレーク" },
+  { value: "end", label: "試合終了" },
+  { value: "suspend", label: "中断" },
+  { value: "suspendedGame", label: "サスペンデット" },
+  { value: "boysmanual", label: "連盟🎤マニュアル" },
+];
+
+const getOtherOptions = () =>
+  leagueMode === "boys" ? boysOtherOptions : ponyOtherOptions;
   // --- 試合終了アナウンスを分割して注意ボックスを差し込む ---
   const BREAKPOINT_LINE = "球審、EasyScore担当、公式記録員、球場役員もお集まりください。";
   const ann = endGameAnnouncement ?? "";
@@ -223,6 +282,82 @@ const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
 // App コンポーネント内のどこか（stateの定義付近）に追加
 const warmedOnceRef = useRef(false);
+useEffect(() => {
+  setLeagueMode(getLeagueMode());
+}, []);
+
+const formatWaterBreakTime = (sec: number) => {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+};
+
+const waterBreakMessage = `ただいまから${waterBreakMinutes}分間のクーリングタイムを取ります。`;
+
+const handleWaterBreakStart = () => {
+  if (waterBreakRemaining <= 0) {
+    setWaterBreakRemaining(waterBreakMinutes * 60);
+  }
+
+  setWaterBreakAnnounced(false);
+  setWaterBreakRunning(true);
+};
+
+const handleWaterBreakStop = () => {
+  setWaterBreakRunning(false);
+};
+
+const handleWaterBreakClear = () => {
+  setWaterBreakRunning(false);
+  setWaterBreakRemaining(waterBreakMinutes * 60);
+  setWaterBreakAnnounced(false);
+};
+
+useEffect(() => {
+  if (!waterBreakRunning) return;
+
+  const timer = window.setInterval(() => {
+    setWaterBreakRemaining((prev) => {
+      const next = prev - 1;
+
+      if (waterBreakMinutes === 5 && next === 60) {
+        const msg = "クーリングタイム残り1分です。";
+        setWaterBreakNotice(msg);
+        showCoolingNoticePopup(msg);
+        speak(msg);
+      }
+
+      if (waterBreakMinutes === 10 && next === 120) {
+        const msg = "クーリングタイム残り2分です。";
+        setWaterBreakNotice(msg);
+        showCoolingNoticePopup(msg);
+        speak(msg);
+      }
+
+      if (next <= 0) {
+        window.clearInterval(timer);
+        setWaterBreakRunning(false);
+
+        const msg = "クーリングタイム終了です。";
+        setWaterBreakNotice(msg);
+        showCoolingNoticePopup(msg);
+        speak(msg);
+
+        return 0;
+      }
+
+      return next;
+    });
+  }, 1000);
+
+  return () => window.clearInterval(timer);
+}, [waterBreakRunning, waterBreakMinutes]);
+
+useEffect(() => {
+  if (!waterBreakRunning && waterBreakRemaining === waterBreakMinutes * 60) {
+    setWaterBreakRemaining(waterBreakMinutes * 60);
+  }
+}, [waterBreakMinutes]);
 
 // マウント時に一度だけ軽いウォームアップ
 useEffect(() => {
@@ -253,6 +388,8 @@ const acquireWakeLock = async () => {
     return false;
   }
 };
+
+
 
 const releaseWakeLock = async () => {
   try {
@@ -339,6 +476,31 @@ const handleHeatStop = () => {
   }
 };
 
+const handleBoysOnlyMenu = async (value: string) => {
+  if (value === "intentionalWalk") {
+    alert("申告敬遠はこれから実装します");
+    return true;
+  }
+  if (value === "waterBreak") {
+    alert("給水タイムはこれから実装します");
+    return true;
+  }
+  if (value === "suspend") {
+    alert("中断はこれから実装します");
+    return true;
+  }
+  if (value === "suspendedGame") {
+    alert("サスペンデットはこれから実装します");
+    return true;
+  }
+  if (value === "boysmanual") {
+    setShowBoysManualPopup(true);
+  }
+  return false;
+};
+
+
+
 const handleSpeak = async () => {  
   const txt =
       "この試合は、ただ今で打ち切り、継続試合となります。\n" +
@@ -349,6 +511,42 @@ const handleSpeak = async () => {
   const handleStop = () => {
     stop();
   };
+
+  const buildBoysEndGameAnnouncement = async (
+    totalMyScore: number,
+    totalOpponentScore: number,
+    myTeam: string,
+    formatted: string
+  ) => {
+    const teamData = (await localForage.getItem("team")) as
+      | { name?: string; players?: any[] }
+      | null;
+
+    const players = Array.isArray(teamData?.players) ? teamData.players : [];
+
+    const pitcherTotals =
+      ((await localForage.getItem("pitcherTotals")) as Record<number, number>) || {};
+
+    const pitcherOrder =
+      (((await localForage.getItem("pitcherOrder")) as number[]) || []).map(Number);
+
+    // 最後に投げた投手を優先
+    const lastPitcherId =
+      [...pitcherOrder].reverse().find((id) => Number.isFinite(Number(id))) ??
+      Object.keys(pitcherTotals).map(Number).find((id) => Number.isFinite(id));
+
+    const pitcher = players.find((p) => Number(p?.id) === Number(lastPitcherId));
+    const pitcherName = pitcher?.lastName || "当該";
+    const pitcherTotal =
+      lastPitcherId != null ? Number(pitcherTotals[lastPitcherId] ?? 0) : 0;
+
+    return (
+      `ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
+      `${pitcherName}投手の合計投球数は${pitcherTotal}球です。\n` +
+      `なおこの試合の終了時刻は${formatted}です。`
+    );
+  };
+
   useKeepScreenAwake();
 
 
@@ -359,6 +557,7 @@ const handleSpeak = async () => {
       {screen === "menu" && (
         <Menu
           onNavigate={setScreen}
+          leagueMode={leagueMode}
           iosKeepAwake={iosKeepAwake}
           onEnableIOSAwake={async () => {
             // 1) Wake Lock を優先
@@ -456,6 +655,7 @@ const handleSpeak = async () => {
               />
         </>
       )}
+
       {screen === "announcement" && (
         <>
           <button
@@ -464,9 +664,44 @@ const handleSpeak = async () => {
           >
             ← 試合開始画面に戻る
           </button>
-          <PreGameAnnouncement
+
+          {leagueMode === "boys" ? (
+            <BoysPreGameAnnouncement
+              onNavigate={async (next) => {
+                if (next === "seatIntroduction") {
+                  fromGameRef.current = false;
+                  lastOffenseRef.current = false;
+                }
+                setScreen(next);
+              }}
+              onBack={() => setScreen("startGame")}
+            />
+          ) : (
+            <PreGameAnnouncement
+              onNavigate={async (next) => {
+                // ★ 試合前アナウンス→シート紹介のときは“試合中からではない”扱いにする
+                if (next === "seatIntroduction") {
+                  fromGameRef.current = false;
+                  lastOffenseRef.current = false;
+                }
+                setScreen(next);
+              }}
+              onBack={() => setScreen("startGame")}
+            />
+          )}
+        </>
+      )}
+
+      {screen === "boysPreGameAnnouncement" && (
+        <>
+          <button
+            className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
+            onClick={() => setScreen("startGame")}
+          >
+            ← 試合開始画面に戻る
+          </button>
+          <BoysPreGameAnnouncement
             onNavigate={async (next) => {
-              // ★ 試合前アナウンス→シート紹介のときは“試合中からではない”扱いにする
               if (next === "seatIntroduction") {
                 fromGameRef.current = false;
                 lastOffenseRef.current = false;
@@ -482,7 +717,7 @@ const handleSpeak = async () => {
         <>
           <button
             className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
-            onClick={() => setScreen("announcement")}
+            onClick={() => setScreen(isBoys ? "boysPreGameAnnouncement" : "announcement")}
           >
             ← 試合前アナウンスメニューに戻る
           </button>
@@ -496,7 +731,7 @@ const handleSpeak = async () => {
         <>
           <button
             className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
-            onClick={() => setScreen("announcement")}
+            onClick={() => setScreen(isBoys ? "boysPreGameAnnouncement" : "announcement")}
           >
             ← 試合前アナウンスメニューに戻る
           </button>
@@ -504,15 +739,48 @@ const handleSpeak = async () => {
         </>
       )}
 
+      {screen === "startTimeAnnouncement" && (
+        <>
+          <button
+            className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
+            onClick={() => setScreen("boysPreGameAnnouncement")}
+          >
+            ← 試合前アナウンス画面に戻る
+          </button>
+          <StartTimeAnnouncement
+            onNavigate={setScreen}
+            onBack={() => setScreen("boysPreGameAnnouncement")}
+          />
+        </>
+      )}
+
+      {screen === "boysSheetKnock" && (
+        <>
+          <button
+            className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
+            onClick={() => setScreen("boysPreGameAnnouncement")}
+          >
+            ← 試合前アナウンス画面に戻る
+          </button>
+          <BoysSheetKnock
+            onNavigate={setScreen}
+            onBack={() => setScreen("boysPreGameAnnouncement")}
+          />
+        </>
+      )}
+
       {screen === "announceStartingLineup" && (
         <>
           <button
             className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
-            onClick={() => setScreen("announcement")}
+            onClick={() => setScreen(isBoys ? "boysPreGameAnnouncement" : "announcement")}
           >
             ← 試合前アナウンスメニューに戻る
           </button>
-          <AnnounceStartingLineup onNavigate={setScreen} />
+          <AnnounceStartingLineup
+            onNavigate={setScreen}
+            leagueMode={leagueMode}
+          />
         </>
       )}
 
@@ -520,7 +788,7 @@ const handleSpeak = async () => {
         <>
           <button
             className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
-            onClick={() => setScreen("announcement")} // 適宜戻る先の画面を調整してください
+            onClick={() => setScreen(isBoys ? "boysPreGameAnnouncement" : "announcement")}
           >
             ← 試合前アナウンスメニューに戻る
           </button>
@@ -532,11 +800,15 @@ const handleSpeak = async () => {
         <>
           <button
             className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
-            onClick={() => setScreen("announcement")} // 適宜戻る先の画面を調整してください
+            onClick={() => setScreen(isBoys ? "boysPreGameAnnouncement" : "announcement")}
           >
             ← 試合前アナウンスメニューに戻る
           </button>
-          <StartGreeting onBack={() => setScreen("announcement")} />
+          <StartGreeting
+            onBack={() => setScreen(isBoys ? "boysPreGameAnnouncement" : "announcement")}
+            onNavigate={setScreen}
+            leagueMode={leagueMode}
+          />
         </>
       )}
 
@@ -544,16 +816,20 @@ const handleSpeak = async () => {
         <>
           <button
             className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
-            onClick={() => setScreen(fromGameRef.current ? "defense" : "announcement")}
+            onClick={() => setScreen(fromGameRef.current ? "defense" : (isBoys ? "boysPreGameAnnouncement" : "announcement"))}
           >
             ← {fromGameRef.current ? "試合に戻る" : "試合前アナウンスメニューに戻る"}
           </button>
           <SeatIntroduction
             onNavigate={setScreen}
             onBack={() =>
-              setScreen(fromGameRef.current ? (lastOffenseRef.current ? "offense" : "defense") : "announcement")
+              setScreen(
+                fromGameRef.current
+                  ? (lastOffenseRef.current ? "offense" : "defense")
+                  : (isBoys ? "boysPreGameAnnouncement" : "announcement")
+              )
             }
-            fromGame={fromGameRef.current} // ✅ 追加
+            leagueMode={leagueMode}
           />
         </>
       )}
@@ -570,211 +846,255 @@ const handleSpeak = async () => {
         ← メニューに戻る
       </button>
 
-      {/* 右端のドロップダウン */}
-      <select
-        className="px-4 py-2 rounded-full bg-gray-100 text-gray-800 shadow-sm border border-gray-300"
-        value={otherOption} // ← 追加
-        onChange={async (e) => {
-          const value = e.target.value;
-          if (value === "end") {
-            console.group("[END] その他→試合終了");
-            const now = new Date();
-            const formatted = `${now.getHours()}時${now.getMinutes()}分`;
-            setEndTime(formatted);
+{/* 右端のドロップダウン */}
+<select
+  className="px-4 py-2 rounded-full bg-gray-100 text-gray-800 shadow-sm border border-gray-300"
+  value={otherOption}
+  onChange={async (e) => {
+    const value = e.target.value;
 
-            const team = (await localForage.getItem("team")) as { name?: string } | null;
-            // RAW で取得（別所で上書きされている可能性があるため）
-            const match = (await localForage.getItem("matchInfo")) as any;
-            const noNextGame = Boolean(match?.noNextGame); 
-            console.log("matchInfo (RAW) =", match);
-            const stash = await localForage.getItem("matchNumberStash");
-    if (match && (match.matchNumber == null) && Number(stash) >= 1) {
-      await localForage.setItem("matchInfo", { ...match, matchNumber: Number(stash) });
-      console.log("🩹 repaired matchInfo at mount with matchNumber =", stash);
-    }
+    if (value === "end") {
+      console.group("[END] その他→試合終了");
+      const now = new Date();
+      const formatted = `${now.getHours()}時${now.getMinutes()}分`;
+      setEndTime(formatted);
 
-            type Scores = { [inning: string]: { top?: number; bottom?: number } };
-            const scores = ((await localForage.getItem("scores")) as Scores) || {};
-            console.log("scores (RAW) =", scores);
+      const team = (await localForage.getItem("team")) as { name?: string } | null;
+      const match = (await localForage.getItem("matchInfo")) as any;
+      const noNextGame = Boolean(match?.noNextGame);
+      console.log("matchInfo (RAW) =", match);
 
-            const isHome: boolean = !!(match?.isHome ?? true);
-            console.log("isHome =", isHome);
+      const stash = await localForage.getItem("matchNumberStash");
+      if (match && match.matchNumber == null && Number(stash) >= 1) {
+        await localForage.setItem("matchInfo", { ...match, matchNumber: Number(stash) });
+        console.log("🩹 repaired matchInfo at mount with matchNumber =", stash);
+      }
 
-            const toNum = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+      type Scores = { [inning: string]: { top?: number; bottom?: number } };
+      const scores = ((await localForage.getItem("scores")) as Scores) || {};
+      console.log("scores (RAW) =", scores);
 
-            const totalMyScore = Object.values(scores).reduce((sum, s) => {
-              const val = isHome ? (s?.bottom ?? 0) : (s?.top ?? 0);
-              return sum + toNum(val);
-            }, 0);
+      const isHome: boolean = !!(match?.isHome ?? true);
+      console.log("isHome =", isHome);
 
-            const totalOpponentScore = Object.values(scores).reduce((sum, s) => {
-              const val = isHome ? (s?.top ?? 0) : (s?.bottom ?? 0);
-              return sum + toNum(val);
-            }, 0);
+      const toNum = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
-            console.log("totals -> my:", totalMyScore, "opp:", totalOpponentScore);
+      const totalMyScore = Object.values(scores).reduce((sum, s) => {
+        const val = isHome ? (s?.bottom ?? 0) : (s?.top ?? 0);
+        return sum + toNum(val);
+      }, 0);
 
-            const myTeam = team?.name ?? "自チーム";
+      const totalOpponentScore = Object.values(scores).reduce((sum, s) => {
+        const val = isHome ? (s?.top ?? 0) : (s?.bottom ?? 0);
+        return sum + toNum(val);
+      }, 0);
 
-            // --- ここがポイント：試合番号の“自己修復”＋フォールバック ---
-            let rawMatchNumber = match?.matchNumber;
+      const myTeam = team?.name ?? "自チーム";
 
-            // A) matchInfo に無ければ、スタッシュから復元（後述の保存変更と対）
-            if (rawMatchNumber == null) {
-              const stash = await localForage.getItem("matchNumberStash");
-              if (Number(stash) >= 1) {
-                rawMatchNumber = Number(stash);
-                // ついでに matchInfo を自己修復（後続画面でも正しく使えるように）
-                const repaired = { ...(match || {}), matchNumber: rawMatchNumber };
-                await localForage.setItem("matchInfo", repaired);
-                console.log("💾 repaired matchInfo with matchNumber =", rawMatchNumber);
-              } else {
-                console.warn("⚠️ matchNumber not found (neither matchInfo nor stash)");
-              }
-            }
+      let rawMatchNumber = match?.matchNumber;
+      if (rawMatchNumber == null) {
+        const stash = await localForage.getItem("matchNumberStash");
+        if (Number(stash) >= 1) {
+          rawMatchNumber = Number(stash);
+          const repaired = { ...(match || {}), matchNumber: rawMatchNumber };
+          await localForage.setItem("matchInfo", repaired);
+        }
+      }
 
-            const parsed = Number(rawMatchNumber);
-            const currentGame = Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
-            const nextGame = currentGame + 1;
-            console.log({ rawMatchNumber, currentGame, nextGame });
+      const parsed = Number(rawMatchNumber);
+      const currentGame = Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
+      const nextGame = currentGame + 1;
 
 if (totalMyScore > totalOpponentScore) {
-  let announcement =
-    `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
-    `審判員の皆様、ありがとうございました。\n` +
-    `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
-    `尚、この試合の終了時刻は ${formatted}です。\n` +
-    `これより、ピッチングレコードの確認を行います。\n` +
-    `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
-    `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;
 
-  // ✅ 「次の試合なし」チェックが外れている場合のみ、グランド整備文を追加
-  if (!noNextGame) {
-    announcement +=
-      `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
-      `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`;
+  let announcement = "";
+  const currentLeagueMode = getLeagueMode();
+
+  if (currentLeagueMode === "boys") {
+    // ボーイズ用
+    const endGamePitcherInfo = (await localForage.getItem("endGamePitcherInfo")) as
+      | { pitcherId?: number; pitcherName?: string; totalPitchCount?: number }
+      | null;
+
+    const pitcherName = endGamePitcherInfo?.pitcherName || "";
+    const pitcherTotal = Number(endGamePitcherInfo?.totalPitchCount ?? 0);
+
+    announcement =
+      `ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
+      `${pitcherName}投手の合計投球数は${pitcherTotal}球です。\n` +
+      `なおこの試合の終了時刻は${formatted}です。`;
+
+  } else {
+
+    // ポニー用
+    announcement =
+      `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
+      `審判員の皆様、ありがとうございました。\n` +
+      `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
+      `尚、この試合の終了時刻は ${formatted}です。\n` +
+      `これより、ピッチングレコードの確認を行います。\n` +
+      `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
+      `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;
+
+    if (!noNextGame) {
+      announcement +=
+        `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
+        `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`;
+    }
+
   }
 
   setEndGameAnnouncement(announcement);
   setShowEndGamePopup(true);
+
 } else {
   alert("試合終了しました");
 }
 
-            console.groupEnd();
-            } else if (value === "tiebreak") {
-              const cfg = (await localForage.getItem("tiebreakConfig")) as
-                | { outs?: string; bases?: string }
-                | null;
-              const outs = cfg?.outs ?? "ワンナウト";
-              const bases = cfg?.bases ?? "2,3塁";
+      console.groupEnd();
 
-              // 現在のイニング取得（matchInfo優先、なければscoresの最大回）
-              type Scores = { [inning: string]: { top?: number; bottom?: number } };
-              const match = (await localForage.getItem("matchInfo")) as any;
-              const scores = ((await localForage.getItem("scores")) as Scores) || {};
+    } else if (value === "tiebreak") {
+      const cfg = (await localForage.getItem("tiebreakConfig")) as
+        | { outs?: string; bases?: string }
+        | null;
+      const outs = cfg?.outs ?? "ワンナウト";
+      const bases = cfg?.bases ?? "2,3塁";
 
-              let inning = Number(match?.inning);
-              if (!Number.isFinite(inning) || inning < 1) {
-                const keys = Object.keys(scores)
-                  .map((k) => Number(k))
-                  .filter((n) => Number.isFinite(n) && n >= 1);
-                inning = keys.length > 0 ? Math.max(...keys) : 1;
-              }
+      type Scores = { [inning: string]: { top?: number; bottom?: number } };
+      const match = (await localForage.getItem("matchInfo")) as any;
+      const scores = ((await localForage.getItem("scores")) as Scores) || {};
 
-              // ★ 直前の回（最低でも1回に丸め）
-              const prevInning = Math.max(1, inning - 1);
+      let inning = Number(match?.inning);
+      if (!Number.isFinite(inning) || inning < 1) {
+        const keys = Object.keys(scores)
+          .map((k) => Number(k))
+          .filter((n) => Number.isFinite(n) && n >= 1);
+        inning = keys.length > 0 ? Math.max(...keys) : 1;
+      }
 
-              const msg =
-                `この試合は、${prevInning}回終了して同点のため、大会規定により${outs}${bases}からのタイブレークに入ります。`;
+      const prevInning = Math.max(1, inning - 1);
 
-              setTiebreakMessage(msg);
-              setShowTiebreakPopup(true);
+      const msg =
+        leagueMode === "boys"
+          ? `ただいまより大会規定により、タイブレークをおこないます。\nタイブレークは${outs}${bases}の状態からおこないます。`
+          : `この試合は、${prevInning}回終了して同点のため、大会規定により${outs}${bases}からのタイブレークに入ります。`;
 
+      setTiebreakMessage(msg);
+      setShowTiebreakPopup(true);
 
+    } else if (value === "continue") {
+      setShowContinuationModal(true);
 
-            } else if (value === "continue") {
-              setShowContinuationModal(true);
+    } else if (value === "heat") {
+      setShowHeatPopup(true);
 
-          } else if (value === "heat") {
-            setShowHeatPopup(true);
-          } else if (value === "manual") {
-            //window.location.href = "/manual.pdf"; // ← PDFを別タブで開く
-            setShowManualPopup(true);
-          } else if (value === "pitchlist") {
-            // チームと投手別累計を読み込んで一覧を構築
-            const team = (await localForage.getItem("team")) as
-              | { players?: any[] }
-              | null;
-            const totals =
-              ((await localForage.getItem("pitcherTotals")) as Record<number, number>) ||
-              {};
-            const players = Array.isArray(team?.players) ? team!.players : [];
+    } else if (value === "manual") {
+      setShowManualPopup(true);
 
-            // 登板順（最初に投げた順）を読み込む
-            const order =
-              ((await localForage.getItem<number[]>("pitcherOrder")) || []).slice();
+    } else if (value === "pitchlist") {
+      const team = (await localForage.getItem("team")) as
+        | { players?: any[] }
+        | null;
+      const totals =
+        ((await localForage.getItem("pitcherTotals")) as Record<number, number>) ||
+        {};
+      const players = Array.isArray(team?.players) ? team!.players : [];
 
-            // まず totals から行データを作って map に置く（>0 の人だけ）
-            const rowsMap = new Map<number, { name: string; number?: string; total: number }>();
-            for (const [idStr, total] of Object.entries(totals)) {
-              const tot = Number(total) || 0;
-              if (tot <= 0) continue;
-              const id = Number(idStr);
-              const p = players.find((x) => x?.id === id);
-              const name = (p?.lastName ?? "") + (p?.firstName ?? "") || `ID:${id}`;
-              const number = p?.number ? `#${p.number}` : undefined;
-              rowsMap.set(id, { name, number, total: tot });
-            }
+      const order =
+        ((await localForage.getItem<number[]>("pitcherOrder")) || []).slice();
 
-            // 1) 登板順に並べて詰める
-            const rows: { name: string; number?: string; total: number }[] = [];
-            for (const id of order) {
-              const r = rowsMap.get(id);
-              if (r) {
-                rows.push(r);
-                rowsMap.delete(id); // 取り出したものは削除
-              }
-            }
+      const rowsMap = new Map<number, { name: string; number?: string; total: number }>();
+      for (const [idStr, total] of Object.entries(totals)) {
+        const tot = Number(total) || 0;
+        if (tot <= 0) continue;
+        const id = Number(idStr);
+        const p = players.find((x) => x?.id === id);
+        const name = (p?.lastName ?? "") + (p?.firstName ?? "") || `ID:${id}`;
+        const number = p?.number ? `#${p.number}` : undefined;
+        rowsMap.set(id, { name, number, total: tot });
+      }
 
-            // 2) まだ順番情報が無い投手（過去データ等）は最後に付け足す
-            for (const r of rowsMap.values()) {
-              rows.push(r);
-            }
+      const rows: { name: string; number?: string; total: number }[] = [];
+      for (const id of order) {
+        const r = rowsMap.get(id);
+        if (r) {
+          rows.push(r);
+          rowsMap.delete(id);
+        }
+      }
 
-            setPitchList(rows);
-            setShowPitchListPopup(true);
+      for (const r of rowsMap.values()) {
+        rows.push(r);
+      }
 
-          }
+      setPitchList(rows);
+      setShowPitchListPopup(true);
 
-        }}
-        defaultValue=""
-      >
-        <option value="" disabled hidden>
-          その他
-        </option>
-        <option value="end">試合終了</option>
-        <option value="tiebreak">タイブレーク</option>
-        <option value="continue">継続試合</option>
-        <option value="heat">熱中症</option> 
-        <option value="manual">連盟🎤マニュアル</option> 
-        <option value="pitchlist">投球数⚾</option>
-      </select>
+    } else if (value === "intentionalWalk") {
+      setIntentionalWalkTrigger((n) => n + 1);
+
+    } else if (value === "waterBreak") {
+      setWaterBreakRunning(false);
+      setWaterBreakRemaining(waterBreakMinutes * 60);
+      setShowWaterBreakPopup(true);
+
+    } else if (value === "suspend") {
+      setShowSuspendPopup(true);
+
+    } else if (value === "cancelGame") {
+      setShowCancelGamePopup(true);
+
+    } else if (value === "suspendedGame") {
+      setShowSuspendedGamePopup(true);
+
+    } else if (value === "boysmanual") {
+      setShowBoysManualPopup(true);
+    }
+
+    setOtherOption("");
+  }}
+>
+  <option value="" disabled hidden>
+    その他
+  </option>
+
+  {isBoys ? (
+    <>
+      <option value="intentionalWalk">申告敬遠</option>
+      <option value="waterBreak">給水タイム</option>
+      <option value="tiebreak">タイブレーク</option>
+      <option value="end">試合終了</option>
+      <option value="suspend">中断</option>
+      <option value="suspendedGame">サスペンデット</option>
+      <option value="boysmanual">連盟🎤マニュアル</option>
+    </>
+  ) : (
+    <>
+      <option value="end">試合終了</option>
+      <option value="tiebreak">タイブレーク</option>
+      <option value="continue">継続試合</option>
+      <option value="heat">熱中症</option>
+      <option value="manual">連盟🎤マニュアル</option>
+      <option value="pitchlist">投球数⚾</option>
+    </>
+  )}
+</select>
     </div>
-          <OffenseScreen
-            onSwitchToDefense={() => setScreen("defense")}
-            onGoToSeatIntroduction={() => {
-              fromGameRef.current = true;       // ✅ 試合中からの遷移であることを記録
-              lastOffenseRef.current = true;    // ✅ 攻撃画面から来たことを記録
-              setScreen("seatIntroduction");
-            }}
-          />
+        <OffenseScreen
+          onSwitchToDefense={() => setScreen("defense")}
+          onGoToSeatIntroduction={() => {
+            fromGameRef.current = true;
+            lastOffenseRef.current = true;
+            setScreen("seatIntroduction");
+          }}
+          openIntentionalWalkTrigger={intentionalWalkTrigger}
+        />
         </>
       )}
 
-      {screen === "defense" && (        
-        <>
-          <div className="m-4 flex justify-between items-center">
+{screen === "defense" && (        
+  <>
+    <div className="m-4 flex justify-between items-center">
       {/* 左端のメニューボタン */}
       <button
         className="px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
@@ -784,12 +1104,12 @@ if (totalMyScore > totalOpponentScore) {
       </button>
 
       {/* 右端のドロップダウン */}
-      
       <select      
         className="px-4 py-2 rounded-full bg-gray-100 text-gray-800 shadow-sm border border-gray-300"
-        value={otherOption} // ← 追加
+        value={otherOption}
         onChange={async (e) => {
           const value = e.target.value;
+
           if (value === "end") {
             console.group("[END] その他→試合終了");
             const now = new Date();
@@ -797,23 +1117,19 @@ if (totalMyScore > totalOpponentScore) {
             setEndTime(formatted);
 
             const team = (await localForage.getItem("team")) as { name?: string } | null;
-            // RAW で取得（別所で上書きされている可能性があるため）
             const match = (await localForage.getItem("matchInfo")) as any;
             const noNextGame = Boolean(match?.noNextGame); 
             const stash = await localForage.getItem("matchNumberStash");
-              if (match && (match.matchNumber == null) && Number(stash) >= 1) {
-                await localForage.setItem("matchInfo", { ...match, matchNumber: Number(stash) });
-                console.log("🩹 repaired matchInfo at mount with matchNumber =", stash);
-              }
-            console.log("matchInfo (RAW) =", match);
+
+            if (match && (match.matchNumber == null) && Number(stash) >= 1) {
+              await localForage.setItem("matchInfo", { ...match, matchNumber: Number(stash) });
+              console.log("🩹 repaired matchInfo at mount with matchNumber =", stash);
+            }
 
             type Scores = { [inning: string]: { top?: number; bottom?: number } };
             const scores = ((await localForage.getItem("scores")) as Scores) || {};
-            console.log("scores (RAW) =", scores);
 
             const isHome: boolean = !!(match?.isHome ?? true);
-            console.log("isHome =", isHome);
-
             const toNum = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
             const totalMyScore = Object.values(scores).reduce((sum, s) => {
@@ -826,64 +1142,107 @@ if (totalMyScore > totalOpponentScore) {
               return sum + toNum(val);
             }, 0);
 
-            console.log("totals -> my:", totalMyScore, "opp:", totalOpponentScore);
-
             const myTeam = team?.name ?? "自チーム";
 
-            // --- ここがポイント：試合番号の“自己修復”＋フォールバック ---
             let rawMatchNumber = match?.matchNumber;
-
-            // A) matchInfo に無ければ、スタッシュから復元（後述の保存変更と対）
             if (rawMatchNumber == null) {
               const stash = await localForage.getItem("matchNumberStash");
               if (Number(stash) >= 1) {
                 rawMatchNumber = Number(stash);
-                // ついでに matchInfo を自己修復（後続画面でも正しく使えるように）
                 const repaired = { ...(match || {}), matchNumber: rawMatchNumber };
                 await localForage.setItem("matchInfo", repaired);
-                console.log("💾 repaired matchInfo with matchNumber =", rawMatchNumber);
-              } else {
-                console.warn("⚠️ matchNumber not found (neither matchInfo nor stash)");
               }
             }
 
             const parsed = Number(rawMatchNumber);
             const currentGame = Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
             const nextGame = currentGame + 1;
-            console.log({ rawMatchNumber, currentGame, nextGame });
 
 if (totalMyScore > totalOpponentScore) {
-  let announcement =
-    `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
-    `審判員の皆様、ありがとうございました。\n` +
-    `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
-    `尚、この試合の終了時刻は ${formatted} です。\n` +
-    `これより、ピッチングレコードの確認を行います。\n` +
-    `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
-    `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;
 
-  // ✅ 「次の試合なし」チェックが外れている場合のみ、グランド整備文を追加
-  if (!noNextGame) {
-    announcement +=
-      `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
-      `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`;
+  let announcement = "";
+  const currentLeagueMode = getLeagueMode();
+
+  if (currentLeagueMode === "boys") {
+
+    // ボーイズ用
+    const endGamePitcherInfo = (await localForage.getItem("endGamePitcherInfo")) as
+      | { pitcherId?: number; pitcherName?: string; totalPitchCount?: number }
+      | null;
+
+    const pitcherName = endGamePitcherInfo?.pitcherName || "";
+    const pitcherTotal = Number(endGamePitcherInfo?.totalPitchCount ?? 0);
+
+    announcement =
+      `ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
+      `${pitcherName}投手の合計投球数は${pitcherTotal}球です。\n` +
+      `なおこの試合の終了時刻は${formatted}です。`;
+  } else {
+
+    // ポニー用
+    announcement =
+      `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
+      `審判員の皆様、ありがとうございました。\n` +
+      `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
+      `尚、この試合の終了時刻は ${formatted}です。\n` +
+      `これより、ピッチングレコードの確認を行います。\n` +
+      `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
+      `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;
+
+    if (!noNextGame) {
+      announcement +=
+        `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
+        `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`;
+    }
+
   }
 
   setEndGameAnnouncement(announcement);
   setShowEndGamePopup(true);
+
 } else {
   alert("試合終了しました");
 }
+
             console.groupEnd();
+
+          } else if (value === "tiebreak") {
+            const cfg = (await localForage.getItem("tiebreakConfig")) as
+              | { outs?: string; bases?: string }
+              | null;
+            const outs = cfg?.outs ?? "ワンナウト";
+            const bases = cfg?.bases ?? "2,3塁";
+
+            type Scores = { [inning: string]: { top?: number; bottom?: number } };
+            const match = (await localForage.getItem("matchInfo")) as any;
+            const scores = ((await localForage.getItem("scores")) as Scores) || {};
+
+            let inning = Number(match?.inning);
+            if (!Number.isFinite(inning) || inning < 1) {
+              const keys = Object.keys(scores)
+                .map((k) => Number(k))
+                .filter((n) => Number.isFinite(n) && n >= 1);
+              inning = keys.length > 0 ? Math.max(...keys) : 1;
+            }
+
+            const prevInning = Math.max(1, inning - 1);
+
+            const msg =
+              `この試合は、${prevInning}回終了して同点のため、大会規定により${outs}${bases}からのタイブレークに入ります。`;
+
+            setTiebreakMessage(msg);
+            setShowTiebreakPopup(true);
+
           } else if (value === "continue") {
             setShowContinuationModal(true);
+
           } else if (value === "heat") {
             setShowHeatPopup(true);
+
           } else if (value === "manual") {
-            //window.location.href = "/manual.pdf"; // ← PDFを別タブで開く
             setShowManualPopup(true);
+
           } else if (value === "pitchlist") {
-            // チームと投手別累計を読み込んで一覧を構築
             const team = (await localForage.getItem("team")) as
               | { players?: any[] }
               | null;
@@ -892,11 +1251,9 @@ if (totalMyScore > totalOpponentScore) {
               {};
             const players = Array.isArray(team?.players) ? team!.players : [];
 
-            // 登板順（最初に投げた順）を読み込む
             const order =
               ((await localForage.getItem<number[]>("pitcherOrder")) || []).slice();
 
-            // まず totals から行データを作って map に置く（>0 の人だけ）
             const rowsMap = new Map<number, { name: string; number?: string; total: number }>();
             for (const [idStr, total] of Object.entries(totals)) {
               const tot = Number(total) || 0;
@@ -906,19 +1263,17 @@ if (totalMyScore > totalOpponentScore) {
               const name = (p?.lastName ?? "") + (p?.firstName ?? "") || `ID:${id}`;
               const number = p?.number ? `#${p.number}` : undefined;
               rowsMap.set(id, { name, number, total: tot });
-}
+            }
 
-            // 1) 登板順に並べて詰める
             const rows: { name: string; number?: string; total: number }[] = [];
             for (const id of order) {
               const r = rowsMap.get(id);
               if (r) {
                 rows.push(r);
-                rowsMap.delete(id); // 取り出したものは削除
+                rowsMap.delete(id);
               }
             }
 
-            // 2) まだ順番情報が無い投手（過去データ等）は最後に付け足す
             for (const r of rowsMap.values()) {
               rows.push(r);
             }
@@ -926,27 +1281,60 @@ if (totalMyScore > totalOpponentScore) {
             setPitchList(rows);
             setShowPitchListPopup(true);
 
+
+          } else if (value === "waterBreak") {
+            setWaterBreakRunning(false);
+            setWaterBreakRemaining(waterBreakMinutes * 60);
+            setShowWaterBreakPopup(true);
+
+          } else if (value === "suspend") {
+            setShowSuspendPopup(true);
+
+          } else if (value === "cancelGame") {
+            setShowCancelGamePopup(true);
+
+          } else if (value === "suspendedGame") {
+            setShowSuspendedGamePopup(true);
+
+          } else if (value === "boysmanual") {
+            setShowBoysManualPopup(true);
           }
 
+          setOtherOption("");
         }}
-        defaultValue=""
       >
         <option value="" disabled hidden>
           その他
         </option>
-        <option value="end">試合終了</option>
-        <option value="continue">継続試合</option>
-        <option value="heat">熱中症</option> 
-        <option value="manual">連盟🎤マニュアル</option> 
-        <option value="pitchlist">投球数⚾</option>
+
+        {isBoys ? (
+          <>
+
+            <option value="waterBreak">給水タイム</option>
+            <option value="end">試合終了</option>
+            <option value="suspend">中断</option>
+            <option value="suspendedGame">サスペンデット</option>
+            <option value="boysmanual">連盟🎤マニュアル</option> 
+          </>
+        ) : (
+          <>
+            <option value="end">試合終了</option>
+            <option value="continue">継続試合</option>
+            <option value="heat">熱中症</option> 
+            <option value="manual">連盟🎤マニュアル</option> 
+            <option value="pitchlist">投球数⚾</option>
+          </>
+        )}
       </select>
     </div>
-           <DefenseScreen key="defense" 
-            onChangeDefense={() => setScreen("defenseChange")}
-            onSwitchToOffense={() => setScreen("offense")}
-          />
-        </>
-      )}
+
+    <DefenseScreen
+      key="defense" 
+      onChangeDefense={() => setScreen("defenseChange")}
+      onSwitchToOffense={() => setScreen("offense")}
+    />
+  </>
+)}
 
 {screen === "defenseChange" && (
   <>
@@ -995,6 +1383,15 @@ if (totalMyScore > totalOpponentScore) {
 
 {screen === "tts-settings" && (
   <TtsSettings onBack={() => setScreen("operationSettings")} />
+)}
+
+{screen === "league-settings" && (
+  <LeagueSettings
+    onNavigate={(next) => {
+      setLeagueMode(getLeagueMode());
+      setScreen(next);
+    }}
+  />
 )}
 
 {screen === "tutorial" && (
@@ -1094,6 +1491,8 @@ if (totalMyScore > totalOpponentScore) {
     </div>
   </div>
 )}
+
+
 
  {/* 熱中症画面*/}
 {showHeatPopup && (
@@ -1338,7 +1737,7 @@ if (totalMyScore > totalOpponentScore) {
 )}
 
 
-{/* 継続試合画面 */}
+{/* ✅　継続試合画面モーダル */}
 {showContinuationModal && (
   <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="継続試合">
     {/* 背景オーバーレイ */}
@@ -1423,8 +1822,293 @@ if (totalMyScore > totalOpponentScore) {
   </div>
 )}
 
+{/* ✅ 中断画面モーダル（ボーイズリーグ用） */}
+{showSuspendPopup && (
+  <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="中断">
+    {/* 背景 */}
+    <div
+      className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+      onClick={() => setShowSuspendPopup(false)}
+    />
 
+    {/* 中央カード */}
+    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+      <div
+        className="bg-white shadow-2xl rounded-2xl w-full max-w-md max-h-[85vh] overflow-hidden flex flex-col"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {/* ヘッダー */}
+        <div className="sticky top-0 z-10 bg-gradient-to-r from-rose-600 to-pink-600 text-white">
+          <div className="h-5 flex items-center justify-center">
+            <span className="mt-2 block h-1.5 w-12 rounded-full bg-white/60" />
+          </div>
+          <div className="px-4 py-3 flex items-center justify-between">
+            <h2 className="text-lg font-extrabold tracking-wide flex items-center gap-2">
+              <img src="/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
+              <span>中断</span>
+            </h2>
+            <button
+              onClick={() => setShowSuspendPopup(false)}
+              aria-label="閉じる"
+              className="rounded-full w-9 h-9 flex items-center justify-center
+                         bg-white/15 hover:bg-white/25 active:bg-white/30
+                         text-white text-lg"
+            >
+              ×
+            </button>
+          </div>
+        </div>
 
+        {/* 本文 */}
+        <div className="px-4 py-4 space-y-4 overflow-y-auto">
+
+          {/* 雨天中断 */}
+          <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+            <div className="text-red-700 font-extrabold mb-2">雨天中断</div>
+            <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
+              ご覧のような天候の為、試合を一時中断いたします。{'\n'}
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                onClick={async () => {
+                  await speak(
+                    "ご覧のような天候の為、試合を一時中断いたします。\n"
+                  );
+                }}
+                className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
+                           inline-flex items-center justify-center gap-2"
+              >
+                <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+                <span>読み上げ</span>
+              </button>
+              <button
+                onClick={() => stop()}
+                className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
+                           inline-flex items-center justify-center"
+              >
+                <span>停止</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 雷での中断 */}
+          <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+            <div className="text-red-700 font-extrabold mb-2">雷での中断</div>
+            <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
+              お知らせいたします。雷雲が近づいている為、試合を一時中断いたします。{'\n'}
+              スタンドの皆様も安全な場所に避難をお願い致します。
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                onClick={async () => {
+                  await speak(
+                    "お知らせいたします。雷雲が近づいている為、試合を一時中断いたします。\n" +
+                    "スタンドの皆様も安全な場所に避難をお願い致します。"
+                  );
+                }}
+                className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
+                           inline-flex items-center justify-center gap-2"
+              >
+                <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+                <span>読み上げ</span>
+              </button>
+              <button
+                onClick={() => stop()}
+                className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
+                           inline-flex items-center justify-center"
+              >
+                <span>停止</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 中断→再開 */}
+          <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+            <div className="text-red-700 font-extrabold mb-2">中断→再開</div>
+            <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
+              大変長らくお待たせをしております。{'\n'}
+              ただいまからグラウンドの整備をおこないます。今しばらくお待ちください。
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                onClick={async () => {
+                  await speak(
+                    "大変長らくお待たせをしております。\n" +
+                    "ただいまからグラウンドの整備をおこないます。今しばらくお待ちください。"
+                  );
+                }}
+                className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
+                           inline-flex items-center justify-center gap-2"
+              >
+                <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+                <span>読み上げ</span>
+              </button>
+              <button
+                onClick={() => stop()}
+                className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
+                           inline-flex items-center justify-center"
+              >
+                <span>停止</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 中断→中止 */}
+          <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+            <div className="text-red-700 font-extrabold mb-2">中断→中止</div>
+            <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
+              ご覧のような天候状態の為、本日の試合は中止とさせていただきます。
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                onClick={async () => {
+                  await speak(
+                    "ご覧のような天候状態の為、本日の試合は中止とさせていただきます。"
+                  );
+                }}
+                className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
+                           inline-flex items-center justify-center gap-2"
+              >
+                <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+                <span>読み上げ</span>
+              </button>
+              <button
+                onClick={() => stop()}
+                className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
+                           inline-flex items-center justify-center"
+              >
+                <span>停止</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* フッター */}
+        <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
+          <button
+            onClick={() => setShowSuspendPopup(false)}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
+          >
+            OK
+          </button>
+          <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* ✅ サスペンデッドゲーム画面モーダル（ボーイズリーグ用） */}
+{showSuspendedGamePopup && (
+  <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="サスペンデッドゲーム">
+    {/* 背景 */}
+    <div
+      className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+      onClick={() => setShowSuspendedGamePopup(false)}
+    />
+
+    {/* 中央カード */}
+    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+      <div
+        className="bg-white shadow-2xl rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {/* ヘッダー */}
+        <div className="sticky top-0 z-10 bg-gradient-to-r from-rose-600 to-pink-600 text-white">
+          <div className="h-5 flex items-center justify-center">
+            <span className="mt-2 block h-1.5 w-12 rounded-full bg-white/60" />
+          </div>
+          <div className="px-4 py-3 flex items-center justify-between">
+            <h2 className="text-lg font-extrabold tracking-wide flex items-center gap-2">
+              <img src="/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
+              <span>サスペンデッドゲーム</span>
+            </h2>
+            <button
+              onClick={() => setShowSuspendedGamePopup(false)}
+              aria-label="閉じる"
+              className="rounded-full w-9 h-9 flex items-center justify-center
+                         bg-white/15 hover:bg-white/25 active:bg-white/30
+                         text-white text-lg"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+
+        {/* 本文 */}
+        <div className="px-4 py-4 space-y-4 overflow-y-auto">
+          <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+            <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
+              ご覧のような天候状態の為、{'\n'}試合続行が不可能となりましたので{'\n'}
+              この試合は大会規定により、{'\n'}サスペンデッドゲームといたします。
+            </p>
+
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                onClick={async () => {
+                  await speak(
+                    "ご覧のような天候状態の為、試合続行が不可能となりましたので\n" +
+                    "この試合は大会規定により、サスペンデッドゲームといたします。"
+                  );
+                }}
+                className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
+                           inline-flex items-center justify-center gap-2"
+              >
+                <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+                <span>読み上げ</span>
+              </button>
+
+              <button
+                onClick={() => stop()}
+                className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
+                           inline-flex items-center justify-center"
+              >
+                <span>停止</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* フッター */}
+        <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
+          <button
+            onClick={() => setShowSuspendedGamePopup(false)}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
+          >
+            OK
+          </button>
+          <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* ✅ マニュアル（ボーイズリーグ）表示画面モーダル */}
+{showBoysManualPopup && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div className="bg-white w-full max-w-4xl h-[90vh] rounded-xl shadow-lg overflow-hidden flex flex-col">
+      <div className="bg-gray-800 text-white px-4 py-2 text-center font-bold">
+        連盟🎤マニュアル
+      </div>
+      <div className="flex-1 overflow-hidden">
+        <iframe
+          src={boysmanualPdfURL}
+          title="Boys Manual"
+          className="w-full h-full border-0"
+        />
+      </div>
+      <button
+        className="bg-green-600 text-white py-2 text-lg"
+        onClick={() => setShowBoysManualPopup(false)}
+      >
+        OK
+      </button>
+    </div>
+  </div>
+)}
+
+{/* ✅ マニュアル（ポニーリーグ）表示画面モーダル */}
 {showManualPopup && (
   <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
     <div className="bg-white w-full max-w-4xl h-[90vh] rounded-xl shadow-lg overflow-hidden flex flex-col">
@@ -1540,99 +2224,226 @@ if (totalMyScore > totalOpponentScore) {
   </div>
 )}
 
-
-
-    </>    
-  );
-  
-{/* === 共通ボトムタブ（該当画面のみ表示） === */}
-{(["menu","startGame","offense","defense","operationSettings"] as ScreenType[]).includes(screen) && (
-  <>
-    {/* タブ分の下マージン（iOS Safe-Areaにも対応） */}
-    <div className="md:hidden" style={{ height: "calc(56px + env(safe-area-inset-bottom))" }} />
-
-    <BottomTab
-      current={screen}
-      onNavigate={(next) => {
-        // ゲーム文脈フラグはタブ遷移ではオフに
-        fromGameRef.current = false;
-        setScreen(next);
-      }}
+{/* ✅ 給水タイム */}
+{showWaterBreakPopup && (
+  <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="給水タイム">
+    {/* 背景 */}
+    <div
+      className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+      onClick={() => setShowWaterBreakPopup(false)}
     />
-  </>
+
+    {/* 中央カード */}
+    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+      <div
+        className="bg-white shadow-2xl rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {/* ヘッダー */}
+        <div className="sticky top-0 z-10 bg-gradient-to-r from-sky-600 to-cyan-600 text-white">
+          <div className="h-5 flex items-center justify-center">
+            <span className="mt-2 block h-1.5 w-12 rounded-full bg-white/60" />
+          </div>
+          <div className="px-4 py-3 flex items-center justify-between">
+            <h2 className="text-lg font-extrabold tracking-wide flex items-center gap-2">
+              <span className="text-xl">💧</span>
+              <span>給水タイム</span>
+            </h2>
+            <button
+              onClick={() => setShowWaterBreakPopup(false)}
+              aria-label="閉じる"
+              className="rounded-full w-9 h-9 flex items-center justify-center
+                          bg-white/15 hover:bg-white/25 active:bg-white/30
+                          text-white text-lg"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+
+        {/* 本文 */}
+        <div className="px-4 py-4 space-y-4 overflow-y-auto">
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2">
+              クーリングタイム
+            </label>
+            <select
+              value={waterBreakMinutes}
+              onChange={(e) => {
+                const nextMinutes = Number(e.target.value);
+                setWaterBreakMinutes(nextMinutes);
+
+                // 停止中だけ表示時間も変更
+                if (!waterBreakRunning) {
+                  setWaterBreakRemaining(nextMinutes * 60);
+                }
+              }}
+              disabled={waterBreakRunning}
+              className="w-full h-12 px-4 rounded-xl border border-slate-300 bg-white text-slate-800"
+            >
+              {Array.from({ length: 10 }, (_, i) => i + 1).map((min) => (
+                <option key={min} value={min}>
+                  {min}分
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+            <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
+              {waterBreakNotice || waterBreakMessage}
+            </p>
+
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                onClick={async () => {
+                  await speak(waterBreakMessage);
+                }}
+                className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
+                            inline-flex items-center justify-center gap-2"
+              >
+                <span className="whitespace-nowrap leading-none">読み上げ</span>
+              </button>
+
+              <button
+                onClick={() => stop()}
+                className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
+                            inline-flex items-center justify-center"
+              >
+                <span className="whitespace-nowrap leading-none">停止</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-center">
+            <div className="text-sm font-bold text-sky-700 mb-2">タイマー</div>
+            <div className="text-5xl font-extrabold tracking-widest text-sky-900 tabular-nums">
+              {formatWaterBreakTime(waterBreakRemaining)}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              onClick={handleWaterBreakStart}
+              disabled={waterBreakRunning}
+              className="h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold
+                          disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              START
+            </button>
+
+            <button
+              onClick={handleWaterBreakStop}
+              className="h-12 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold"
+            >
+              STOP
+            </button>
+
+            <button
+              onClick={handleWaterBreakClear}
+              className="h-12 rounded-xl bg-slate-700 hover:bg-slate-800 text-white font-bold"
+            >
+              クリア
+            </button>
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
+          <button
+            onClick={() => {
+              setShowWaterBreakPopup(false);
+              setWaterBreakRunning(false);
+            }}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
+          >
+            OK
+          </button>
+          <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
+        </div>
+      </div>
+    </div>
+  </div>
 )}
 
-
+{showWaterBreakPopupMessage && (
+  <div className="fixed inset-0 flex items-center justify-center z-[200]">
+    <div className="rounded-2xl bg-black/90 text-white px-8 py-8 shadow-2xl text-center max-w-lg w-[90%]">
+      <p className="text-3xl font-extrabold">
+        {waterBreakPopupMessage}
+      </p>
+    </div>
+  </div>
+)}
+    </>
+  );
 };
-
 
 const Menu = ({
   onNavigate,
+  leagueMode,
   iosKeepAwake,
   onEnableIOSAwake,
   onDisableIOSAwake,
 }: {
   onNavigate: (screen: ScreenType) => void;
+  leagueMode: LeagueMode;
   iosKeepAwake: boolean;
   onEnableIOSAwake: () => void;
   onDisableIOSAwake: () => void;
 }) => {
-
   const [canContinue, setCanContinue] = useState(false);
   const [lastScreen, setLastScreen] = useState<ScreenType | null>(null);
   const [showEndGamePopup, setShowEndGamePopup] = useState(false);
   const [endTime, setEndTime] = useState("");
 
-
-
   useEffect(() => {
-
-    console.log("📺 screen =", screen);
     (async () => {
       const saved = await localForage.getItem("lastGameScreen");
       if (saved && typeof saved === "string") {
- // “開始系”は除外（初期化の副作用を避ける）
- const ok: ScreenType[] = ["offense", "defense", "defenseChange"];
- const preferred = ok.includes(saved as ScreenType) ? (saved as ScreenType) : "defense";
- setCanContinue(true);
- setLastScreen(preferred);
+        const ok: ScreenType[] = ["offense", "defense", "defenseChange"];
+        const preferred = ok.includes(saved as ScreenType)
+          ? (saved as ScreenType)
+          : "defense";
+        setCanContinue(true);
+        setLastScreen(preferred);
       }
     })();
   }, []);
-  
-  // Menu コンポーネント内の return を差し替え
-return (
-  <div
-    className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
-    style={{
-      paddingTop: "max(16px, env(safe-area-inset-top))",
-      paddingBottom: "max(16px, env(safe-area-inset-bottom))",
-      WebkitTouchCallout: "none",  // ← 追加
-      WebkitUserSelect: "none",    // ← 追加
-      userSelect: "none",          // ← 追加
-    }}
-  >
-    {/* ← ここを“中央寄せ”の本体ラッパで包む */}
-    <div className="flex-1 w-full md:max-w-none flex flex-col items-center justify-center">
-      {/* ヘッダー */}
-<div className="w-full mb-8 md:mb-10">
-  <h1 className="text-center mb-0">
-    <img
-      src="/EasyAnnounceLOGO.png"
-      alt="Easyアナウンス ロゴ"
-      className="mx-auto w-[280px] md:w-[360px] drop-shadow-lg"
-    />
-  </h1>
-  <p
-    className="text-center -mt-2 mb-4 text-lg font-extrabold italic"
-    style={{
-      color: "white",
-      WebkitTextStroke: "0.5px red", // 赤い縁取り
-    }}
-  >
-    ～ Pony League Version ～
-  </p>
-</div>
+
+  return (
+    <div
+      className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
+      style={{
+        paddingTop: "max(16px, env(safe-area-inset-top))",
+        paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+        WebkitTouchCallout: "none",
+        WebkitUserSelect: "none",
+        userSelect: "none",
+      }}
+    >
+      <div className="flex-1 w-full md:max-w-none flex flex-col items-center justify-center">
+        <div className="w-full mb-8 md:mb-10">
+          <h1 className="text-center mb-0">
+            <img
+              src="/EasyAnnounceLOGO.png"
+              alt="Easyアナウンス ロゴ"
+              className="mx-auto w-[280px] md:w-[360px] drop-shadow-lg"
+            />
+          </h1>
+
+          <p
+            className="text-center -mt-2 mb-4 text-lg font-extrabold italic"
+            style={{
+              color: "white",
+              WebkitTextStroke:
+                leagueMode === "boys" ? "0.5px #3B82F6" : "0.5px red", // Boysは青
+            }}
+          >
+            {leagueMode === "boys"
+              ? "～ Boys League Version ～"
+              : "～ Pony League Version ～"}
+          </p>
+        </div>
 
 
     {/* ✅ 野球アナウンスの心得（横長ボタン） */}

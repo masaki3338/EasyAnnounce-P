@@ -11,6 +11,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import localForage from 'localforage';
 import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
+import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 
 const IconMic = () => (
   <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
@@ -118,10 +119,21 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({ onChangeDefense, onSwitch
     setShowTotalPitchModal(true);
   };
 
+
+
+
+
   // ★ 追加：見出しが収まらない時に小さくする判定用
   const [isNarrow, setIsNarrow] = useState(false);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
 
+  const [leagueMode] = useState<LeagueMode>(getLeagueMode());
+  const isBoys = leagueMode === "boys";
+
+  const pitcherCall = (ruby: string, suffix: string) =>
+    isBoys
+      ? `${ruby}投手`
+      : `ピッチャー${ruby}${suffix}`;
 
  const handleStartGame = () => {
       const now = new Date();
@@ -209,6 +221,35 @@ const [reEntryMessage, setReEntryMessage] = useState("");
 
 // 投手IDごとの累計球数（例: { 12: 63, 18: 23 }）
 const [pitcherTotals, setPitcherTotals] = useState<Record<number, number>>({});
+
+useEffect(() => {
+  const saveEndGamePitcherInfo = async () => {
+    const pitcherId = assignments?.["投"];
+
+    if (typeof pitcherId !== "number") return;
+
+    const totalPitchCount = Number(pitcherTotals?.[pitcherId] ?? 0);
+
+    const teamData = (await localForage.getItem("team")) as
+      | { players?: any[] }
+      | null;
+
+    const players = Array.isArray(teamData?.players) ? teamData.players : [];
+
+    const pitcher = players.find((p) => Number(p?.id) === Number(pitcherId));
+
+    const pitcherName = pitcher?.lastName || "";
+
+    await localForage.setItem("endGamePitcherInfo", {
+      pitcherId,
+      pitcherName,
+      totalPitchCount,
+    });
+  };
+
+  saveEndGamePitcherInfo();
+}, [assignments, pitcherTotals]);
+
 
 // プレイヤー取得の安全版
 const getPlayerSafe = (id: number) => {
@@ -569,14 +610,24 @@ if (currentPitcherId !== undefined && currentPitcherId === previousPitcherId) {
   current = savedPitchCount.current ?? 0;
   total = savedPitchCount.total ?? 0;
 
-  const msgs = [
-    `ピッチャー${pitcherRuby}${pitcherSuffix}、この回の投球数は${current}球です`
-  ];
 
+  const pitcherCall =
+    leagueMode === "boys"
+      ? `${pitcherRuby}投手、`
+      : `ピッチャー${pitcherRuby}${pitcherSuffix}、`;
+
+  const msgs = [
+    `${pitcherCall}この回の投球数は${current}球です`
+  ];
  
   if (!isSameInning) {
-    msgs.push(`トータル${total}球です`);
+    msgs.push(
+      isBoys
+        ? `合計投球数は${total}球です`
+        : `トータル${total}球です`
+    );
   }
+
   setAnnounceMessages(msgs);
 } else {
   // 🔄 投手交代：この回は0から、通算は「投手IDごとの累計」を優先
@@ -588,11 +639,12 @@ if (currentPitcherId !== undefined && currentPitcherId === previousPitcherId) {
   current = 0;
   total   = perPitcherTotal;
 
+  const pitcherRuby = `<ruby>${pitcherName}<rt>${pitcherKana}</rt></ruby>`;
+
   const msgs = [
-    `ピッチャー<ruby>${pitcherName}<rt>${pitcherKana}</rt></ruby>${pitcherSuffix}、`,
-    `この回の投球数は0球です`,
-    `トータル${total}球です`
+    `${pitcherCall(pitcherRuby, pitcherSuffix)}、`,
   ];
+
   setAnnounceMessages(msgs);
 }
 
@@ -670,26 +722,33 @@ const addPitch = async () => {
   const pitcherRuby = nameRubyHTML(pitcher);
 
   const newMessages: string[] = [];
-  newMessages.push(`ピッチャー${pitcherRuby}${pitcherSuffix}、この回の投球数は${newCurrent}球です`);
+  newMessages.push(`${pitcherCall(pitcherRuby, pitcherSuffix)}、この回の投球数は${newCurrent}球です`);
 
   if (newCurrent !== newTotal) {
-    newMessages.push(`トータル${newTotal}球です`);
+    newMessages.push(
+      isBoys
+        ? `合計投球数は${newTotal}球です`
+        : `トータル${newTotal}球です`
+    );
   }
 
   // ★ 警告判定も newTotal を基準にする（そのまま）
-  const warn1 = Math.max(0, pitchLimitSelected - 10);
-  const warn2 = pitchLimitSelected;
+const warn1 = Math.max(0, pitchLimitSelected - 10);
+const warn2 = pitchLimitSelected;
 
-  if (newTotal === warn1 || newTotal === warn2) {
-    const pitcherParts = getAnnounceNameParts(pitcher);
-    const specialMsg =
-      newTotal === warn2
-        ? `ピッチャー${pitcherParts.name}${pitcherSuffix}、ただいまの投球で${newTotal}球に到達しました。`
-        : `ピッチャー${pitcherParts.name}${pitcherSuffix}、ただいまの投球で${newTotal}球です。`;
+// ✅ ボーイズリーグでは投球制限数のお知らせを表示しない
+if (!isBoys && (newTotal === warn1 || newTotal === warn2)) {
+  const pitcherParts = getAnnounceNameParts(pitcher);
+  const specialHead = `ピッチャー${pitcherParts.name}${pitcherSuffix}`;
 
-    setPitchLimitMessages([specialMsg]);
-    setShowPitchLimitModal(true);
-  }
+  const specialMsg =
+    newTotal === warn2
+      ? `${specialHead}、ただいまの投球で${newTotal}球に到達しました。`
+      : `${specialHead}、ただいまの投球で${newTotal}球です。`;
+
+  setPitchLimitMessages([specialMsg]);
+  setShowPitchLimitModal(true);
+}
 
   setAnnounceMessages(newMessages);
 };
@@ -730,10 +789,14 @@ const subtractPitch = async () => {
   const pitcherRuby = nameRubyHTML(pitcher);
 
   const newMessages: string[] = [];
-  newMessages.push(`ピッチャー${pitcherRuby}${suffix}、この回の投球数は${newCurrent}球です`);
+  newMessages.push(`${pitcherCall(pitcherRuby, suffix)}、この回の投球数は${newCurrent}球です`);
 
   if (newCurrent !== newTotal) {
-    newMessages.push(`トータル${newTotal}球です`);
+    newMessages.push(
+      isBoys
+        ? `合計投球数は${newTotal}球です`
+        : `トータル${newTotal}球です`
+    );
   }
 
   setAnnounceMessages(newMessages);
@@ -2053,7 +2116,7 @@ if (typeof reEntryTarget?.index === "number") {
               const pitcherRuby = nameRubyHTML(pitcher); // ふりがなルビ（名なしなら姓だけになる実装にしている前提）
 
               const msgs: string[] = [];
-              msgs.push(`ピッチャー${pitcherRuby}${suffix}、この回の投球数は${currentPitchCount}球です`);
+              msgs.push(`${pitcherCall(pitcherRuby, suffix)}、この回の投球数は${currentPitchCount}球です`);
               msgs.push(`トータル${safe}球です`);
 
               setAnnounceMessages(msgs);

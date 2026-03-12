@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import localForage from "localforage";
 import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
+import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 
 // --- ミニSVGアイコン（外部依存なし） ---
 const IconBack = () => (
@@ -85,6 +86,10 @@ const MatchCreate: React.FC<MatchCreateProps> = ({ onBack, onGoToLineup }) => {
   const [lastPickedName, setLastPickedName] = useState<string>("");
   const [matchNumber, setMatchNumber] = useState(1);
   const [opponentTeam, setOpponentTeam] = useState("");
+
+  const [leagueMode] = useState<LeagueMode>(getLeagueMode());
+  const isBoys = leagueMode === "boys";
+
   // 相手チーム名のふりがな
   const [opponentTeamFurigana, setOpponentTeamFurigana] = useState("");
   const [isHome, setIsHome] = useState("先攻");
@@ -159,8 +164,8 @@ useEffect(() => {
       setIsHome(normalizedIsHome);
       setBenchSide(saved.benchSide ?? "1塁側");
       if (saved.umpires?.length === 4) setUmpires(saved.umpires);
-      setIsTwoUmp(Boolean((saved as any).twoUmpires));
-      setNoNextGame(Boolean((saved as any).noNextGame));
+      setIsTwoUmp(isBoys ? false : Boolean((saved as any).twoUmpires));
+      setNoNextGame(isBoys ? false : Boolean((saved as any).noNextGame));
     }
 
     // ✅ ここで“初期ロード完了”にする（state反映後）
@@ -175,6 +180,12 @@ useEffect(() => {
 
  // アンマウント時はTTSを停止
  useEffect(() => () => { ttsStop(); }, []);
+
+ useEffect(() => {
+    if (isBoys) {
+      setIsTwoUmp(false);
+    }
+  }, [isBoys]);
 
 useEffect(() => {
   // 初回は“初期ロード完了”を待ってから基準スナップショットを作る
@@ -304,7 +315,7 @@ const handleSave = async () => {
    isHome: isHome === "後攻",
    benchSide,
    umpires,
-   twoUmpires: isTwoUmp, 
+   twoUmpires: isBoys ? false : isTwoUmp,
    teamName: (base as any)?.teamName ?? team?.name ?? "",
    noNextGame, 
  };
@@ -478,6 +489,8 @@ return (
   </div>
 
   {/* 右：次の試合 あり/なし（ラジオ） */}
+{/* 右：次の試合 あり/なし（ボーイズは非表示） */}
+{!isBoys && (
   <fieldset className="flex items-center gap-4 p-3 rounded-xl bg-white/10 border border-white/10">
     <legend className="text-xs text-white/70">次の試合</legend>
     <label className="inline-flex items-center gap-2 text-sm">
@@ -501,6 +514,8 @@ return (
       なし
     </label>
   </fieldset>
+)}
+
 </div>
 
 
@@ -595,7 +610,8 @@ return (
     <div className="font-semibold">審判</div>
   </div>
 
-  {/* 2審制/4審制 ラジオ（審判の下に配置） */}
+{/* 2審制/4審制 ラジオ（ボーイズは非表示＝4審固定） */}
+{!isBoys && (
   <div
     className="ml-14 flex flex-col gap-2 text-sm select-none"
     role="radiogroup"
@@ -622,10 +638,10 @@ return (
         />
         4審
       </label>
-          <span className="text-xs text-white/70">後攻チームのみ使用</span>
+      <span className="text-xs text-white/70">後攻チームのみ使用</span>
     </div>
-
   </div>
+)}
 </div>
 
 
@@ -694,7 +710,7 @@ return (
               isHome: isHome === "後攻",
               benchSide,
               umpires,
-              twoUmpires: isTwoUmp,          // ✅ 2審制を記憶
+              twoUmpires: isBoys ? false : isTwoUmp,         // ✅ 2審制を記憶
               teamName: (base as any)?.teamName ?? team?.name ?? "",    
               noNextGame,// ✅ 追加：次の試合なし
             };

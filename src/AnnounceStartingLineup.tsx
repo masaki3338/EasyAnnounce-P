@@ -4,7 +4,6 @@ import localForage from "localforage";
 import { ScreenType } from "./App";
 import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
 
-
 /* === ミニSVGアイコン（依存なし） === */
 const IconBack = () => (
   <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden>
@@ -65,7 +64,10 @@ const InfoCard: React.FC<{ icon: React.ReactNode; title: string; text: string }>
   </section>
 );
 
-const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => void }> = ({ onNavigate }) => {
+const AnnounceStartingLineup: React.FC<{
+    onNavigate: (screen: ScreenType) => void;
+    leagueMode: "pony" | "boys";
+  }> = ({ onNavigate, leagueMode }) => {
   const [teamPlayers, setTeamPlayers] = useState<Player[]>([]);
   const [assignments, setAssignments] = useState<{ [pos: string]: number | null }>({});
   const [battingOrder, setBattingOrder] = useState<{ id: number; reason: string }[]>([]);
@@ -87,6 +89,8 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
   const [benchOutIds, setBenchOutIds] = useState<number[]>([]);
   const [ohtaniRule, setOhtaniRule] = useState(false);
 
+  const [tournamentName, setTournamentName] = useState("");
+  const [gameNumber, setGameNumber] = useState("");
 
 　// ✅ DHあり判定：指名打者が割り当てられているか
   const dhActive = assignments["指"] != null;
@@ -133,8 +137,8 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
         localForage.getItem<{ name: string; players: Player[] }>("team"),
         localForage.getItem("matchInfo"),
         localForage.getItem<boolean>("ohtaniRule"),
-        
       ]);
+
 
       setOhtaniRule(!!ohtani);
 
@@ -173,6 +177,9 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
         setOpponentTeamFurigana(mi.opponentTeamFurigana || "");
         setIsTwoUmpires(Boolean(mi.twoUmpires));
         setBenchSide(mi.benchSide || "1塁側");
+
+        setTournamentName(mi.tournamentName || "");
+        setGameNumber(String(mi.matchNumber || ""));
       }
     };
     
@@ -208,6 +215,9 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
       ? renderFurigana(team3rdBaseName, team3rdBaseFurigana)
       : team3rdBaseName;
 
+  const isBoys = leagueMode === "boys";
+  const lineupEntries = battingOrder.slice(0, 9);
+  const myBenchSide = benchSide || "1塁側";
 
   /* === 画面に見えている文言をそのまま読む（rubyはrtを採用） === */
   const getVisibleAnnounceText = (): string => {
@@ -315,9 +325,20 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
           {/* ヘッダー文 */}
           {isHomeTeamFirstAttack && (
             <p className="text-white whitespace-pre-wrap leading-relaxed">
-              お待たせいたしました、
-              {renderTeam1stBase()} {"対 "} {renderTeam3rdBase()}
-              のスターティングラインナップ並びに審判員をお知らせいたします。
+              {isBoys ? (
+                <>
+                  お待たせいたしました。本日の第{gameNumber}試合、{"\n"}
+                  {tournamentName} {renderTeam1stBase()} 対 {renderTeam3rdBase()} の{"\n"}
+                  試合開始に先立ちまして両チームのスターティングラインアップ{"\n"}
+                  ならびにアンパイアをご紹介いたします。
+                </>
+              ) : (
+                <>
+                  お待たせいたしました、
+                  {renderTeam1stBase()} {"対 "} {renderTeam3rdBase()}
+                  のスターティングラインナップ並びに審判員をお知らせいたします。
+                </>
+              )}
             </p>
           )}
 
@@ -325,6 +346,8 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
           <p className="mt-2 text-white">
             {isHomeTeamFirstAttack ? (
               <>先攻 {homeTeamFurigana ? renderFurigana(homeTeamName, homeTeamFurigana) : homeTeamName}</>
+            ) : isBoys ? (
+              <> 対しまして、後攻 {myBenchSide} {homeTeamFurigana ? renderFurigana(homeTeamName, homeTeamFurigana) : homeTeamName}</>
             ) : (
               <>続きまして後攻 {homeTeamFurigana ? renderFurigana(homeTeamName, homeTeamFurigana) : homeTeamName}</>
             )}
@@ -332,7 +355,7 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
 
           {/* 打順 1〜9 */}
           <div className="mt-1 space-y-1">
-            {battingOrder.map((entry, idx) => {
+            {lineupEntries.map((entry, idx) => {
               const p = teamPlayers.find((pl) => pl.id === entry.id);
               if (!p) return null;
 
@@ -376,37 +399,57 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
           })()}
 
           {/* 控え */}
-          <p className="mt-3 text-white">ベンチ入りの選手をお知らせいたします。</p>
-          <div className="mt-1 space-y-1">            
-            {teamPlayers
-              .filter((p) =>
-                !startingIds.includes(p.id) &&
-                !benchOutIds.includes(p.id) &&
-                !(shouldAnnouncePitcher && p.id === pitcherId) // ✅ DH時の投手をベンチから外す
-              )
-              .map((p) => {
-                const num = (p.number ?? "").trim(); // ★背番号空欄対応
-                return (
-                  <p key={p.id} className="text-white whitespace-pre-wrap leading-relaxed">
-                    {renderFullName(p)}{getHonorific(p)}
-                    {num ? `、背番号${num}、` : "、"}
-                  </p>
-                );
-              })}
-          </div>
+          {!isBoys && (
+            <>
+              <p className="mt-3 text-white">ベンチ入りの選手をお知らせいたします。</p>
+              <div className="mt-1 space-y-1">
+                {teamPlayers
+                  .filter((p) =>
+                    !startingIds.includes(p.id) &&
+                    !benchOutIds.includes(p.id) &&
+                    !(shouldAnnouncePitcher && p.id === pitcherId)
+                  )
+                  .map((p) => {
+                    const num = (p.number ?? "").trim();
+                    return (
+                      <p key={p.id} className="text-white whitespace-pre-wrap leading-relaxed">
+                        {renderFullName(p)}{getHonorific(p)}
+                        {num ? `、背番号${num}、` : "、"}
+                      </p>
+                    );
+                  })}
+              </div>
+            </>
+          )}
 
 
           {/* 審判（後攻時に続けて告知） */}
           {!isHomeTeamFirstAttack && (
-            isTwoUmpires ? (
-              // ✅ 2審制
+            isBoys ? (
+              <p className="mt-4 text-white whitespace-pre-wrap leading-relaxed">
+                なお、この試合のアンパイアは
+                <br />
+                球審　{umpires[0] ? renderFurigana(umpires[0].name, umpires[0].furigana) : "――"}、
+                球審　{umpires[0] ? renderFurigana(umpires[0].name, umpires[0].furigana) : "――"}、
+                <br />
+                一塁　{umpires[1] ? renderFurigana(umpires[1].name, umpires[1].furigana) : "――"}、
+                一塁　{umpires[1] ? renderFurigana(umpires[1].name, umpires[1].furigana) : "――"}、
+                <br />
+                二塁　{umpires[2] ? renderFurigana(umpires[2].name, umpires[2].furigana) : "――"}、
+                二塁　{umpires[2] ? renderFurigana(umpires[2].name, umpires[2].furigana) : "――"}、
+                 <br />
+                三塁　{umpires[3] ? renderFurigana(umpires[3].name, umpires[3].furigana) : "――"}、
+                三塁　{umpires[3] ? renderFurigana(umpires[3].name, umpires[3].furigana) : "――"}、
+                <br />
+                以上、四氏でございます。試合開始まで今しばらくお待ちください。
+              </p>
+            ) : isTwoUmpires ? (
               <p className="mt-4 text-white whitespace-pre-wrap leading-relaxed">
                 なお、この試合の審判は 球審（{umpires[0] ? renderFurigana(umpires[0].name, umpires[0].furigana) : ""}）、
                 塁審は1塁（{umpires[1] ? renderFurigana(umpires[1].name, umpires[1].furigana) : ""}）、以上2氏でございます。
                 試合開始まで今しばらくお待ちください。
               </p>
             ) : (
-              // ✅ 4審制（従来どおり）
               <p className="mt-4 text-white whitespace-pre-wrap leading-relaxed">
                 なお、この試合の審判は 球審（{umpires[0] ? renderFurigana(umpires[0].name, umpires[0].furigana) : ""}）、
                 塁審は1塁（{umpires[1] ? renderFurigana(umpires[1].name, umpires[1].furigana) : ""}）、
@@ -443,7 +486,7 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
         {/* 戻るボタン（操作ボタンの下に横幅いっぱいで配置） */}
         <div className="pt-2">
           <button
-            onClick={() => onNavigate("announcement")}
+            onClick={() => onNavigate(isBoys ? "boysPreGameAnnouncement" : "announcement")}
             className="w-full px-6 py-4 rounded-2xl bg-white/90 hover:bg-white text-gray-900 text-lg font-semibold shadow-lg active:scale-95"
           >
             ← 戻る

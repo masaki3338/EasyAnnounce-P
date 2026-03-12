@@ -145,8 +145,9 @@ type OffenseScreenProps = {
   onSwitchToDefense: () => void;
   onGoToSeatIntroduction: () => void;
   onBack?: () => void;
-  openIntentionalWalkTrigger?: number;
+  openIntentionalWalkTrigger?: number; 
 };
+
 
 type MatchInfo = {
   tournamentName?: string;
@@ -270,11 +271,13 @@ declare global { interface Window { prefetchTTS?: (t: string) => void } }
 
 
 
+//const OffenseScreen: React.FC<OffenseScreenProps> = ({ onSwitchToDefense, onBack }) => {
 const OffenseScreen: React.FC<OffenseScreenProps> = ({
   onSwitchToDefense,
-  onGoToSeatIntroduction,
-  openIntentionalWalkTrigger = 0,
-}) => {
+  onGoToSeatIntroduction, // ← 追加！！
+  //matchInfo,
+  openIntentionalWalkTrigger,
+}) => {  
   const [players, setPlayers] = useState<any[]>([]);
   const [allPlayers, setAllPlayers] = useState<any[]>([]);
   const [battingOrder, setBattingOrder] = useState<
@@ -311,75 +314,6 @@ const OffenseScreen: React.FC<OffenseScreenProps> = ({
   const [announcementHTMLOverrideStr, setAnnouncementHTMLOverrideStr] = useState<string>("");
   const [tiebreakAnno, setTiebreakAnno] = useState<string | null>(null);
   const [scoreOverwrite, setScoreOverwrite] = useState(true);
-  const [showIntentionalWalkPopup, setShowIntentionalWalkPopup] = useState(false);
-  const [intentionalWalkText, setIntentionalWalkText] = useState("");
-
-
-const buildIntentionalWalkText = async () => {
-  const currentEntry = battingOrder[currentBatterIndex];
-  const batter = currentEntry ? getPlayer(currentEntry.id) : null;
-
-  if (!batter) {
-    return "申告敬遠です。";
-  }
-
-  const honorific = batter?.isFemale ? "さん" : "くん";
-  const batterName = `${batter.lastName ?? ""}${honorific}`;
-
-  const nextIndex = (currentBatterIndex + 1) % battingOrder.length;
-  const nextEntry = battingOrder[nextIndex];
-  const nextBatter = nextEntry ? getPlayer(nextEntry.id) : null;
-
-  if (!nextBatter) {
-    return `${batterName}、申告敬遠の為、１塁に進塁いたします。`;
-  }
-
-  const nextHonorific = nextBatter?.isFemale ? "さん" : "くん";
-  const nextPos = getPosition(nextBatter.id) ?? "";
-  const nextPosName = nextPos ? (positionNames[nextPos] ?? nextPos) : "";
-  const nextChecked = checkedIds.includes(nextBatter.id);
-  const nextNumber = String(nextBatter.number ?? "").trim();
-
-  let nextBatterText = "";
-
-  if (!nextChecked) {
-    nextBatterText =
-      `${nextIndex + 1}番 ${nextPosName ? `${nextPosName} ` : ""}` +
-      `${nextBatter.lastName ?? ""}${nextBatter.firstName ?? ""}${nextHonorific}、` +
-      `${nextPosName ? `${nextPosName} ` : ""}` +
-      `${nextBatter.lastName ?? ""}${nextHonorific}` +
-      `${nextNumber ? `、背番号${nextNumber}` : ""}`;
-  } else {
-    nextBatterText =
-      `${nextIndex + 1}番 ${nextPosName ? `${nextPosName} ` : ""}` +
-      `${nextBatter.lastName ?? ""}${nextHonorific}` +
-      `${nextNumber ? `` : ""}`;
-  }
-
-  return (
-    `${batterName}、申告敬遠の為、１塁に進塁いたします。\n` +
-    `バッターは ${nextBatterText}。`
-  );
-};
-
-
-const lastIntentionalWalkTriggerRef = useRef(openIntentionalWalkTrigger);
-
-useEffect(() => {
-  if (!openIntentionalWalkTrigger) return;
-
-  // 初回表示時の再実行を防ぐ
-  if (openIntentionalWalkTrigger === lastIntentionalWalkTriggerRef.current) return;
-
-  lastIntentionalWalkTriggerRef.current = openIntentionalWalkTrigger;
-
-  (async () => {
-    const text = await buildIntentionalWalkText();
-    setIntentionalWalkText(text);
-    setShowIntentionalWalkPopup(true);
-  })();
-}, [openIntentionalWalkTrigger]);
-
 
   // 🔒 読み上げ連打ロック
   const [speaking, setSpeaking] = useState(false);
@@ -818,7 +752,6 @@ const loadTiebreakBases = async (): Promise<number[]> => {
   return norm(raw);
 };
 
-
 // クリックされた打順indexからTB文言を作る
 const buildTiebreakTextForIndex = async (idx: number): Promise<string> => {
   // players / battingOrder / assignments / matchInfo は state が未整備でも拾えるようにLFから補完
@@ -834,7 +767,7 @@ const buildTiebreakTextForIndex = async (idx: number): Promise<string> => {
   const assign =
     (assignments && Object.keys(assignments).length)
       ? assignments
-      : ((await localForage.getItem("assignments")) as Record<string, number|null>) || {};
+      : ((await localForage.getItem("assignments")) as Record<string, number | null>) || {};
 
   const match = ((await localForage.getItem("matchInfo")) as any) || {};
   const inningNo = Number(match?.inning) || 0;
@@ -845,58 +778,52 @@ const buildTiebreakTextForIndex = async (idx: number): Promise<string> => {
 
   // ── 打者と「1人前/2人前/3人前」を取得（循環）
   const idBatter = orderIds[(idx + 0 + n) % n];
-  const idR1     = orderIds[(idx - 1 + n) % n]; // 1人前
-  const idR2     = orderIds[(idx - 2 + n) % n]; // 2人前
-  const idR3     = orderIds[(idx - 3 + n) % n]; // 3人前
+  const idR1     = orderIds[(idx - 1 + n) % n];
+  const idR2     = orderIds[(idx - 2 + n) % n];
+  const idR3     = orderIds[(idx - 3 + n) % n];
 
   const P = (id: number) => team.players.find((p: any) => p?.id === id);
 
   const batter = P(idBatter);
-  const r1     = P(idR1);
-  const r2     = P(idR2);
-  const r3     = P(idR3);
+  const r1 = P(idR1);
+  const r2 = P(idR2);
+  const r3 = P(idR3);
 
   const honor = (p: any) => (p?.isFemale ? "さん" : "くん");
   const inningText = `${inningNo}回の${top ? "表" : "裏"}の攻撃は、`;
 
   const r1Text = r1
-    ? `${(r1.lastName ?? "")}${honor(r1)}、背番号${r1.number ?? "－"}`
+    ? `${r1.lastName ?? ""}${honor(r1)}、背番号${r1.number ?? "－"}`
     : "（未設定）";
   const r2Text = r2
-    ? `${(r2.lastName ?? "")}${honor(r2)}、背番号${r2.number ?? "－"}`
+    ? `${r2.lastName ?? ""}${honor(r2)}、背番号${r2.number ?? "－"}`
     : "（未設定）";
   const r3Text = r3
-    ? `${(r3.lastName ?? "")}${honor(r3)}、背番号${r3.number ?? "－"}`
+    ? `${r3.lastName ?? ""}${honor(r3)}、背番号${r3.number ?? "－"}`
     : "（未設定）";
 
   const batterOrderNo = idx + 1;
   const batterPos = batter ? tbaGetPos(assign, batter.id) : "（守備未設定）";
   const batterText = batter
-    ? `${batterOrderNo}番、${batterPos}、${(batter.lastName ?? "")}${honor(batter)}`
+    ? `${batterOrderNo}番、${batterPos}、${batter.lastName ?? ""}${honor(batter)}`
     : `${batterOrderNo}番、（未設定）`;
 
-  // ── ここから塁の構成を設定に合わせて可変化 ─────────────────────
-  const bases = await loadTiebreakBases(); // 例：[1], [2], [3], [1,2], [2,3], [1,2,3]
+  const bases = await loadTiebreakBases();
   const lines: string[] = [];
 
-  // 改行は whitespace-pre-line 前提で先頭に全角スペースを入れる
-  if (leagueMode === "boys") {
-    if (bases.includes(3)) lines.push(`　サードランナーは${r3Text}`);
-    if (bases.includes(2)) lines.push(`　セカンドランナーは${r2Text}`);
-    if (bases.includes(1)) lines.push(`　ファーストランナーは${r1Text}`);
-  } else {
-    if (bases.includes(1)) lines.push(`　ファーストランナーは${r1Text}`);
-    if (bases.includes(2)) lines.push(`　セカンドランナーは${r2Text}`);
-    if (bases.includes(3)) lines.push(`　サードランナーは${r3Text}`);
-  }
+  if (bases.includes(1)) lines.push(`　ファーストランナーは${r1Text}`);
+  if (bases.includes(2)) lines.push(`　セカンドランナーは${r2Text}`);
+  if (bases.includes(3)) lines.push(`　サードランナーは${r3Text}`);
 
-  // 旧仕様の固定文面から、設定に応じた行だけ出す
   const runnersPart = lines.join("\n");
 
   return `${inningText}\n${runnersPart}\n　バッターは${batterText}`;
 };
 
-
+useEffect(() => {
+  if (!openIntentionalWalkTrigger) return;
+  setShowIntentionalWalkModal(true);
+}, [openIntentionalWalkTrigger]);
 
 // ✅ 試合開始トークンを検知してチェック類をリセット
 useEffect(() => {
@@ -956,17 +883,7 @@ const toggleChecked = (id: number) => {
 
 // コンポーネント関数内に以下を追加
 const handleFoulRead = async () => {
-  const foulText =
-    leagueMode === "boys"
-      ? "ご来場の皆様にお願いをいたします。試合中、スタンドに入りますファウルボールは大変危険でございます。打球の行方には十分ご注意ください。"
-      : "ファウルボールの行方には十分ご注意ください";
-
-  const foulSpeakText =
-    leagueMode === "boys"
-      ? "ごらいじょうのみなさまにおねがいをいたします。しあいちゅう、スタンドにはいりますファウルボールはたいへんきけんでございます。だきゅうのゆくえにはじゅうぶんごちゅういください。"
-      : "ファウルボールの行方には十分ご注意ください";
-
-  await speak(foulSpeakText);
+  await speak("ファウルボールの行方には十分ご注意ください");
 };
 const handleFoulStop = () => {
   stop();
@@ -1457,30 +1374,15 @@ await saveMatchInfo({
 
 
   if (score > 0) {
-    setPopupMessage(`${teamName}、この回の得点は${score}点です。`);
+   setPopupMessage(`${teamName}、この回の得点は${score}点です。`);
+    if (isHome && inning === 4 && !isTop) setPendingGroundPopup(true);
 
-  if (leagueMode !== "boys" && isHome && inning === 4 && !isTop) {
-    setPendingGroundPopup(true);
-  }
-
-    // 得点ありは従来通りモーダル表示
+    // ★ 得点あり：まず得点モーダルを表示
+    //    → メンバー交換モーダルは「得点モーダルのOK」側で pendingMemberExchange を見て後出しします
     setShowScorePopup(true);
   } else {
-    // ★ ボーイズリーグは0点でも得点モーダルを表示
-    if (leagueMode === "boys") {
-      const halfText = isTop ? "表" : "裏";
-      //setPopupMessage(`${inning}回の${halfText}、${teamName}の得点はありません。`);
-      setPopupMessage(`${teamName}、この回の得点はありません。`);
-
-    if (leagueMode !== "boys" && isHome && inning === 4 && !isTop) {
-      setPendingGroundPopup(true);
-    }
-
-      setShowScorePopup(true);
-      return;
-    }
-
-    // ★ ポニーは従来通り
+    // ★ 無得点でも 3回裏 ×「次の試合なし」= NO のときは、
+    //    得点入力の直後にメンバー交換モーダルを表示してから本来の遷移を行う
     if (pendingMemberExchange) {
       const mi = await localForage.getItem<any>("matchInfo");
       const currentGame = Number(mi?.matchNumber) || 1;
@@ -1494,9 +1396,11 @@ await saveMatchInfo({
 
       setMemberExchangeText(txt);
 
+      // このあと行くはずだった遷移を記録
       if (isHome && inning === 4 && !isTop) {
         setAfterMemberExchange("groundPopup");
-      } else if (lastEndedHalfRef.current?.inning === 1 && lastEndedHalfRef.current?.isTop) {
+      }
+      else if (lastEndedHalfRef.current?.inning === 1 && lastEndedHalfRef.current?.isTop) {
         const order =
           (await localForage.getItem<{ id:number; reason?:string }[]>("battingOrder")) || [];
         const hasPending = order.some(e =>
@@ -1507,17 +1411,19 @@ await saveMatchInfo({
         setAfterMemberExchange("switchDefense");
       }
 
-      setPendingMemberExchange(false);
-      setShowMemberExchangeModal(true);
-      return;
+      setPendingMemberExchange(false);   // フラグ消費
+      setShowMemberExchangeModal(true);  // ← 表示
+      return;                            // 後続はモーダルOKで実行
     }
 
+    // （従来どおりの無得点時フロー）
     if (isHome && inning === 4 && !isTop) {
       setShowGroundPopup(true);
     } else if (inning === 1 && isTop) {
-      await localForage.setItem("postDefenseSeatIntro", { enabled: false });
-      await localForage.setItem("seatIntroLock", false);
-      await goSeatIntroFromOffense();
+      // ★ 1回表は必ずシート紹介を先に表示する（代打/代走が残っていても）
+        await localForage.setItem("postDefenseSeatIntro", { enabled: false });
+        await localForage.setItem("seatIntroLock", false);
+        await goSeatIntroFromOffense();
     } else {
       onSwitchToDefense();
     }
@@ -1598,6 +1504,35 @@ const announce = async (text: string | string[]) => {
   const plain = normalizeForTTS(joined); // ruby→かな & タグ除去
   await speak(plain);
 };
+
+const buildIntentionalWalkMessage = () => {
+  if (!battingOrder.length) return "";
+
+  const currentEntry = battingOrder[currentBatterIndex];
+  const nextIndex = (currentBatterIndex + 1) % battingOrder.length;
+  const nextEntry = battingOrder[nextIndex];
+
+  const currentPlayer = getPlayer(currentEntry?.id);
+  const nextPlayer = getPlayer(nextEntry?.id);
+
+  if (!currentPlayer || !nextPlayer) return "";
+
+  const currentHonor = currentPlayer?.isFemale ? "さん" : "君";
+  const nextHonor = nextPlayer?.isFemale ? "さん" : "君";
+
+  const nextPosKey = getPosition(nextPlayer.id) ?? "";
+  const nextPosName = positionNames[nextPosKey] ?? nextPosKey;
+
+  const currentName = `${currentPlayer.lastName ?? ""}`;
+  const nextName = `${nextPlayer.lastName ?? ""}`;
+
+  return (
+    `${teamName}${currentName}${currentHonor}、申告敬遠の為、１塁に進塁いたします。\n` +
+    `バッターは${nextIndex + 1}番${nextPosName}${nextName}${nextHonor}`
+  );
+};
+
+const intentionalWalkMessage = buildIntentionalWalkMessage();
 
 const handleNext = () => {  
   setTiebreakAnno(null);
@@ -2197,11 +2132,7 @@ useEffect(() => {
   <div className="flex items-center mb-2">
 
     <span className="text-red-600 font-bold whitespace-pre-line">
-      {leagueMode === "boys"
-        ? `ご来場の皆様にお願いをいたします。
-    試合中、スタンドに入りますファウルボールは大変危険でございます。
-    打球の行方には十分ご注意ください。`
-        : `ファウルボールの行方には十分ご注意ください`}
+      ファウルボールの行方には十分ご注意ください
     </span>
   </div>
 
@@ -2359,7 +2290,7 @@ useEffect(() => {
       const isThirdBottom =
         Number(inning) === 3 && isTop === false;
 
-      if (leagueMode !== "boys" && isThirdBottom) {
+      if (isThirdBottom) {
         const mi = await localForage.getItem<any>("matchInfo");
         const noNextGame =
           mi?.noNextGame === true || mi?.noNextGame === "true";
@@ -4250,14 +4181,12 @@ if (isTemp) {
         {/* 本文 */}
         <div className="px-4 py-4 space-y-4 overflow-y-auto">
           {/* 注意チップ（そのまま） */}
-          {leagueMode !== "boys" && (
-            <div className="flex items-center gap-2">
-              <div className="bg-amber-100 text-amber-900 border border-amber-200 px-3 py-1.5 text-sm font-semibold inline-flex items-center gap-2 rounded-full">
-                <span className="text-xl">⚠️</span>
-                <span>2番バッター紹介前に🎤</span>
-              </div>
+          <div className="flex items-center gap-2">
+            <div className="bg-amber-100 text-amber-900 border border-amber-200 px-3 py-1.5 text-sm font-semibold inline-flex items-center gap-2 rounded-full">
+              <span className="text-xl">⚠️</span>
+              <span>2番バッター紹介前に🎤</span>
             </div>
-          )}
+          </div>
 
           {/* 🔴 アナウンス文言エリア（ここにマイク画像・読み上げ／停止ボタンを内包） */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
@@ -4386,68 +4315,91 @@ if (isTemp) {
 )}
 
 {/* ✅ 申告敬遠モーダル */}
-{showIntentionalWalkPopup && (
+{showIntentionalWalkModal && (
   <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+    {/* 背景 */}
     <div
       className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-      onClick={() => setShowIntentionalWalkPopup(false)}
+      onClick={() => setShowIntentionalWalkModal(false)}
     />
 
-    <div className="absolute inset-0 flex items-center justify-center p-4">
-      <div className="bg-white shadow-2xl rounded-2xl w-full max-w-md flex flex-col">
-
-        <div className="bg-red-600 text-white px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <IconMic />
-            <span className="font-bold">申告敬遠</span>
+    {/* 本体 */}
+    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+      <div
+        className="
+          bg-white shadow-2xl
+          rounded-2xl
+          w-full max-w-md
+          max-h-[80vh]
+          overflow-hidden
+          flex flex-col
+        "
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {/* ヘッダー */}
+        <div className="sticky top-0 z-10 bg-gradient-to-r from-rose-600 to-pink-600 text-white">
+          <div className="h-5 flex items-center justify-center">
+            <span className="mt-2 block h-1.5 w-12 rounded-full bg-white/60" />
           </div>
-
-          <button
-            onClick={() => setShowIntentionalWalkPopup(false)}
-            className="text-white text-lg"
-          >
-            ×
-          </button>
+          <div className="px-4 py-3 flex items-center justify-between">
+            <h2 className="text-lg font-extrabold tracking-wide flex items-center gap-2">
+              <img src="/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
+              <span>申告敬遠</span>
+            </h2>
+            <button
+              onClick={() => setShowIntentionalWalkModal(false)}
+              aria-label="閉じる"
+              className="rounded-full w-9 h-9 flex items-center justify-center
+                         bg-white/15 hover:bg-white/25 active:bg-white/30
+                         text-white text-lg"
+            >
+              ×
+            </button>
+          </div>
         </div>
 
-        <div className="p-4">
-          <p className="text-red-700 font-bold whitespace-pre-wrap">
-            {intentionalWalkText}
-          </p>
+        {/* 本文 */}
+        <div className="p-4 space-y-3 overflow-y-auto">
+          <div className="rounded-xl border border-red-500 bg-red-200 p-4">
+            <p className="text-red-700 font-bold whitespace-pre-wrap">
+              {intentionalWalkMessage}
+            </p>
 
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <button
-              onClick={() =>
-                speak(
-                  intentionalWalkText.replaceAll("進塁", "しんるい")
-                )
-              }
-              className="bg-blue-600 text-white rounded-lg py-2"
-            >
-              読み上げ
-            </button>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                onClick={async () => {
+                  await speak(intentionalWalkMessage);
+                }}
+                className="h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center gap-2"
+              >
+                <IconMic className="w-5 h-5" />
+                読み上げ
+              </button>
 
-            <button
-              onClick={() => stop()}
-              className="bg-gray-600 text-white rounded-lg py-2"
-            >
-              停止
-            </button>
+              <button
+                onClick={() => stop()}
+                className="h-10 rounded-xl bg-rose-600 text-white"
+              >
+                停止
+              </button>
+            </div>
           </div>
+        </div>
 
+        {/* フッター */}
+        <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
           <button
-            onClick={() => setShowIntentionalWalkPopup(false)}
-            className="mt-4 w-full bg-green-600 text-white py-2 rounded-lg"
+            onClick={() => setShowIntentionalWalkModal(false)}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
           >
             OK
           </button>
+          <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
         </div>
-
       </div>
     </div>
   </div>
 )}
-
 
     </div>
      </DndProvider>

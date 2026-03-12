@@ -6,6 +6,7 @@ import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
 interface Props {
   onNavigate: (screen: string) => void;
   onBack?: () => void;
+  leagueMode: "pony" | "boys";
 }
 
 // ---- ミニSVGアイコン（依存なし） ----
@@ -32,7 +33,7 @@ const IconMic = () => (
   </svg>
 );
 
-const StartGreeting: React.FC<Props> = ({ onNavigate, onBack }) => {
+const StartGreeting: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
   const [reading, setReading] = useState(false);
   const [tournamentName, setTournamentName] = useState("");
   const [matchNumber, setMatchNumber] = useState("");
@@ -70,18 +71,21 @@ const StartGreeting: React.FC<Props> = ({ onNavigate, onBack }) => {
   // 読み上げ用（かな優先、無ければ漢字）
   const team1stRead = benchSide === "1塁側" ? (teamFurigana || teamName) : (opponentFurigana || opponentName);
   const team3rdRead = benchSide === "3塁側" ? (teamFurigana || teamName) : (opponentFurigana || opponentName);
+  const isBoys = leagueMode === "boys";
 
-  const messageSpeak =
-    `おまたせいたしました。${tournamentName}。` +
-    `ほんじつの だい${matchNumber}しあい、` +
-    `${team1stRead}たい${team3rdRead}のしあい、` +
-    `まもなくかいしでございます。`;
+  const messageSpeak = isBoys
+    ? `おまたせいたしました。${team1stRead}たい${team3rdRead}のしあい、まもなくかいしでございます。`
+    : `おまたせいたしました。${tournamentName}。` +
+      `ほんじつの だい${matchNumber}しあい、` +
+      `${team1stRead}たい${team3rdRead}のしあい、` +
+      `まもなくかいしでございます。`;
 
-  const message =
-    `お待たせいたしました \n${tournamentName}\n` +
-    `本日の第${matchNumber}試合、\n` +
-    `${team1st} 対 ${team3rd} の試合、\n` +
-    `まもなく開始でございます。`;
+  const message = isBoys
+    ? `お待たせいたしました\n${team1st} 対 ${team3rd} の試合、\nまもなく開始でございます。`
+    : `お待たせいたしました \n${tournamentName}\n` +
+      `本日の第${matchNumber}試合、\n` +
+      `${team1st} 対 ${team3rd} の試合、\n` +
+      `まもなく開始でございます。`;
 
   // VOICEVOX優先：押して“すぐ返す”。最初の1文を先に鳴らす（progressive）
   const handleSpeak = () => {
@@ -125,6 +129,7 @@ const StartGreeting: React.FC<Props> = ({ onNavigate, onBack }) => {
           <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs">
             <span>先攻チーム 🎤</span>
           </div>
+
         </div>
       </header>
 
