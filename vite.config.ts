@@ -27,9 +27,10 @@ export default defineConfig({
         'Runner.png',
         'warning-icon.png',
         'manual.pdf',
+        'Boysmanual.pdf',
       ],
       manifest: {
-        name: 'Easyアナウンス PONY',
+        name: '野球アナウンス支援 Easyアナウンス',
         short_name: 'Easyアナウンス',
         description: '野球の試合アナウンスを簡単に行えるアプリ',
         start_url: '/',
@@ -39,12 +40,12 @@ export default defineConfig({
         theme_color: '#d32f2f',
         icons: [
           {
-            src: 'EasyAnnounce-Pony-192x192.png',
+            src: 'EasyAnnounce-icon-192x192.png',
             sizes: '192x192',
             type: 'image/png'
           },
           {
-            src: 'EasyAnnounce-Pony-512x512.png',
+            src: 'EasyAnnounce-icon-512x512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable'
