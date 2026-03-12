@@ -1,21 +1,12 @@
-// OperationSettings.tsx（全文置き換え）
-
+// src/screens/OperationSettings.tsx
 import type { ScreenType } from "../App";
 import React from "react";
 
 type Props = {
   onNavigate: (s: ScreenType) => void;
-  onOpenManual?: () => void; // App側のマニュアル表示モーダルを開く
+  onOpenManual?: () => void;
 };
 
-// ミニアイコン（依存なしのSVG）
-const IconChevronLeft: React.FC<{ className?: string }> = ({ className }) => (
-  <svg viewBox="0 0 24 24" className={className ?? "w-5 h-5"} fill="currentColor" aria-hidden>
-    <path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
-  </svg>
-);
-
-// 共通カードボタン
 const TileButton: React.FC<{
   icon: React.ReactNode;
   title: string;
@@ -45,31 +36,29 @@ export default function OperationSettings({ onNavigate, onOpenManual }: Props) {
         paddingBottom: "max(16px, env(safe-area-inset-bottom))",
       }}
     >
-{/* モバイルヘッダー（置き換え） */}
-<header className="w-full max-w-2xl">
+      <header className="w-full max-w-2xl">
+        <div className="mt-3 text-center select-none">
+          <h1
+            className="
+              inline-flex items-center gap-2
+              text-3xl md:text-4xl font-extrabold tracking-wide leading-tight
+            "
+          >
+            <span className="text-2xl md:text-3xl">⚙️</span>
+            <span
+              className="
+                bg-clip-text text-transparent
+                bg-gradient-to-r from-white via-blue-100 to-blue-400
+                drop-shadow
+              "
+            >
+              運用設定
+            </span>
+          </h1>
+          <div className="mx-auto mt-2 h-0.5 w-20 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
+        </div>
+      </header>
 
-  {/* 下段：タイトルを大きく中央に */}
-  <div className="mt-3 text-center select-none">
-    <h1 className="
-      inline-flex items-center gap-2
-      text-3xl md:text-4xl font-extrabold tracking-wide leading-tight
-    ">
-      <span className="text-2xl md:text-3xl">⚙️</span>
-      <span className="
-        bg-clip-text text-transparent
-        bg-gradient-to-r from-white via-blue-100 to-blue-400
-        drop-shadow
-      ">
-        運用設定
-      </span>
-    </h1>
-    {/* デコレーションライン（任意）：細いグラデ棒で締める */}
-    <div className="mx-auto mt-2 h-0.5 w-20 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
-  </div>
-</header>
-
-
-      {/* 中央配置の本体 */}
       <div className="flex-1 w-full max-w-2xl flex flex-col justify-center gap-4">
         <TileButton
           icon={<span className="text-2xl">⚾️</span>}
@@ -108,6 +97,13 @@ export default function OperationSettings({ onNavigate, onOpenManual }: Props) {
         />
 
         <TileButton
+          icon={<span className="text-2xl">🏆</span>}
+          title="リーグ設定"
+          desc="ポニーリーグ / ボーイズリーグ"
+          onClick={() => onNavigate("league-settings")}
+        />
+
+        <TileButton
           icon={<span className="text-2xl">📔</span>}
           title="チュートリアル"
           desc="使い方"
@@ -120,7 +116,7 @@ export default function OperationSettings({ onNavigate, onOpenManual }: Props) {
           desc="よくある質問"
           onClick={() => onNavigate("qa")}
         />
-        
+
         <TileButton
           icon={<span className="text-2xl">✉️</span>}
           title="お問い合わせ"

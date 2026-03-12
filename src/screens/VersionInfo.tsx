@@ -38,8 +38,13 @@ type HistoryItem = {
 const historyData: HistoryItem[] = [
   {
     date: "2026.03.05",
-    version: "Vesion 1.00β",
+    version: "Vesion 1.00 β",
     details: ["Release"],
+  },
+  {
+    date: "2026.03.10",
+    version: "Vesion 2.00 β",
+    details: ["Boysリーグモード追加"],
   },
 ];
 
@@ -145,13 +150,25 @@ export default function VersionInfo({ version, onBack }: Props) {
             <h2 className="text-lg font-bold">法的情報 / Legal</h2>
           </div>
 
-          <p><span className="font-medium">アプリ名：</span>Easyアナウンス</p>
+          <p><span className="font-medium">アプリ名：</span>野球アナウンス支援 Easyアナウンス</p>
 
           <div>
             <h3 className="font-semibold mb-1">著作権</h3>
             <p>© {year} M.OKUMURA. All rights reserved.</p>
             <p className="mt-2">
               本アプリおよび付随するコンテンツは著作権法等により保護されています。無断複製・転載・再配布を禁じます。
+            </p>
+          </div>
+
+          <div>
+            <h3 className="font-semibold mb-1">免責事項</h3>
+            <p>
+              本アプリは野球試合のアナウンスを支援する目的で提供されています。
+              本アプリの利用または利用できなかったことにより生じたいかなる損害・トラブルについても、
+              開発者は一切の責任を負いません。
+            </p>
+            <p className="mt-2">
+              ご利用にあたっては、利用者ご自身の責任においてご使用ください。
             </p>
           </div>
 
