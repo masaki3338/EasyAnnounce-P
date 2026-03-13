@@ -27,9 +27,8 @@ export default defineConfig({
         'warning-icon.png',
         'manual.pdf',
         'Boysmanual.pdf',
-        'EasyAnnounce-icon-192x192-v2.png',
-        'EasyAnnounce-icon-512x512-v2.png',
-        'EasyAnnounce-icon-512-maskable-v2.png',
+        'EasyAnnounce-icon-192x192.png',
+        'EasyAnnounce-icon-512x512.png',
       ],
       manifest: {
         name: '野球アナウンス支援 Easyアナウンス',
@@ -43,21 +42,15 @@ export default defineConfig({
         theme_color: '#d32f2f',
         icons: [
           {
-            src: '/EasyAnnounce-icon-192x192-v2.png',
+            src: '/EasyAnnounce-icon-192x192.png',
             sizes: '192x192',
             type: 'image/png'
           },
           {
-            src: '/EasyAnnounce-icon-512x512-v2.png',
+            src: '/EasyAnnounce-icon-512x512.png',
             sizes: '512x512',
             type: 'image/png'
           },
-          {
-            src: '/EasyAnnounce-icon-512-maskable-v2.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'maskable'
-          }
         ]
       }
     }),
