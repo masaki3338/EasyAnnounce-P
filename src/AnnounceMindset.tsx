@@ -37,8 +37,8 @@ export default function AnnounceMindset({ onBack }: Props) {
               </div>
 
               <div className="text-lg font-extrabold leading-relaxed">
-                選手がプレーをしているときは{" "}
-                <span className="text-rose-300">アナウンスしない！</span>
+                選手がプレー中は{" "}
+                <span className="text-rose-300">アナウンスしない❗</span>
               </div>
 
               <ul className="mt-3 text-base text-white/90 space-y-2 list-disc pl-6">
@@ -59,7 +59,7 @@ export default function AnnounceMindset({ onBack }: Props) {
                 <span className="font-extrabold text-emerald-200">
                   審判の合図があってから
                 </span>
-                <span className="font-extrabold"> アナウンスすること！</span>
+                <span className="font-extrabold"> アナウンスしましょう❗</span>
               </div>
 
               {/* ✅ 追記：注意書きを目立つボックスに */}
@@ -97,7 +97,7 @@ export default function AnnounceMindset({ onBack }: Props) {
               <div className="mt-3 text-lg text-white/95">
                 そして、落ち着いて{" "}
                 <span className="font-extrabold text-rose-300">ゆっくり</span>{" "}
-                話そう！
+                話しましょう❗
               </div>
             </section>
 

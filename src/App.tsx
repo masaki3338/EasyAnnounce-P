@@ -45,7 +45,7 @@ import StartTimeAnnouncement from "./StartTimeAnnouncement";
 import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 
 // バージョン番号を定数で管理
-const APP_VERSION = "2.00 β"
+const APP_VERSION = "2.01 β"
 
 // iOS 判定を共通で使えるようにグローバル定数として定義
 const isIOS = (() => {
@@ -205,6 +205,7 @@ const App = () => {
   const [otherOption, setOtherOption] = useState(""); // その他選択状態
 
   const [intentionalWalkTrigger, setIntentionalWalkTrigger] = useState(0);
+  const [isContinueGame, setIsContinueGame] = useState(false);
 
   const [showManualPopup, setShowManualPopup] = useState(false);
   const [showContinuationModal, setShowContinuationModal] = useState(false);
@@ -560,19 +561,20 @@ const handleSpeak = async () => {
           leagueMode={leagueMode}
           iosKeepAwake={iosKeepAwake}
           onEnableIOSAwake={async () => {
-            // 1) Wake Lock を優先
             const ok = await acquireWakeLock();
             if (!ok) {
-              // 2) 失敗したら既存の無音動画フォールバック
               enableIOSAwake();
             }
             setIosKeepAwake(true);
           }}
           onDisableIOSAwake={async () => {
-            // 解除は両方きっちり
             await releaseWakeLock().catch(() => {});
             disableIOSAwake();
             setIosKeepAwake(false);
+          }}
+          onContinueGame={(nextScreen) => {
+            setIsContinueGame(true);
+            setScreen(nextScreen);
           }}
         />
       )}
@@ -637,22 +639,22 @@ const handleSpeak = async () => {
             ← メニューに戻る
           </button>
             <StartGame
-                onStart={async () => {
-                  const match = await localForage.getItem("matchInfo");
-                  if (match && typeof match === "object" && "isHome" in match) {
-                    const { isHome } = match as { isHome: boolean };
+              onStart={async () => {
+                setIsContinueGame(false);
 
-                    const isTop = true; // 試合開始は必ず「1回表」
-                    // 自チームが先攻なら攻撃からスタート、後攻なら守備から
-                    const isOffense = isHome === false;
+                const match = await localForage.getItem("matchInfo");
+                if (match && typeof match === "object" && "isHome" in match) {
+                  const { isHome } = match as { isHome: boolean };
+                  const isTop = true;
+                  const isOffense = isHome === false;
 
-                    setScreen(isOffense ? "offense" : "defense");
-                  } else {
-                    alert("試合情報が見つかりません。試合作成画面で設定してください。");
-                  }
-                }}
-                onShowAnnouncement={() => setScreen("announcement")}
-              />
+                  setScreen(isOffense ? "offense" : "defense");
+                } else {
+                  alert("試合情報が見つかりません。試合作成画面で設定してください。");
+                }
+              }}
+              onShowAnnouncement={() => setScreen("announcement")}
+            />
         </>
       )}
 
@@ -1088,6 +1090,7 @@ if (totalMyScore > totalOpponentScore) {
             setScreen("seatIntroduction");
           }}
           openIntentionalWalkTrigger={intentionalWalkTrigger}
+          isContinueGame={isContinueGame}
         />
         </>
       )}
@@ -2384,12 +2387,14 @@ const Menu = ({
   iosKeepAwake,
   onEnableIOSAwake,
   onDisableIOSAwake,
+  onContinueGame,
 }: {
   onNavigate: (screen: ScreenType) => void;
   leagueMode: LeagueMode;
   iosKeepAwake: boolean;
   onEnableIOSAwake: () => void;
   onDisableIOSAwake: () => void;
+  onContinueGame: (screen: ScreenType) => void;
 }) => {
   const [canContinue, setCanContinue] = useState(false);
   const [lastScreen, setLastScreen] = useState<ScreenType | null>(null);
@@ -2511,7 +2516,7 @@ const Menu = ({
       {/* 試合継続ボタン（存在する時のみ表示） */}
       {canContinue && lastScreen && (
         <button
-          onClick={() => onNavigate(lastScreen)}
+          onClick={() => onContinueGame(lastScreen)}
           className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl shadow-xl font-semibold transition active:scale-95"
         >
           ▶ 試合を継続する

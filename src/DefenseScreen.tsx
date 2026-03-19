@@ -1240,12 +1240,12 @@ const handleStop = () => { ttsStop(); };
 {/* 投球数（左=－1｜中央=表示｜右=＋1）  ※ボタン比率 1:1 */}
 <div className="w-full grid grid-cols-12 items-center gap-2 sm:gap-3 my-2">
   {/* －1（4/12） */}
-  <button
-    onClick={subtractPitch}
-    className="col-span-4 w-full h-10 rounded bg-yellow-500 text-white hover:bg-yellow-600 whitespace-nowrap"
-  >
-    ⚾︎投球数－１
-  </button>
+<button
+  onClick={subtractPitch}
+  className="col-span-4 mx-auto w-[80%] h-10 rounded bg-yellow-500 text-white hover:bg-yellow-600 whitespace-nowrap"
+>
+  ⚾︎投球数－１
+</button>
 
   {/* 中央表示（4/12） */}
 <div className="col-span-4 min-w-0 text-center leading-tight">
@@ -1270,7 +1270,7 @@ const handleStop = () => { ttsStop(); };
     focus:outline-none
   "
 >
-  <span className="text-xs opacity-90">累計投球数</span>
+  <span className="text-xs opacity-90">累計投球</span>
   <span className="font-bold tabular-nums text-base">
     {totalPitchCount}
   </span>
