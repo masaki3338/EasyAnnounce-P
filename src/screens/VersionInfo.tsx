@@ -46,6 +46,11 @@ const historyData: HistoryItem[] = [
     version: "Vesion 2.00 β",
     details: ["Boysリーグモード追加"],
   },
+  {
+    date: "2026.03.17",
+    version: "Vesion 2.01 β",
+    details: ["リエントリー時の不具合修正"],
+  },
 ];
 
 export default function VersionInfo({ version, onBack }: Props) {

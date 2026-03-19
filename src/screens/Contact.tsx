@@ -195,7 +195,7 @@ const res = await fetch(ENDPOINT, {
             </span>
           </h1>
           <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
-          <p className="text-white/70 text-sm mt-2">ご要望・不具合報告など、写真（画像）を添付できます。</p>
+          <p className="text-white/70 text-sm mt-2">ご要望・不具合報告など、お問い合わせください。</p>
         </div>
 
         {/* 本体カード */}
@@ -231,11 +231,11 @@ const res = await fetch(ENDPOINT, {
     onChange={(e) => setEmail(e.target.value)}
     className="w-full rounded-2xl bg-white/90 text-gray-900 border border-white/70 shadow-sm
                p-4 outline-none focus:ring-2 focus:ring-sky-400 placeholder-gray-600"
-    placeholder="返信が必要な場合のみ入力してください"
+    placeholder="返信が必要な場合、入力してください"
   />
 
   <div className="text-xs text-white/60 mt-1">
-    ※返信が必要な場合のみご入力ください
+    ※返信が必要な場合、ご入力ください
   </div>
 </label>
 
