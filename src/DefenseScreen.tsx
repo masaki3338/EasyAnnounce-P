@@ -79,9 +79,11 @@ const DEFENSE_RESTORE_EVENT = "restore-defense-inning-start";
 
 type DefenseScreenProps = {
   onChangeDefense: () => void;
-  onSwitchToOffense: () => void; // ✅ 追加
-  onBack?: () => void; // ✅ 任意として追加
-  onGoToSeatIntroduction?: () => void; // ★ 追加
+  onSwitchToOffense: () => void;
+  onBack?: () => void;
+  onGoToSeatIntroduction?: () => void;
+
+  saveInningStartTrigger?: number; // ★追加
 };
 
 
@@ -91,8 +93,13 @@ type DefenseScreenProps = {
 /**
  * 守備画面コンポーネント本体
  */
-const DefenseScreen: React.FC<DefenseScreenProps> = ({ onChangeDefense, onSwitchToOffense,onGoToSeatIntroduction,}) => {  
-  const [showModal, setShowModal] = useState(false);
+const DefenseScreen: React.FC<DefenseScreenProps> = ({
+  onChangeDefense,
+  onSwitchToOffense,
+  onGoToSeatIntroduction,
+  saveInningStartTrigger,
+}) => {
+const [showModal, setShowModal] = useState(false);
   const [inputScore, setInputScore] = useState("");
   const [editInning, setEditInning] = useState<number | null>(null);
   const [editTopBottom, setEditTopBottom] = useState<"top" | "bottom" | null>(null);
@@ -123,7 +130,6 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({ onChangeDefense, onSwitch
   };
 
 
-const [snapshotReady, setSnapshotReady] = useState(false);
 
 const buildDefenseMatchKey = (mi?: Partial<MatchInfo>) => {
   return [
@@ -553,6 +559,32 @@ useEffect(() => {
     setOpponentTeamName(String(savedMatchInfo?.opponentTeam || ""));
     setTeamPlayers(Array.isArray(teamData?.players) ? teamData!.players! : []);
 
+    // ★ 代打/代走/臨時代走の確認モーダルを出す
+    const restoredBattingOrder = Array.isArray(savedBattingOrder) ? savedBattingOrder : [];
+    const restoredTempRunnerByOrder = savedTempRunnerByOrder || {};
+
+    const hasTempRunner =
+      Object.keys(restoredTempRunnerByOrder).length > 0 ||
+      restoredBattingOrder.some((e) => e?.reason === "臨時代走");
+
+    const hasPinchSub =
+      restoredBattingOrder.some(
+        (e) => e?.reason === "代打" || e?.reason === "代走"
+      );
+
+    if (hasTempRunner) {
+      setShowTempReentryModal(true);
+      setShowConfirmModal(false);
+    } else if (hasPinchSub) {
+      setShowConfirmModal(true);
+      setShowTempReentryModal(false);
+    } else {
+      setShowTempReentryModal(false);
+      setShowConfirmModal(false);
+      setReEntryMessage("");
+      setReEntryTarget(null);
+    }
+
     // ★ 読込完了後だけ snapshot 保存可能にする
     setSnapshotReady(true);
   };
@@ -566,14 +598,6 @@ useEffect(() => {
  // 画面離脱時は必ず停止
  useEffect(() => () => { ttsStop(); }, []);
   
-useEffect(() => {
-  if (!snapshotReady) return;
-  if (!isDefense) return;
-  if (!assignments || Object.keys(assignments).length === 0) return;
-  if (!battingOrder || battingOrder.length === 0) return;
-
-  void saveDefenseInningStartSnapshot();
-}, [snapshotReady, isDefense, inning, isTop]);
 
 
 useEffect(() => {
@@ -1029,6 +1053,11 @@ const saveDefenseInningStartSnapshot = async () => {
 
   await localForage.setItem(storageKey, snapshot);
   console.log("[DEFENSE SNAPSHOT] saved", { storageKey, snapshot });
+
+  useEffect(() => {
+    if (!saveInningStartTrigger) return;
+    void saveDefenseInningStartSnapshot();
+  }, [saveInningStartTrigger]);
 };
 
 const restoreDefenseInningStartSnapshot = async () => {
