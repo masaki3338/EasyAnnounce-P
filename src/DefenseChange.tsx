@@ -5925,6 +5925,43 @@ const committedOrder = updatedOrder.map((entry: any) => ({
 // =========================================================
 // 12) 保存
 // =========================================================
+// =========================================================
+// 投手交代時は投球数をリセット
+// =========================================================
+{
+  const prevPitcherId =
+    typeof initialAssignments?.["投"] === "number"
+      ? Number(initialAssignments["投"])
+      : null;
+
+  const nextPitcherId =
+    typeof finalAssignments?.["投"] === "number"
+      ? Number(finalAssignments["投"])
+      : null;
+
+  if (
+    prevPitcherId !== null &&
+    nextPitcherId !== null &&
+    prevPitcherId !== nextPitcherId
+  ) {
+    const nextPitcherTotals =
+      (await localForage.getItem<Record<number, number>>("pitcherTotals")) || {};
+
+    nextPitcherTotals[nextPitcherId] = 0;
+
+    await localForage.setItem("pitcherTotals", nextPitcherTotals);
+    await localForage.setItem("pitchCounts", {
+      current: 0,
+      total: 0,
+      pitcherId: nextPitcherId,
+    });
+
+    console.log("[PITCH RESET] pitcher changed", {
+      prevPitcherId,
+      nextPitcherId,
+    });
+  }
+}
 await localForage.setItem("lineupAssignments", finalAssignments);
 await localForage.setItem("battingReplacements", {});
 await localForage.setItem("battingOrder", committedOrder);
