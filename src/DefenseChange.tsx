@@ -1339,13 +1339,27 @@ const movedFromPosLabel = posJP[movedFromPosSym as keyof typeof posJP] ?? movedF
 const movedToPosLabel = posJP[movedToPosSym as keyof typeof posJP] ?? movedToPos;
 
 // ✅ 文言を切り替える
+// ✅ 文言を切り替える
 const reasonText =
-  entry.reason === "代打" ? "代打いたしました" : "代走いたしました";
+  entry.reason === "代打"
+    ? "代打いたしました"
+    : entry.reason === "臨時代走"
+    ? "臨時代走"
+    : "代走いたしました";
+
+// 1行目：代打/代走直後なら「先ほど◯◯いたしました◯◯に代わりまして、」
+// ただし既にこの画面を開いた時点で守備についていた選手なら通常形にする
+const pinchWasAlreadyOnFieldWhenOpened = Object.values(initialAssignments ?? {}).some(
+  (id) => Number(id) === Number(pinch.id)
+);
+
+const firstHead = pinchWasAlreadyOnFieldWhenOpened
+  ? `${subInPosLabel}の${nameWithHonor(pinch)}に代わりまして、`
+  : `先ほど${reasonText}${nameWithHonor(pinch)}に代わりまして、`;
 
 // 1行目：控えが別守備に入る（★打順は書かない）
 lines.push(
-  `先ほど${reasonText}${nameWithHonor(pinch)}に代わりまして、` +
-  `${fullNameWithHonor(subIn)}が入り${subInPosLabel}、`
+  `${firstHead}${fullNameWithHonor(subIn)}が入り${subInPosLabel}、`
 );
 
 
@@ -1459,6 +1473,17 @@ const curPosOf = (id: number) =>
 /* =================================================================
    🆕 特別処理: 代打・代走 → 守備入り（相互入れ替え含む）まとめ処理
    ==================================================================== */
+/* =================================================================
+   ✅ 特別処理：代打/代走本人が別守備へ移動し、
+      その空いた元守備に別の交代選手が入るケース
+   例：
+   - スタメン中堅 秋山
+   - 代打 矢野
+   - 田村→堂林
+   - 矢野が中→右、堂林が中
+   => 「先ほど代打いたしました矢野君がライト、
+       ライトの田村くんに代わりまして、4番に堂林君が入りセンターへ」
+================================================================= */
 battingOrder.forEach((entry, idx) => {
   if (!["代打", "代走", "臨時代走"].includes(entry.reason)) return;
   if (handledIds.has(entry.id)) return;
@@ -1466,82 +1491,118 @@ battingOrder.forEach((entry, idx) => {
   const pinchPlayer = teamPlayers.find(p => p.id === entry.id);
   if (!pinchPlayer) return;
 
-  const pos = Object.entries(assignments)
-    .find(([_, id]) => id === entry.id)?.[0] as keyof typeof posJP;
-  if (!pos) return;
+  // 代打/代走情報
+  const pinchInfoPair = Object.entries(usedPlayerInfo || {}).find(
+    ([, info]: any) =>
+      ["代打", "代走", "臨時代走"].includes(String(info?.reason ?? "")) &&
+      Number(info?.subId) === Number(entry.id)
+  );
+  if (!pinchInfoPair) return;
 
-  // =====================================================
-  // ① ここに「相互入れ替え（代打A⇄代打B）」判定を置く（先に判定）
-  //    ※ originalId / movedToPos より前に実行する
-  // =====================================================
+  const [, pinchInfo] = pinchInfoPair as [string, any];
+  const origPosSym =
+    (posNameToSymbol as any)[pinchInfo.fromPos] ?? pinchInfo.fromPos; // 代打前の元守備
+  const curPosSym =
+    Object.entries(assignments).find(([_, id]) => Number(id) === Number(entry.id))?.[0];
 
-  // A側
-  const fromA = pinchFromPosById.get(entry.id);
-  const toA   = pos; // entry.id は今 pos にいるのでこれでOK（既存コードの toA 計算より安全）
+  // 今守備についていないなら対象外
+  if (!curPosSym) return;
 
-  // B探索：「fromB === toA」かつ「curPosB === fromA」
-  const otherId = fromA
-    ? [...pinchFromPosById.entries()]
-        .find(([id, fromB]) => id !== entry.id && fromB === toA && curPosOf(id) === fromA)?.[0]
-    : undefined;
+  // 同じ守備なら SAME-POS-PINCH 側に任せる
+  if (curPosSym === origPosSym) return;
 
-  if (fromA && otherId) {
-    const A = pinchPlayer;                         // A = entry.id
-    const B = teamPlayers.find(p => p.id === otherId);
-    if (!B) return;
+  // 今回、元守備(origPosSym)に別選手が mixed で入っているか
+  const mixedIntoOrig = mixed.find(
+    (m) =>
+      m.toPos === origPosSym &&
+      Number(m.from.id) !== Number(entry.id) &&
+      !handledPlayerIds.has(m.to.id)
+  );
+  if (!mixedIntoOrig) return;
 
-    // 「先ほど代打/代走…」の文言
-    const headById = (id: number) => {
-      const r = pinchReasonById[id] || reasonMap[id] || "代打";
-      return r === "代走" ? "代走いたしました" : r === "臨時代走" ? "臨時代走" : "代打いたしました";
-    };
+  const reasonText =
+    entry.reason === "代走"
+      ? "代走いたしました"
+      : entry.reason === "臨時代走"
+      ? "臨時代走"
+      : "代打いたしました";
 
-    const phraseA = headById(entry.id);
-    const phraseB = headById(otherId);
-    const prefixB = phraseA === phraseB ? "同じく先ほど" : "先ほど";
+  // 1行目：代打/代走本人が別守備へ
+  result.push(
+    `先ほど${reasonText}${nameWithHonor(pinchPlayer)}が${posJP[curPosSym as keyof typeof posJP]}、`
+  );
 
-    result.push(
-      `先ほど${phraseA}${nameWithHonor(A)}が${posJP[toA]}へ\n` +
-      `${prefixB}${phraseB}${nameWithHonor(B)}が${posJP[fromA]}へ入ります。`
-    );
+  // 2行目：その空いた元守備に別選手が入る
+// 堂林の打順は「入る本人」ではなく「抜ける田村の打順」を引き継ぐ
+const orderTo = (() => {
+  const directIdx = battingOrder.findIndex(
+    e => Number(e.id) === Number(mixedIntoOrig.to.id)
+  );
+  if (directIdx >= 0) return directIdx + 1;
 
-    // 二重出力防止
-    handledIds.add(entry.id);
-    handledIds.add(otherId);
-    handledPlayerIds.add(entry.id);
-    handledPlayerIds.add(otherId);
-    handledPositions.add(toA);
-    handledPositions.add(fromA);
+  const inheritIdx = battingOrder.findIndex(
+    e => Number(e.id) === Number(mixedIntoOrig.from.id)
+  );
+  if (inheritIdx >= 0) return inheritIdx + 1;
 
-    // 打順行
-    lineupLines.push({ order: idx + 1, text: `${idx + 1}番 ${posJP[toA]} ${nameWithHonor(A)}` });
-    const bOrder = battingOrder.findIndex(e => e.id === otherId);
-    if (bOrder >= 0) {
-      lineupLines.push({ order: bOrder + 1, text: `${bOrder + 1}番 ${posJP[fromA]} ${nameWithHonor(B)}` });
-    }
+  return typeof mixedIntoOrig.order === "number" && mixedIntoOrig.order > 0
+    ? mixedIntoOrig.order
+    : 0;
+})();
 
-    return; // ← 相互入れ替えはここで完結
+const orderPart = orderTo > 0 ? `${orderTo}番に` : "";
+
+  result.push(
+    `${posJP[mixedIntoOrig.fromPos as keyof typeof posJP]}の${nameWithHonor(mixedIntoOrig.from)}に代わりまして、` +
+    `${orderPart}${fullNameWithHonor(mixedIntoOrig.to)}が入り${posJP[mixedIntoOrig.toPos as keyof typeof posJP]}へ`
+  );
+
+  // 打順行
+  if (
+    orderTo > 0 &&
+    !lineupLines.some(
+      l =>
+        l.order === orderTo &&
+        l.text.includes(posJP[mixedIntoOrig.toPos as keyof typeof posJP])
+    )
+  ) {
+    lineupLines.push({
+      order: orderTo,
+      text:
+        `${orderTo}番 ${posJP[mixedIntoOrig.toPos as keyof typeof posJP]} ` +
+        `${fullNameWithHonor(mixedIntoOrig.to)}${backNoSuffix(mixedIntoOrig.to)}`
+    });
   }
 
-  // =====================================================
-  // ② 相互入れ替えでなかった場合だけ「元の先発がどこへ動いたか」処理へ
-  // =====================================================
+  const pinchOrder = idx + 1;
+  if (
+    !lineupLines.some(
+      l =>
+        l.order === pinchOrder &&
+        l.text.includes(posJP[curPosSym as keyof typeof posJP]) &&
+        l.text.includes(nameRuby(pinchPlayer))
+    )
+  ) {
+    lineupLines.push({
+      order: pinchOrder,
+      text: `${pinchOrder}番 ${posJP[curPosSym as keyof typeof posJP]} ${nameWithHonor(pinchPlayer)}`
+    });
+  }
 
-  const originalId = initialAssignments[pos];
-  if (!originalId || originalId === entry.id) return;
+  // 後続の mixed / shift / replace で二重に読ませない
+  handledIds.add(entry.id);
+  handledPlayerIds.add(entry.id);
+  handledPlayerIds.add(mixedIntoOrig.from.id);
+  handledPlayerIds.add(mixedIntoOrig.to.id);
+  handledPositions.add(curPosSym);
+  handledPositions.add(origPosSym);
 
-  const movedPlayer = teamPlayers.find(p => p.id === originalId);
-  if (!movedPlayer) return;
+  // 矢野の shift を後段で再度出さない
+  skipShiftPairs.add(`${entry.id}|${origPosSym}|${curPosSym}`);
 
-  const movedToPos = Object.entries(assignments)
-    .find(([k, v]) => v === originalId)?.[0] as keyof typeof posJP;
-  if (!movedToPos || movedToPos === pos) return;
-
-  // （ここから下は既存の通常処理をそのまま）
-  result.push(`先ほど${entry.reason}いたしました${nameWithHonor(pinchPlayer)}が${posJP[pos]}、`);
-  // ...（以下略：既存コード継続）
+  // 堂林の mixed を後段で再度出さない
+  handledPositions.add(mixedIntoOrig.toPos);
 });
-
 
 if (pinchShiftLines.length > 0) {
   result.push(...pinchShiftLines);
@@ -2333,31 +2394,34 @@ const buildFromHead = (fromId: number, fromPosSym?: string) => {
   const p = teamPlayers.find(pp => Number(pp.id) === Number(fromId));
   const fromName = p ? nameWithHonor(p) : "";
 
-  // ✅「この守備交代画面の基準（＝initialAssignments）に既に居るなら、もう“先ほど”ではない」
+  const fromPosSymSafe = fromPosSym || "";
+  const fromFull = fromPosSymSafe ? posJP[fromPosSymSafe as keyof typeof posJP] : "";
+
+  const reason = getEnterReason(fromId);
+
+  // ✅ 代打/代走/臨時代走で入った選手は、守備についていても「先ほど…」を優先
+  if (reason === "代打" || reason === "代走" || reason === "臨時代走") {
+    const phrase =
+      reason === "代走"
+        ? "代走いたしました"
+        : reason === "臨時代走"
+        ? "臨時代走"
+        : "代打いたしました";
+
+    return `先ほど${phrase}${fromName}に代わりまして、`;
+  }
+
+  // それ以外だけ「すでに出場中なら守備名つき」にする
   const alreadyOnFieldWhenOpened = Object.values(initialAssignments ?? {}).some(
     (id) => Number(id) === Number(fromId)
   );
 
-  const fromPosSymSafe = fromPosSym || "";
-  const fromFull = fromPosSymSafe ? posJP[fromPosSymSafe as keyof typeof posJP] : "";
-
-  // すでに出場中扱いなら、理由が代打/代走でも「指名打者の〜に代わりまして」に寄せる
   if (alreadyOnFieldWhenOpened) {
     return `${fromFull ? `${fromFull}の ` : ""}${fromName}に代わりまして、`;
   }
 
-  const reason = getEnterReason(fromId);
-  if (reason === "代打" || reason === "代走" || reason === "臨時代走") {
-    const phrase =
-      reason === "代走" ? "代走いたしました" :
-      reason === "臨時代走" ? "臨時代走" :
-      "代打いたしました";
-    return `先ほど${phrase}${fromName}に代わりまして、`;
-  }
-
   return `${fromFull ? `${fromFull}の ` : ""}${fromName}に代わりまして、`;
 };
-
 
 // mixed の前あたり（同一スコープ）に追加
 const handledMixedKeys = new Set<string>();
@@ -5830,57 +5894,85 @@ const onFieldIds = new Set<number>(effectiveSavedState.onFieldPlayerIds);
     }
   }
 
-  // =========================================================
-  // 12) 保存
-  // =========================================================
-  // =========================================================
-  // 12) 保存
-  // =========================================================
-  await localForage.setItem("lineupAssignments", finalAssignments);
-  await localForage.setItem("battingReplacements", {});
-  await localForage.setItem("battingOrder", updatedOrder);
-  localStorage.setItem("battingOrderVersion", String(Date.now()));
-  await localForage.setItem("dhEnabledAtStart", finalDhEnabledAtStart);
-  await localForage.setItem("ohtaniRule", ohtaniRule);
-  await localForage.setItem("usedPlayerInfo", usedInfo);
+ const committedUsedInfo = Object.fromEntries(
+  Object.entries(usedInfo || {}).map(([k, v]) => {
+    const x = { ...(v as any) };
 
-  setBattingReplacements({});
-  setSubstitutionLogs([]);
-  setPairLocks({});
+    // ✅ 次回の交代表示に持ち越してはいけない“今回だけの表示用情報”を消す
+    delete x.reason;
+    delete x.fromPos;
+    delete x.toPos;
+    delete x.subId;
 
-  setShowSaveModal(false);
-  setShowLeaveConfirm(false);
+    return [k, x];
+  })
+);
 
-  snapshotRef.current = buildSnapshot();
-  setIsDirty(false);
+const committedOrder = updatedOrder.map((entry: any) => ({
+  ...entry,
+  reason:
+    entry?.reason === "代打" ||
+    entry?.reason === "代走" ||
+    entry?.reason === "臨時代走"
+      ? "途中出場"
+      : entry?.reason ?? "",
+}));
 
-  setInitialAssignments(finalAssignments);
-  setAssignments(finalAssignments);
-  console.log("[SAVE CHECK] updatedOrder =", updatedOrder);
-  console.log("[SAVE CHECK] finalAssignments =", finalAssignments);
-  console.log("[SAVE CHECK] 2番 =", updatedOrder[1]);
+// =========================================================
+// 12) 保存
+// =========================================================
+await localForage.setItem("lineupAssignments", finalAssignments);
+await localForage.setItem("battingReplacements", {});
+await localForage.setItem("battingOrder", committedOrder);
+localStorage.setItem("battingOrderVersion", String(Date.now()));
+await localForage.setItem("dhEnabledAtStart", finalDhEnabledAtStart);
+await localForage.setItem("ohtaniRule", ohtaniRule);
+await localForage.setItem("usedPlayerInfo", committedUsedInfo);
 
-  setBattingOrder(updatedOrder);
-  setBattingOrderDraft(updatedOrder);
-  setDhEnabledAtStart(finalDhEnabledAtStart);
-  setUsedPlayerInfo({ ...(usedInfo as any) });
+setBattingReplacements({});
+setSubstitutionLogs([]);
+setPairLocks({});
 
-  // 差分表示を終了
-  setTouchedFieldPos(new Set());
-  setReentryPreviewIds(new Set());
-  setReentryFixedIds(new Set());
+setShowSaveModal(false);
+setShowLeaveConfirm(false);
 
-  onConfirmed();
+setInitialAssignments(finalAssignments);
+setAssignments(finalAssignments);
 
-  if (window.history.length > 1) {
-    navigate(-1);
-  } else {
-    navigate("/defense", { replace: true });
-  }
+console.log("[SAVE CHECK] committedOrder =", committedOrder);
+console.log("[SAVE CHECK] finalAssignments =", finalAssignments);
+console.log("[SAVE CHECK] 2番 =", committedOrder[1]);
 
-  console.log("✅ onConfirmed called");
+setBattingOrder(committedOrder);
+setBattingOrderDraft(committedOrder);
+setDhEnabledAtStart(finalDhEnabledAtStart);
+setUsedPlayerInfo({ ...(committedUsedInfo as any) });
+
+// 差分表示を終了
+setTouchedFieldPos(new Set());
+setReentryPreviewIds(new Set());
+setReentryFixedIds(new Set());
+
+// ✅ 保存後の確定状態を baseline にする
+snapshotRef.current = JSON.stringify({
+  assignments: finalAssignments,
+  battingOrder: committedOrder,
+  pendingDisableDH: false,
+  dhDisableSnapshot: null,
+  dhEnabledAtStart: finalDhEnabledAtStart,
+});
+setIsDirty(false);
+
+onConfirmed();
+
+if (window.history.length > 1) {
+  navigate(-1);
+} else {
+  navigate("/defense", { replace: true });
+}
+
+console.log("✅ onConfirmed called");
 };
-
 
   // 新たにアナウンス表示だけの関数を定義
   const showAnnouncement = () => {
@@ -6652,495 +6744,344 @@ ${(isReentryBlue)
 
         {/* 2カラム（スマホでは縦積み） */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* 打順一覧 */}
 {/* 打順一覧 */}
 <div className="flex-1">
   <h2 className="text-lg font-bold mb-2 text-slate-900">打順（1番〜9番）</h2>
-  <ul className="space-y-1 text-sm border border-slate-200 rounded-xl bg-white p-2">
-    {(battingOrderDraft?.length === 9 ? battingOrderDraft : battingOrder).map((slot, index) => {
-      const dhStarterId = initialAssignments?.["指"];
-      const dhSlotIndex =
-        typeof dhStarterId === "number"
-          ? battingOrder.findIndex((e) => e.id === dhStarterId)
-          : -1;
 
-      const dhActive = !!assignments["指"];
+  {(() => {
+    const orderViewBaseAssignments = isDirty ? initialAssignments : assignments;
+    const orderViewReplacements = isDirty ? battingReplacements : {};
+    const orderViewOrder =
+      isDirty && battingOrderDraft?.length === 9 ? battingOrderDraft : battingOrder;
 
-      const displayId = slot.id;
+    return (
+      <ul className="space-y-1 text-sm border border-slate-200 rounded-xl bg-white p-2">
+        {orderViewOrder.map((slot, index) => {
+          const dhStarterId = initialAssignments?.["指"];
+          const dhSlotIndex =
+            typeof dhStarterId === "number"
+              ? battingOrder.findIndex((e) => e.id === dhStarterId)
+              : -1;
 
-      // 取消線用の「交代前選手」は、この画面を開いた時点の battingOrder を基準にする
-      const beforeEntry = battingOrder[index];
-      const beforeId = beforeEntry?.id ?? slot.id;
+          const dhActive = !!assignments["指"];
 
-      const starter = teamPlayers.find((p) => p.id === beforeId); // 旧表示用
-      const player = teamPlayers.find((p) => p.id === displayId); // 新表示用
-      if (!starter || !player) return null;
+          const displayId = slot.id;
 
-      let currentPos = getOrderDisplayPos(assignments, displayId);
-      let initialPos = getOrderDisplayPos(initialAssignments, beforeId);
+          // 取消線用の「交代前選手」は、この画面を開いた時点の battingOrder を基準にする
+          const beforeEntry = battingOrder[index];
+          const beforeId = beforeEntry?.id ?? slot.id;
 
-      // ① 代打/代走でまだ守備位置解決できないときは fromPos を使う
-      if (!currentPos || currentPos === "-" || currentPos === "－") {
-        const pinchInfo = Object.values(usedPlayerInfo || {}).find(
-          (info: any) =>
-            Number(info?.subId) === Number(displayId) &&
-            ["代打", "代走", "臨時代走"].includes(String(info?.reason ?? ""))
-        );
+          const starter = teamPlayers.find((p) => p.id === beforeId); // 旧表示用
+          const player =
+            (orderViewReplacements as any)[index]
+              ? (orderViewReplacements as any)[index]
+              : teamPlayers.find((p) => p.id === displayId); // 新表示用
+          if (!starter || !player) return null;
 
-        if (pinchInfo?.fromPos) {
-          currentPos = posNameToSymbol[pinchInfo.fromPos] ?? pinchInfo.fromPos;
-        }
-      }
+          let currentPos = getOrderDisplayPos(assignments, displayId);
+          let initialPos = getOrderDisplayPos(orderViewBaseAssignments, beforeId);
 
-      // ② リエントリー済みの元スタメンなら、元の守備位置を表示
-      if (!currentPos || currentPos === "-" || currentPos === "－") {
-        const usedEntry = (usedPlayerInfo as any)?.[displayId];
+          // ① 代打/代走でまだ守備位置解決できないときは fromPos を使う
+          if (!currentPos || currentPos === "-" || currentPos === "－") {
+            const pinchInfo = Object.values(usedPlayerInfo || {}).find(
+              (info: any) =>
+                Number(info?.subId) === Number(displayId) &&
+                ["代打", "代走", "臨時代走"].includes(String(info?.reason ?? ""))
+            );
 
-        if (usedEntry?.hasReentered) {
-          const reentryPos = getOrderDisplayPos(initialAssignments, displayId);
-          if (reentryPos && reentryPos !== "-" && reentryPos !== "－") {
-            currentPos = reentryPos;
+            if (pinchInfo?.fromPos) {
+              currentPos = posNameToSymbol[pinchInfo.fromPos] ?? pinchInfo.fromPos;
+            }
           }
-        }
-      }
 
-      // ③ まだ取れない場合は、元の打順選手の初期守備位置を最後の保険に使う
-      if (!currentPos || currentPos === "-" || currentPos === "－") {
-        if (initialPos && initialPos !== "-" && initialPos !== "－") {
-          currentPos = initialPos;
-        }
-      }
+          // ② リエントリー済みの元スタメンなら、元の守備位置を表示
+          if (!currentPos || currentPos === "-" || currentPos === "－") {
+            const usedEntry = (usedPlayerInfo as any)?.[displayId];
 
-      if (dhActive && dhSlotIndex === index) {
-        currentPos = "指";
-        if (!initialPos || initialPos === "-") initialPos = "指";
-      }
+            if (usedEntry?.hasReentered) {
+              const reentryPos = getOrderDisplayPos(initialAssignments, displayId);
+              if (reentryPos && reentryPos !== "-" && reentryPos !== "－") {
+                currentPos = reentryPos;
+              }
+            }
+          }
 
-      const playerChanged = displayId !== beforeId;
-      const positionChanged = currentPos !== initialPos;
+          // ③ まだ取れない場合は、元の打順選手の初期守備位置を最後の保険に使う
+          if (!currentPos || currentPos === "-" || currentPos === "－") {
+            if (initialPos && initialPos !== "-" && initialPos !== "－") {
+              currentPos = initialPos;
+            }
+          }
 
-      const isPinchHitter = slot.reason === "代打";
-      const isPinchRunner = slot.reason === "代走";
-      const isTempPinchRunner = slot.reason === "臨時代走";
-      const isPinch = isPinchHitter || isPinchRunner || isTempPinchRunner;
-      const pinchLabel = isPinchHitter
-        ? "代打"
-        : isPinchRunner
-        ? "代走"
-        : isTempPinchRunner
-        ? "臨時代走"
-        : "";
+          if (dhActive && dhSlotIndex === index) {
+            currentPos = "指";
+            if (!initialPos || initialPos === "-") initialPos = "指";
+          }
 
-      const shouldShowPinchBadge = isPinch;
-      const shouldHighlightPlayer = playerChanged || isPinch;
+          const playerChanged = displayId !== beforeId;
+          const positionChanged = currentPos !== initialPos;
 
-      return (
-        <li key={index} className="py-1 px-2 border-b last:border-b-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-slate-500 w-8">{index + 1}番</span>
+          const isPinchHitter = slot.reason === "代打";
+          const isPinchRunner = slot.reason === "代走";
+          const isTempPinchRunner = slot.reason === "臨時代走";
+          const isPinch = isPinchHitter || isPinchRunner || isTempPinchRunner;
+          const pinchLabel = isPinchHitter
+            ? "代打"
+            : isPinchRunner
+            ? "代走"
+            : isTempPinchRunner
+            ? "臨時代走"
+            : "";
 
-            {playerChanged ? (
-              <>
-                <span className="line-through text-gray-400">
-                  {withMark(initialPos)}{" "}
-                  <ruby>
-                    {starter.lastName}
-                    {starter.firstName}
-                    <rt>
-                      {starter.lastNameKana}
-                      {starter.firstNameKana}
-                    </rt>
-                  </ruby>
-                  {starter.number ? ` #${starter.number}` : ""}
-                </span>
+          const shouldShowPinchBadge = isPinch;
+          const shouldHighlightPlayer = isDirty && (playerChanged || isPinch);
 
-                <span className="text-gray-400">→</span>
+          return (
+            <li key={index} className="py-1 px-2 border-b last:border-b-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-slate-500 w-8">{index + 1}番</span>
 
-                <span className="text-red-600 font-bold">
-                  {withMark(currentPos)}{" "}
-                  <ruby>
-                    {player.lastName}
-                    {player.firstName}
-                    <rt>
-                      {player.lastNameKana}
-                      {player.firstNameKana}
-                    </rt>
-                  </ruby>
-                  {player.number ? ` #${player.number}` : ""}
-                </span>
+                {playerChanged ? (
+                  <>
+                    <span className="line-through text-gray-400">
+                      {withMark(initialPos)}{" "}
+                      <ruby>
+                        {starter.lastName}
+                        {starter.firstName}
+                        <rt>
+                          {starter.lastNameKana}
+                          {starter.firstNameKana}
+                        </rt>
+                      </ruby>
+                      {starter.number ? ` #${starter.number}` : ""}
+                    </span>
 
-                {shouldShowPinchBadge && (
-                  <span className="text-[11px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200">
-                    {pinchLabel}
-                  </span>
+                    <span className="text-gray-400">→</span>
+
+                    <span className="text-red-600 font-bold">
+                      {withMark(currentPos)}{" "}
+                      <ruby>
+                        {player.lastName}
+                        {player.firstName}
+                        <rt>
+                          {player.lastNameKana}
+                          {player.firstNameKana}
+                        </rt>
+                      </ruby>
+                      {player.number ? ` #${player.number}` : ""}
+                    </span>
+
+                    {shouldShowPinchBadge && (
+                      <span className="text-[11px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200">
+                        {pinchLabel}
+                      </span>
+                    )}
+                  </>
+                ) : positionChanged ? (
+                  <>
+                    <span className="text-slate-800">
+                      <span className="text-gray-400">{withMark(initialPos)}</span>
+                      <span className="text-gray-400 mx-1">→</span>
+                      <span className="text-red-600 font-bold">{withMark(currentPos)}</span>{" "}
+                      <span className={shouldHighlightPlayer ? "text-red-600 font-bold" : ""}>
+                        <ruby>
+                          {player.lastName}
+                          {player.firstName}
+                          <rt>
+                            {player.lastNameKana}
+                            {player.firstNameKana}
+                          </rt>
+                        </ruby>
+                        {player.number ? ` #${player.number}` : ""}
+                      </span>
+                    </span>
+
+                    {shouldShowPinchBadge && (
+                      <span className="text-[11px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200">
+                        {pinchLabel}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <span className={shouldHighlightPlayer ? "text-red-600 font-bold" : "text-slate-800"}>
+                      {withMark(currentPos)}{" "}
+                      <ruby>
+                        {player.lastName}
+                        {player.firstName}
+                        <rt>
+                          {player.lastNameKana}
+                          {player.firstNameKana}
+                        </rt>
+                      </ruby>
+                      {player.number ? ` #${player.number}` : ""}
+                    </span>
+
+                    {shouldShowPinchBadge && (
+                      <span className="text-[11px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200">
+                        {pinchLabel}
+                      </span>
+                    )}
+                  </>
                 )}
-              </>
-            ) : positionChanged ? (
-              <>
-                <span className="text-slate-800">
-                  <span className="text-gray-400">{withMark(initialPos)}</span>
-                  <span className="text-gray-400 mx-1">→</span>
-                  <span className="text-red-600 font-bold">{withMark(currentPos)}</span>{" "}
-                  <span className={shouldHighlightPlayer ? "text-red-600 font-bold" : ""}>
-                    <ruby>
-                      {player.lastName}
-                      {player.firstName}
-                      <rt>
-                        {player.lastNameKana}
-                        {player.firstNameKana}
-                      </rt>
-                    </ruby>
-                    {player.number ? ` #${player.number}` : ""}
-                  </span>
-                </span>
-
-                {shouldShowPinchBadge && (
-                  <span className="text-[11px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200">
-                    {pinchLabel}
-                  </span>
-                )}
-              </>
-            ) : (
-              <>
-                <span className={shouldHighlightPlayer ? "text-red-600 font-bold" : "text-slate-800"}>
-                  {withMark(currentPos)}{" "}
-                  <ruby>
-                    {player.lastName}
-                    {player.firstName}
-                    <rt>
-                      {player.lastNameKana}
-                      {player.firstNameKana}
-                    </rt>
-                  </ruby>
-                  {player.number ? ` #${player.number}` : ""}
-                </span>
-
-                {shouldShowPinchBadge && (
-                  <span className="text-[11px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200">
-                    {pinchLabel}
-                  </span>
-                )}
-              </>
-            )}
-          </div>
-        </li>
-      );
-    })}
-  </ul>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  })()}
 </div>
 
-          {/* 交代内容（右） */}
-          <div className="w-full">
-            <h2 className="text-lg font-bold mb-2 text-slate-900">交代内容</h2>
-            <ul className="text-sm border border-slate-200 p-3 rounded-xl bg-white space-y-1">
-              {(() => {
-                const posPriority = { "投": 1, "捕": 2, "一": 3, "二": 4, "三": 5, "遊": 6, "左": 7, "中": 8, "右": 9 };
+{/* 交代内容（右） */}
+<div className="w-full">
+  <h2 className="text-lg font-bold mb-2 text-slate-900">交代内容</h2>
 
-                // ✅ DH（指名打者）が「どの打順スロットか」を特定（交代内容表示用）
-                const dhStarterId = initialAssignments?.["指"];
-                const dhSlotIndex =
-                  typeof dhStarterId === "number"
-                    ? startingOrderRef.current.findIndex(e => e.id === dhStarterId)
-                    : -1;
+  {!isDirty ? (
+    <div className="text-sm border border-slate-200 p-3 rounded-xl bg-white text-slate-400">
+      なし
+    </div>
+  ) : (
+    <ul className="text-sm border border-slate-200 p-3 rounded-xl bg-white space-y-1">
+      {(() => {
+        const posPriority = { "投": 1, "捕": 2, "一": 3, "二": 4, "三": 5, "遊": 6, "左": 7, "中": 8, "右": 9 };
 
-                const changes = battingOrder.map((entry, index) => {
-                  const starter = teamPlayers.find((p) => p.id === entry.id);
-                  if (!starter) return null;
+        const dhStarterId = initialAssignments?.["指"];
+        const dhSlotIndex =
+          typeof dhStarterId === "number"
+            ? startingOrderRef.current.findIndex(e => e.id === dhStarterId)
+            : -1;
 
-                  let replaced = battingReplacements[index] ?? teamPlayers.find(p => p.id === entry.id);
-                  // ✅ DHスロットだけは、フィールド側(assignments["指"])が最新になっている場合があるのでそれを優先
-                  if (index === dhSlotIndex) {
-                    const dhStarterId = initialAssignments?.["指"];
-                    const dhNowId = assignments?.["指"];
+        const changes = battingOrder.map((entry, index) => {
+          const starter = teamPlayers.find((p) => p.id === entry.id);
+          if (!starter) return null;
 
-                    // 「DHがスターターのまま」の時（大谷ルール直後など）は上書きしない
-                    if (
-                      typeof dhNowId === "number" &&
-                      typeof dhStarterId === "number" &&
-                      dhNowId !== dhStarterId
-                    ) {
-                      const dhNowPlayer = teamPlayers.find(p => p.id === dhNowId);
-                      if (dhNowPlayer) replaced = dhNowPlayer;
-                    }
-                  }
+          let replaced = battingReplacements[index] ?? teamPlayers.find(p => p.id === entry.id);
 
-                  const currentId = replaced?.id ?? entry.id;
-                  const currentPlayer = replaced ?? starter;
+          if (index === dhSlotIndex) {
+            const dhStarterId = initialAssignments?.["指"];
+            const dhNowId = assignments?.["指"];
 
-                  const currentPos = getPositionName(assignments, currentId);
-                  const initialPos = getPositionName(initialAssignments, entry.id);
+            if (
+              typeof dhNowId === "number" &&
+              typeof dhStarterId === "number" &&
+              dhNowId !== dhStarterId
+            ) {
+              const dhNowPlayer = teamPlayers.find(p => p.id === dhNowId);
+              if (dhNowPlayer) replaced = dhNowPlayer;
+            }
+          }
 
-                  const playerChanged = replaced && replaced.id !== entry.id;
-                  const positionChanged = currentPos !== initialPos;
-                  const isPinchHitter = entry.reason === "代打";
-                  const isPinchRunner = entry.reason === "代走";
-                  const isPinch = isPinchHitter || isPinchRunner;
-                  const pinchReasons = ["代打", "代走", "臨時代走"] as const;
+          const currentId = replaced?.id ?? entry.id;
+          const currentPlayer = replaced ?? starter;
 
-                  // subId(=代打で出た選手ID)から「どの守備位置(fromPos)の代打か」を逆引き
-                  const resolvePinchFromPosSymBySubId = (subId: number): string => {
-                    for (const info of Object.values(usedPlayerInfo || {})) {
-                      if (!info) continue;
-                      if (!pinchReasons.includes(String((info as any).reason) as any)) continue;
-                      if ((info as any).subId !== subId) continue;
+          let currentPos = getPositionName(assignments, currentId);
+          const initialPos = getPositionName(initialAssignments, entry.id);
 
-                      const fromPos = (info as any).fromPos as string | undefined;
-                      if (!fromPos) return "";
+          const playerChanged = !!replaced && replaced.id !== entry.id;
+          const positionChanged = currentPos !== initialPos;
+          const isPinchHitter = entry.reason === "代打";
+          const isPinchRunner = entry.reason === "代走";
+          const pinchReasons = ["代打", "代走", "臨時代走"] as const;
 
-                      // fromPos は "セカンド" の可能性があるので sym に寄せる
-                      return (posNameToSymbol as any)[fromPos] ?? fromPos; // "二" など
-                    }
-                    return "";
-                  };
+          const resolvePinchFromPosSymBySubId = (subId: number): string => {
+            for (const info of Object.values(usedPlayerInfo || {})) {
+              if (!info) continue;
+              if (!pinchReasons.includes(String((info as any).reason) as any)) continue;
+              if ((info as any).subId !== subId) continue;
 
-                  if (isPinchHitter && replaced && !Object.values(assignments).includes(replaced.id)) {
-                    // ✅ DHの打順スロットに代打を出したケースは「代打：選手 ➡ DH指名打者」にする
-                    const isDhPinch = ohtaniRule && dhSlotIndex === index;
+              const fromPos = (info as any).fromPos as string | undefined;
+              if (!fromPos) return "";
+              return (posNameToSymbol as any)[fromPos] ?? fromPos;
+            }
+            return "";
+          };
 
-                    return {
-                      key: `pinch-${index}`,
-                      type: 1,
-                      pos: isDhPinch ? "指" : "",
-                      jsx: (
-                        <li key={`pinch-${index}`}>
-                          {isDhPinch ? (
-                            <>
-                              代打：{replaced.lastName}{replaced.firstName} #{replaced.number} ➡ {withFull("指")}
-                            </>
-                          ) : (
-                            <>
-                              {(() => {
-                                const sym = resolvePinchFromPosSymBySubId(replaced.id);
-                                return sym
-                                  ? <>代打：{replaced.lastName}{replaced.firstName} #{replaced.number} ➡ {withFull(sym)}</>
-                                  : <>代打：{replaced.lastName}{replaced.firstName} #{replaced.number}</>;
-                              })()}
-                            </>
-                          )}
-                        </li>
-                      ),
-                    };
-                  }
+          if (!playerChanged && !positionChanged && !isPinchHitter && !isPinchRunner) {
+            return null;
+          }
 
-                  if (isPinchHitter && playerChanged && currentPos) {
-                    const pinchPlayer = teamPlayers.find(p => p.id === entry.id);
-                    const replacedPlayer = replaced;
+          if (isPinchHitter && currentPos) {
+            if (!replaced) {
+              replaced = teamPlayers.find(p => p.id === entry.id);
+            }
+            return {
+              key: `pinch-assigned-${index}`,
+              type: 1,
+              pos: currentPos,
+              jsx: (
+                <li key={`pinch-assigned-${index}`}>
+                  代打：{replaced?.lastName}{replaced?.firstName} #{replaced?.number} ➡ {withFull(currentPos)}
+                </li>
+              )
+            };
+          }
 
-                    return {
-                      key: `pinch-replaced-${index}`,
-                      type: 1,
-                      pos: currentPos,
-                      jsx: (
-                        <li key={`pinch-replaced-${index}`}>
-                          代打：{pinchPlayer?.lastName}{pinchPlayer?.firstName} #{pinchPlayer?.number} ➡ {withFull(currentPos)}：{replacedPlayer.lastName}{replacedPlayer.firstName} #{replacedPlayer.number}
-                        </li>
-                      )
-                    };
-                  }
+          if (isPinchRunner && currentPos) {
+            if (!replaced) {
+              replaced = teamPlayers.find(p => p.id === entry.id);
+            }
+            return {
+              key: `runner-assigned-${index}`,
+              type: 2,
+              pos: currentPos,
+              jsx: (
+                <li key={`runner-assigned-${index}`}>
+                  代走：{replaced?.lastName}{replaced?.firstName} #{replaced?.number} ➡ {withFull(currentPos)}
+                </li>
+              )
+            };
+          }
 
-                  if (isPinchHitter && currentPos) {
-                    if (!replaced) {
-                      replaced = teamPlayers.find(p => p.id === entry.id);
-                    }
-                    return {
-                      key: `pinch-assigned-${index}`,
-                      type: 1,
-                      pos: currentPos,
-                      jsx: (
-                        <li key={`pinch-assigned-${index}`}>
-                          代打：{replaced.lastName}{replaced.firstName} #{replaced.number} ➡ {withFull(currentPos)}
-                        </li>
-                      )
-                    };
-                  }
+          if (playerChanged) {
+            return {
+              key: `replaced-${index}`,
+              type: 3,
+              pos: currentPos,
+              jsx: (
+                <li key={`replaced-${index}`}>
+                  {withFull(initialPos)}：{starter.lastName}{starter.firstName} #{starter.number}
+                  {" "}➡{" "}
+                  {withFull(currentPos)}：{currentPlayer.lastName}{currentPlayer.firstName} #{currentPlayer.number}
+                </li>
+              )
+            };
+          }
 
-const pinchRunnerCandidateId = currentPlayer?.id ?? entry.id;
+          if (positionChanged) {
+            return {
+              key: `shift-${index}`,
+              type: 4,
+              pos: currentPos,
+              jsx: (
+                <li key={`shift-${index}`}>
+                  {starter.lastName}{starter.firstName} #{starter.number}
+                  {" "}➡{" "}
+                  {withFull(currentPos)}
+                </li>
+              )
+            };
+          }
 
-const pinchRunnerInfo = Object.values(usedPlayerInfo || {}).find(
-  (x: any) =>
-    (x?.subId === entry.id || x?.subId === pinchRunnerCandidateId) &&
-    (x?.reason === "代走" || x?.reason === "臨時代走")
-);
+          return null;
+        })
+          .filter(Boolean)
+          .sort((a: any, b: any) => {
+            const pa = posPriority[a?.pos as keyof typeof posPriority] ?? 99;
+            const pb = posPriority[b?.pos as keyof typeof posPriority] ?? 99;
+            if (pa !== pb) return pa - pb;
+            return (a?.type ?? 99) - (b?.type ?? 99);
+          });
 
-const pinchRunnerPos = (() => {
-  const fromPos = (pinchRunnerInfo as any)?.fromPos as string | undefined;
-  if (!fromPos) return "";
-  return (posNameToSymbol as any)[fromPos] ?? fromPos;
-})();
+        if (!changes.length) {
+          return <li className="text-slate-400">なし</li>;
+        }
 
-if ((!currentPos || currentPos === "-") && pinchRunnerPos) {
-  currentPos = pinchRunnerPos;
-}
-
-if (pinchRunnerInfo && replaced && pinchRunnerPos) {
-  const pinchRunner =
-    teamPlayers.find((p) => p.id === pinchRunnerCandidateId) ||
-    teamPlayers.find((p) => p.id === entry.id);
-
-  const replacedPlayer = replaced;
-  const isSame = pinchRunner?.id === replacedPlayer?.id;
-
-  return {
-    key: `runner-${index}`,
-    type: 2,
-    pos: pinchRunnerPos,
-    jsx: (
-      <li key={`runner-${index}`}>
-        代走：{pinchRunner?.lastName}{pinchRunner?.firstName} #{pinchRunner?.number}
-        {" "}➡ {withFull(pinchRunnerPos)}
-        {!isSame && (
-          <>：{replacedPlayer.lastName}{replacedPlayer.firstName} #{replacedPlayer.number}</>
-        )}
-      </li>
-    ),
-  };
-}
-
-
-                  if (playerChanged) {
-                    return {
-                      key: `replaced-${index}`,
-                      type: 3,
-                      pos: currentPos,
-                      jsx: (
-                        <li key={`replaced-${index}`}>
-                          {withFull(initialPos)}：{starter.lastName}{starter.firstName} #{starter.number} ➡ {withFull(currentPos)}：
-                          {currentPlayer.lastName}{currentPlayer.firstName} #{currentPlayer.number}
-                        </li>
-                      )
-                    };
-                  }
-
-                  // ✅ 大谷ルールON時：投手交代に伴って出てしまう「投 → 指（DH）」のシフト表示は不要
-                  const isOhtaniPitcherToDhNoise =
-                    ohtaniRule &&
-                    typeof initialAssignments?.["投"] === "number" &&
-                    typeof initialAssignments?.["指"] === "number" &&
-                    initialAssignments["投"] === initialAssignments["指"] &&           // 投手=DH（同一人物）で開始
-                    typeof assignments?.["投"] === "number" &&
-                    assignments["投"] !== initialAssignments["投"] &&                  // このターンで投手が交代している
-                    starter.id === initialAssignments["投"] &&                         // その「投手=DH本人」の行だけ
-                    initialPos === "投" &&
-                    currentPos === "指";                                               // 「投 → 指」になってしまうやつ
-
-                  // ノイズならこの行は交代内容に出さない
-                  if (isOhtaniPitcherToDhNoise) return null;
-
-                  if (positionChanged) {
-                    return {
-                      key: `shift-${index}`,
-                      type: 4,
-                      pos: currentPos,
-                      jsx: (
-                        <li key={`shift-${index}`}>
-                          {withFull(initialPos)}：{starter.lastName}{starter.firstName} #{starter.number} ➡ {withFull(currentPos)}
-                        </li>
-                      )
-                    };
-                  }
-
-                  return null;
-                }).filter(Boolean) as { key: string; type: number; pos: string; jsx: JSX.Element }[];
-
-                // --- 追加: DHありで打順に投手が居ないケースでも投手交代を表示する ---
-                // --- 追加: 先発投手が「投」以外の守備に就いている場合も1行出す ---
-                (() => {
-                  const initP = initialAssignments?.["投"];
-                  if (typeof initP !== "number") return;
-
-                  const nowPos =
-                    Object.entries(assignments).find(([pos, id]) => id === initP)?.[0];
-
-                  // ✅ 大谷ルール開始（投＝指）だったか
-                  const isOhtaniAtStart =
-                    ohtaniRule &&
-                    typeof initialAssignments?.["投"] === "number" &&
-                    typeof initialAssignments?.["指"] === "number" &&
-                    initialAssignments["投"] === initialAssignments["指"];
-
-                  // ✅ このターンで投手が交代しているか（元投手 initP が投手ではなくなった）
-                  const isPitcherReplacedThisTurn =
-                    typeof assignments?.["投"] === "number" && assignments["投"] !== initP;
-
-                  // ✅ 大谷ルールONで投手交代した時に出てしまう「投 → 指」はノイズなので交代内容に出さない
-                  // （元投手が assignments 上は「指」に残ってしまうため）
-                  const isOhtaniPitcherToDhNoiseExtra =
-                    isOhtaniAtStart && isPitcherReplacedThisTurn && nowPos === "指";
-
-                  if (isOhtaniPitcherToDhNoiseExtra) {
-                    console.log("[DEBUG][CHANGE_LIST] skip pitcher-shift-extra (Ohtani noise)", {
-                      initP,
-                      nowPos,
-                      curP: assignments?.["投"],
-                      dh: assignments?.["指"],
-                    });
-                    return;
-                  }
-
-                  if (
-                    nowPos &&
-                    nowPos !== "投" &&
-                    !changes.some(c => c.type === 4 && c.pos === nowPos) && // 既に同じshiftがある？
-                    !changes.some(c => c.type === 2 && c.pos === nowPos)   // ★そのポジションに代走行があるなら抑止
-                  ) {
-                    const from = teamPlayers.find((p) => p.id === initP);
-                    if (from) {
-                      changes.push({
-                        key: "pitcher-shift-extra",
-                        type: 4,
-                        pos: nowPos,
-                        jsx: (
-                          <li key="pitcher-shift-extra">
-                            {withFull("投")}：{from.lastName}{from.firstName} #{from.number}
-                            {" "}➡ {withFull(nowPos)}
-                          </li>
-                        ),
-                      });
-                    }
-                  }
-                })();
-
-
-                (() => {
-                  const initP = initialAssignments?.["投"];
-                  const curP  = assignments?.["投"];
-
-                  if (
-                    typeof initP === "number" &&
-                    typeof curP === "number" &&
-                    initP !== curP &&
-                    !changes.some(c => c.pos === "投")
-                  ) {
-                    const from = teamPlayers.find(p => p.id === initP);
-                    const to   = teamPlayers.find(p => p.id === curP);
-                    if (from && to) {
-                      changes.push({
-                        key: "pitcher-change-extra",
-                        type: 3,
-                        pos: "投",
-                        jsx: (
-                          <li key="pitcher-change-extra">
-                            {withFull("投")}：{from.lastName}{from.firstName} #{from.number}
-                            {" "}➡ {withFull("投")}：{to.lastName}{to.firstName} #{to.number}
-                          </li>
-                        ),
-                      });
-                    }
-                  }
-                })();
-
-                // 優先順位に従ってソート
-                changes.sort((a, b) => {
-                  if (a.type !== b.type) return a.type - b.type;
-                  const ap = posPriority[a.pos] ?? 99;
-                  const bp = posPriority[b.pos] ?? 99;
-                  return ap - bp;
-                });
-
-                return changes.map(c => c.jsx);
-              })()}
-            </ul>
-          </div>
+        return changes.map((c: any) => c.jsx);
+      })()}
+    </ul>
+  )}
+</div>
         </div>
       </div>
     </div>
