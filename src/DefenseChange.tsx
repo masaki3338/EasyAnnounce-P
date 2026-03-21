@@ -2645,42 +2645,46 @@ sortedShift.forEach((s, i) => {
   );
   if (alreadyMentionedSameTo) return;
 
-  const pinchInfoForShift = Object.values(usedPlayerInfo || {}).find(
-    (x: any) => x?.subId === s.player.id && ["代打", "代走", "臨時代走"].includes(x.reason)
+ const pinchInfoForShift = Object.values(usedPlayerInfo || {}).find(
+  (x: any) =>
+    Number(x?.subId) === Number(s.player.id) &&
+    ["代打", "代走", "臨時代走"].includes(String(x?.reason ?? ""))
+) as any;
+
+const pinchReasonForShift =
+  (battingOrder.find(
+    (e) =>
+      Number(e.id) === Number(s.player.id) &&
+      ["代打", "代走", "臨時代走"].includes(String(e.reason ?? ""))
+  )?.reason as string | undefined) ??
+  (pinchInfoForShift?.reason as string | undefined);
+
+// ✅ 代打/代走由来の選手なら、initialAssignments に残っていても
+//    「先ほど代打/代走いたしました…」を優先する
+if (pinchReasonForShift) {
+  const phrase =
+    pinchReasonForShift === "代打"
+      ? "代打いたしました"
+      : pinchReasonForShift === "臨時代走"
+      ? "臨時代走"
+      : "代走いたしました";
+
+  const hasPriorSame = result.some(
+    (ln) => ln.includes(`先ほど${phrase}`) || ln.includes(`同じく先ほど${phrase}`)
   );
-  const pinchEntry =
-    battingOrder.find(
-      (e) => e.id === s.player.id && ["代打", "代走", "臨時代走"].includes(e.reason)
-    ) ||
-    (pinchInfoForShift ? ({ reason: pinchInfoForShift.reason } as any) : undefined);
+  const headText = hasPriorSame ? `同じく先ほど${phrase}` : `先ほど${phrase}`;
 
-  const alreadyOnFieldWhenOpened = Object.values(initialAssignments ?? {}).some(
-    (id) => Number(id) === Number(s.player.id)
-  );
+  result.push(`${headText}${nameWithHonor(s.player)}が${toLabel}、`);
+} else {
+  const suppressDhToPitcherLine =
+    startedAsOhtani && fromSym === "指" && toSym === "投";
 
-  if (pinchEntry && !alreadyOnFieldWhenOpened) {
-    const phrase =
-      pinchEntry.reason === "代打"
-        ? "代打いたしました"
-        : pinchEntry.reason === "臨時代走"
-        ? "臨時代走"
-        : "代走いたしました";
-
-    const hasPriorSame = result.some(
-      (ln) => ln.includes(`先ほど${phrase}`) || ln.includes(`同じく先ほど${phrase}`)
+  if (!suppressDhToPitcherLine) {
+    result.push(
+      `${fromLabel}の${nameRuby(s.player)}${s.player.isFemale ? "さん" : "くん"}が${toLabel}、`
     );
-    const headText = hasPriorSame ? `同じく先ほど${phrase}` : `先ほど${phrase}`;
-
-    // ★修正: 「へ」ではなく「に入ります」
-    result.push(`${headText}${nameWithHonor(s.player)}が${toLabel}に入ります。`);
-  } else {
-    const suppressDhToPitcherLine =
-      startedAsOhtani && fromSym === "指" && toSym === "投";
-
-    if (!suppressDhToPitcherLine) {
-      result.push(`${fromLabel}の${nameRuby(s.player)}${s.player.isFemale ? "さん" : "くん"}が${toLabel}、`);
-    }
   }
+}
 
   if (
     !lineupLines.some(l =>
