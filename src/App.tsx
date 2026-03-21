@@ -1106,7 +1106,7 @@ if (totalMyScore > totalOpponentScore) {
           className="px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
           onClick={() => setScreen("menu")}
         >
-          ← メニュー
+          メニュー
         </button>
 
         <button
@@ -1115,7 +1115,7 @@ if (totalMyScore > totalOpponentScore) {
             window.dispatchEvent(new Event("restore-defense-inning-start"));
           }}
         >
-          ↩ 戻す
+          戻す
         </button>
       </div>
 
