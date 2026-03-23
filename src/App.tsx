@@ -45,7 +45,7 @@ import StartTimeAnnouncement from "./StartTimeAnnouncement";
 import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 
 // バージョン番号を定数で管理
-const APP_VERSION = "2.01 β"
+const APP_VERSION = "2.02 β"
 
 // iOS 判定を共通で使えるようにグローバル定数として定義
 const isIOS = (() => {
@@ -1134,18 +1134,22 @@ if (totalMyScore > totalOpponentScore) {
 
             const team = (await localForage.getItem("team")) as { name?: string } | null;
             const match = (await localForage.getItem("matchInfo")) as any;
-            const noNextGame = Boolean(match?.noNextGame); 
-            const stash = await localForage.getItem("matchNumberStash");
+            const noNextGame = Boolean(match?.noNextGame);
+            console.log("matchInfo (RAW) =", match);
 
-            if (match && (match.matchNumber == null) && Number(stash) >= 1) {
+            const stash = await localForage.getItem("matchNumberStash");
+            if (match && match.matchNumber == null && Number(stash) >= 1) {
               await localForage.setItem("matchInfo", { ...match, matchNumber: Number(stash) });
               console.log("🩹 repaired matchInfo at mount with matchNumber =", stash);
             }
 
             type Scores = { [inning: string]: { top?: number; bottom?: number } };
             const scores = ((await localForage.getItem("scores")) as Scores) || {};
+            console.log("scores (RAW) =", scores);
 
             const isHome: boolean = !!(match?.isHome ?? true);
+            console.log("isHome =", isHome);
+
             const toNum = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
             const totalMyScore = Object.values(scores).reduce((sum, s) => {
@@ -1175,67 +1179,51 @@ if (totalMyScore > totalOpponentScore) {
             const nextGame = currentGame + 1;
 
             if (totalMyScore > totalOpponentScore) {
-
               let announcement = "";
               const currentLeagueMode = getLeagueMode();
 
               if (currentLeagueMode === "boys") {
-
                 // ボーイズ用
                 const endGamePitcherInfo = (await localForage.getItem("endGamePitcherInfo")) as
                   | { pitcherId?: number; pitcherName?: string; totalPitchCount?: number }
                   | null;
 
-                const pitchLimitSelected = Number(
-                  (await localForage.getItem("rule.pitchLimit.selected")) ?? 70
-                );
+                const pitcherName = endGamePitcherInfo?.pitcherName || "";
+                const pitcherTotal = Number(endGamePitcherInfo?.totalPitchCount ?? 0);
 
-                const pitcherName =
-                  endGamePitcherInfo?.pitcherName && String(endGamePitcherInfo.pitcherName).trim()
-                    ? String(endGamePitcherInfo.pitcherName).trim()
-                    : "当該投手";
-
-                const totalPitch =
-                  Number(endGamePitcherInfo?.totalPitchCount ?? 0);
-
-                const hasReachedLimit = totalPitch >= pitchLimitSelected;
-
-                if (hasReachedLimit) {
-                  announcement =
-                    `ゲームセット。${myTeam}、${totalMyScore}対${totalOpponentScore}をもちまして勝ちました。` +
-                    `${pitcherName}くんは、${totalPitch}球を投げましたので次の試合には投げられません。`;
-                } else {
-                  announcement =
-                    `ゲームセット。${myTeam}、${totalMyScore}対${totalOpponentScore}をもちまして勝ちました。`;
-                }
+                announcement =
+                  `ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
+                  `${pitcherName}投手の合計投球数は${pitcherTotal}球です。\n` +
+                  `なおこの試合の終了時刻は${formatted}です。`;
 
               } else {
                 // ポニー用
                 announcement =
-                  `ゲームセット。${myTeam}、${totalMyScore}対${totalOpponentScore}をもちまして勝ちました。`;
+                  `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
+                  `審判員の皆様、ありがとうございました。\n` +
+                  `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
+                  `尚、この試合の終了時刻は ${formatted}です。\n` +
+                  `これより、ピッチングレコードの確認を行います。\n` +
+                  `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
+                  `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;
+
+                if (!noNextGame) {
+                  announcement +=
+                    `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
+                    `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`;
+                }
               }
 
-              setFinalAnnouncement(announcement);
-              setShowEndPopup(true);
-
-            } else if (totalMyScore < totalOpponentScore) {
-              const announcement =
-                `ゲームセット。${myTeam}、${totalMyScore}対${totalOpponentScore}をもちまして負けました。`;
-              setFinalAnnouncement(announcement);
-              setShowEndPopup(true);
+              setEndGameAnnouncement(announcement);
+              setShowEndGamePopup(true);
 
             } else {
-              if (noNextGame) {
-                setShowDrawReGamePopup(true);
-              } else {
-                setShowDrawPopup(true);
-              }
+              alert("試合終了しました");
             }
 
             console.groupEnd();
-
           } else if (value === "continue") {
-            setShowContinuePopup(true);
+            setShowContinuationModal(true);
 
           } else if (value === "heat") {
             setShowHeatPopup(true);
@@ -1293,10 +1281,8 @@ if (totalMyScore > totalOpponentScore) {
               });
             }
 
-            const battingOrder =
-              (await localForage.getItem<{ id: number }[]>("battingOrder")) || [];
-
-            const order = battingOrder.map((b) => Number(b.id)).filter((n) => Number.isFinite(n));
+            const order =
+              ((await localForage.getItem<number[]>("pitcherOrder")) || []).slice();
 
             const rows: { playerId: number; name: string; total: number }[] = [];
             for (const id of order) {

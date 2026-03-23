@@ -367,24 +367,29 @@ const isReentryBySameOrderDeep = (
   used: Record<number, any>,
   initialAssignments: Record<string, number | null>
 ): boolean => {
-  // 1) fromの打順（1始まり）
-  const fromIdx = battingOrder.findIndex(e => e.id === fromId);
-  if (fromIdx < 0) return false;
-  const fromOrder = fromIdx + 1;
-
-  // 2) toId の“元スタメンID”を逆引き
+  // toId は元スタメン本人であること
   const toOrig = resolveOriginalStarterId(toId, used as any, initialAssignments as any);
-  // 元スタメン本人でなければ不可
-  if (toOrig == null || toOrig !== toId) return false;
+  if (toOrig == null || Number(toOrig) !== Number(toId)) return false;
 
-  // 3) 元スタメン系列の最新sub（末端）
-  const latest = resolveLatestSubId(toOrig, used as any);
-  const latestIdx = battingOrder.findIndex(e => e.id === latest);
-  if (latestIdx < 0) return false;          // ← ★ 末端が打順にいなければ不可（緩和しない）
-  const latestOrder = latestIdx + 1;
+  // 今、fromId が入っている打順
+  const fromIdx = battingOrder.findIndex(e => Number(e.id) === Number(fromId));
+  if (fromIdx < 0) return false;
 
-  // 4) “同じ打順”のみOK
-  return latestOrder === fromOrder;
+  // 今の battingOrder の中で、
+  // 「元スタメンが toOrig である打順枠」を探す
+  const slotIdxOfOrig = battingOrder.findIndex(
+    e =>
+      Number(
+        resolveOriginalStarterId(
+          Number(e.id),
+          used as any,
+          initialAssignments as any
+        )
+      ) === Number(toOrig)
+  );
+  if (slotIdxOfOrig < 0) return false;
+
+  return fromIdx === slotIdxOfOrig;
 };
 
 
@@ -786,6 +791,23 @@ console.log("🔥 RUNNER REENTRY CHECK", {
   // ★ 元スタメンB（origId）が “今” 入っている守備
   const posNowSym2 = Object.entries(assignments).find(([k, v]) => v === origId)?.[0];
   if (!posNowSym2) return;
+
+  const hasDirectReentryMixed = mixed.some(
+  (m) =>
+    Number(m.to.id) === Number(origId) &&
+    isReentryBySameOrderDeep(
+      Number(m.from.id),
+      Number(origId),
+      battingOrder,
+      usedPlayerInfo as any,
+      initialAssignments as any
+    )
+);
+
+if (hasDirectReentryMixed) {
+  // このケースは後段の mixed v3 に読ませる
+  return;
+}
 
   const B2 = teamPlayers.find(p => p.id === origId);
   const A2 = teamPlayers.find(p => p.id === info.subId); // 代打/代走で一度入った選手（A）
@@ -2434,7 +2456,7 @@ mixed.forEach((r, i) => {
 handledMixedKeys.add(mixedKey);
 
 
-// >>> DIRECT リエントリー v2（代打→守備→元スタメンが戻る）を最優先で確定
+// >>> DIRECT リエントリー v3（打順一致で判定）
 {
   // r.to（入る側）の “元スタメンID” を逆引き
   const origIdTo = resolveOriginalStarterId(
@@ -2443,60 +2465,73 @@ handledMixedKeys.add(mixedKey);
     initialAssignments as any
   );
   const infoOrig = origIdTo ? (usedPlayerInfo as any)?.[origIdTo] : undefined;
-  const latestSubOfOrig = origIdTo
-    ? resolveLatestSubId(origIdTo, usedPlayerInfo as any)
-    : undefined;
 
-  // r.to が元スタメン系列で、かつ “その元スタメンの最新sub” が r.from ならリエントリー確定
+  // r.to が元スタメン本人（リエントリー対象）か
   const isStarterChain =
     !!origIdTo &&
     !!infoOrig &&
-    (origIdTo === r.to.id ||
-     Object.values(initialAssignments || {}).some(id => Number(id) === Number(r.to.id)));
+    Number(origIdTo) === Number(r.to.id);
 
-  const fromMatchesChain =
-    !!latestSubOfOrig && Number(latestSubOfOrig) === Number(r.from.id);
+  // ★ 新仕様：
+  // 「外される選手(r.from)が、その元スタメンの打順枠に現在入っているか」
+  const fromMatchesSameOrder = isReentryBySameOrderDeep(
+    r.from.id,
+    r.to.id,
+    battingOrder,
+    usedPlayerInfo as any,
+    initialAssignments as any
+  );
 
-  if (isStarterChain && fromMatchesChain) {
-    const orderPart = r.order > 0 ? `${r.order}番に ` : "";
-// ⛳ これを↓に置き換え（const orderPart行ごと削除）
-// ✅ r.from（= 直前にその枠を占めていた“清水くん”等）の理由を安全に逆引き
-const reasonOf = (pid: number): string | undefined => {
-  const u = Object.values(usedPlayerInfo || {}).find((x: any) => x?.subId === pid);
-  return (u?.reason as any) || (reasonMap as any)?.[pid]; // “代打/代走/臨時代走/途中出場…”
-};
-const head = buildFromHead(r.from.id, r.fromPos); // ← 代打/代走でなければ「〈守備〉の 清水くん…」
-addReplaceLine(
-  `${head}${nameWithHonor(r.to)}がリエントリーで入り ${posJP[r.toPos]}`,
-  i === mixed.length - 1 && shift.length === 0
-);
+  if (isStarterChain && fromMatchesSameOrder) {
+    const reasonOf = (pid: number): string | undefined => {
+      const u = Object.values(usedPlayerInfo || {}).find((x: any) => x?.subId === pid);
+      return (u?.reason as any) || (reasonMap as any)?.[pid];
+    };
 
+    const fromReason = String(reasonOf(r.from.id) ?? "").trim();
 
-if (
-  r.order > 0 &&
-  !lineupLines.some(l => l.order === r.order && l.text.includes(posJP[r.toPos]) && l.text.includes(nameRuby(r.to)))
-) {
-  lineupLines.push({
-    order: r.order,
-    text: `${r.order}番 ${posJP[r.toPos]} ${nameWithHonor(r.to)}`
-  });
-}
+    const head =
+      ["代打", "代走", "臨時代走"].includes(fromReason)
+        ? buildFromHead(r.from.id, r.fromPos)
+        : `${posJP[r.fromPos]} ${nameWithHonor(r.from)}に代わりまして、`;
 
-    console.log("[MIXED] direct-reentry(v2) fired", {
+    addReplaceLine(
+      `${head}${nameWithHonor(r.to)}がリエントリーで${posJP[r.toPos]}へ`,
+      i === mixed.length - 1 && shift.length === 0
+    );
+
+    if (
+      r.order > 0 &&
+      !lineupLines.some(
+        (l) =>
+          l.order === r.order &&
+          l.text.includes(posJP[r.toPos]) &&
+          l.text.includes(nameRuby(r.to))
+      )
+    ) {
+      lineupLines.push({
+        order: r.order,
+        text: `${r.order}番 ${posJP[r.toPos]} ${nameWithHonor(r.to)}`
+      });
+    }
+
+    console.log("[MIXED] direct-reentry(v3) fired", {
       from: r.from.id,
       to: r.to.id,
       origIdTo,
-      latestSubOfOrig,
-      toPos: r.toPos
+      fromMatchesSameOrder,
+      fromPos: r.fromPos,
+      toPos: r.toPos,
     });
+
     handledPlayerIds.add(r.from.id);
     handledPlayerIds.add(r.to.id);
     handledPositions.add(r.toPos);
     reentryOccurred = true;
-    return; // ← 通常の「…が入り…へ」分岐に進ませない
+    return; // 通常の mixed 文へ落とさない
   }
 }
-// <<< DIRECT リエントリー v2 END
+// <<< DIRECT リエントリー v3 END
 
 
 
@@ -2506,7 +2541,7 @@ if (
     // 例：「ライトの奥村くんに代わりまして、リエントリーで小池くんがライトへ」
     addReplaceLine(
       `${posJP[r.fromPos]}の ${nameWithHonor(r.from)}に代わりまして、` +
-      `${orderPart}${nameWithHonor(r.to)}がリエントリーで9 ${posJP[r.toPos]}へ`,
+      `${orderPart}${nameWithHonor(r.to)}がリエントリーで ${posJP[r.toPos]}へ`,
       i === mixed.length - 1 && shift.length === 0
     );
   
@@ -2577,6 +2612,110 @@ if (
   handledPositions.add(r.toPos);
 });
 
+// >>> FALLBACK: リエントリー後にさらに守備位置を変えた場合でも
+//               「◯◯に代わりまして、△△がリエントリーで◯◯へ」を残す
+Object.entries(usedPlayerInfo || {}).forEach(([origIdStr, info]) => {
+  if (!info) return;
+
+  const origId = Number(origIdStr);
+  const reason = String((info as any).reason ?? "").trim();
+
+  // 代打/代走/臨時代走由来の元スタメンだけ対象
+  if (!["代打", "代走", "臨時代走"].includes(reason)) return;
+
+  // すでに他のリエントリー分岐で処理済みなら何もしない
+  if (handledPlayerIds.has(origId)) return;
+
+  // いま元スタメン本人がどこにいるか
+  const posNowSym =
+    Object.entries(assignments).find(([_, id]) => Number(id) === Number(origId))?.[0];
+  if (!posNowSym) return;
+
+  // その守備から誰かが shift で出ていくなら、
+  // 「元スタメンがその位置へリエントリーした」文を補う
+  const outgoingShift = shift.find(
+    (s) =>
+      s.fromPos === posNowSym &&
+      !skipShiftPairs.has(`${s.player.id}|${s.fromPos}|${s.toPos}`)
+  );
+  if (!outgoingShift) return;
+
+  const returned = teamPlayers.find((p) => Number(p.id) === Number(origId));
+  if (!returned) return;
+
+  // 直前までその打順枠にいた選手（例: 上田）を拾う
+  const latestId = resolveLatestSubId(origId, usedPlayerInfo as any);
+  const refId =
+    typeof latestId === "number" && Number(latestId) !== Number(origId)
+      ? Number(latestId)
+      : typeof (info as any).subId === "number"
+        ? Number((info as any).subId)
+        : null;
+
+  const refPlayer =
+    refId != null ? teamPlayers.find((p) => Number(p.id) === Number(refId)) : undefined;
+  if (!refPlayer) return;
+
+  // 「上田」が画面を開いた時点でいた守備（例: 投）をヘッドに使う
+  const refOpenedPos =
+    Object.entries(initialAssignments).find(
+      ([_, id]) => Number(id) === Number(refPlayer.id)
+    )?.[0] ?? "";
+
+  const fromReason =
+    (pinchReasonById as any)?.[refPlayer.id] ??
+    (reasonMap as any)?.[refPlayer.id] ??
+    reason;
+
+  const head =
+    ["代打", "代走", "臨時代走"].includes(String(fromReason).trim())
+      ? buildFromHead(refPlayer.id, refOpenedPos)
+      : `${posJP[refOpenedPos as keyof typeof posJP] ?? refOpenedPos} ${nameWithHonor(refPlayer)}に代わりまして、`;
+
+  addReplaceLine(
+    `${head}${nameWithHonor(returned)}がリエントリーで${posJP[posNowSym as keyof typeof posJP]}へ`,
+    false
+  );
+
+  // 打順行
+  const orderIdx = battingOrder.findIndex(
+    (e) =>
+      Number(e.id) === Number(origId) ||
+      resolveOriginalStarterId(
+        Number(e.id),
+        usedPlayerInfo as any,
+        initialAssignments as any
+      ) === Number(origId)
+  );
+
+  if (
+    orderIdx >= 0 &&
+    !lineupLines.some(
+      (l) =>
+        l.order === orderIdx + 1 &&
+        l.text.includes(posJP[posNowSym as keyof typeof posJP]) &&
+        l.text.includes(nameRuby(returned))
+    )
+  ) {
+    lineupLines.push({
+      order: orderIdx + 1,
+      text: `${orderIdx + 1}番 ${posJP[posNowSym as keyof typeof posJP]} ${nameWithHonor(returned)}`
+    });
+  }
+
+  console.log("[REENTRY FALLBACK] fired", {
+    origId,
+    refId,
+    posNowSym,
+    outgoingShiftFrom: outgoingShift.fromPos,
+    outgoingShiftTo: outgoingShift.toPos,
+  });
+
+  handledPlayerIds.add(origId);
+  handledPositions.add(posNowSym);
+  reentryOccurred = true;
+});
+// <<< FALLBACK END
 
 /* ---- shift ---- */
 // 守備変更：連鎖構造に並べ替え
@@ -5053,35 +5192,72 @@ if (!fromIsField && toPos !== BENCH) {
     if (!isUsedAlready) {
       resetBlue?.();
     } else {
-        const isOffField = !Object.values(assignments || {}).includes(Number(toId));
-        // ★「自分の代替末端」を置き換えているか（ここが成立条件）
-        const latestSubOfOrig =
-          wasStarter ? resolveLatestSubId(Number(origIdForTo), (usedPlayerInfo as any) || {}) : null;
-        const isReentryNow =
-          wasStarter &&
-          isOffField &&
-          typeof latestSubOfOrig === "number" &&
-          typeof fromId === "number" &&
-          Number(fromId) === Number(latestSubOfOrig);
+      const isOffField = !Object.values(assignments || {}).includes(Number(toId));
 
-      if (isReentryNow) {
-        // ✅ リエントリー対象（成立）→ モーダルは出さない
-        setReentryPreviewIds(new Set([Number(toId)]));
-      } else {
-        // ✅ リエントリー対象外（不成立）→ ここでだけモーダル
-        resetBlue?.();
+      // ★ 元の打順：スタメン時点の打順を使う
+      const originalOrderSource =
+        startingOrderRef.current?.length === 9
+          ? startingOrderRef.current
+          : battingOrder;
 
-        setPendingNonReentryDrop({
-          toPos,
-          playerId: Number(toId),
-          replacedId: Number(fromId),
-        });
-        setShowNonReentryConfirm(true);
+      // ★ 現在の打順：確定前の見た目に合わせて draft を優先
+      const currentOrderSource =
+        battingOrderDraft?.length === 9
+          ? battingOrderDraft
+          : battingOrder;
 
-        setHoverPos(null);
-        setDraggingFrom(null);
-        return;
-      }
+      // ★ 戻そうとしている元スタメンの「当初の打順」
+      const originalOrderIndex =
+        wasStarter && origIdForTo != null
+          ? originalOrderSource.findIndex(
+              (e) => Number(e.id) === Number(origIdForTo)
+            )
+          : -1;
+
+      // ★ 今、交代される選手(fromId)が入っている「現在の打順」
+      const currentOrderIndexOfFrom =
+        typeof fromId === "number"
+          ? currentOrderSource.findIndex(
+              (e) => Number(e.id) === Number(fromId)
+            )
+          : -1;
+
+      const isReentryNow =
+        wasStarter &&
+        isOffField &&
+        originalOrderIndex >= 0 &&
+        currentOrderIndexOfFrom >= 0 &&
+        originalOrderIndex === currentOrderIndexOfFrom;
+
+      console.log("[REENTRY CHECK same-order]", {
+        toId,
+        fromId,
+        origIdForTo,
+        wasStarter,
+        isOffField,
+        originalOrderIndex,
+        currentOrderIndexOfFrom,
+        originalOrderSource,
+        currentOrderSource,
+        isReentryNow,
+      });
+        if (isReentryNow) {
+          // ✅ リエントリー対象（成立）→ モーダルは出さない
+          setReentryPreviewIds(new Set([Number(toId)]));
+        } else {
+          // ✅ リエントリー対象外（不成立）→ ここでだけモーダル
+          resetBlue?.();
+
+          setPendingNonReentryDrop({
+            toPos,
+            playerId: Number(toId),
+            replacedId: Number(fromId),
+          });
+          setShowNonReentryConfirm(true);
+          setHoverPos(null);
+          setDraggingFrom(null);
+          return;
+        }
     }
   }    
 } else {
@@ -5925,43 +6101,21 @@ const committedOrder = updatedOrder.map((entry: any) => ({
 // =========================================================
 // 12) 保存
 // =========================================================
-// =========================================================
-// 投手交代時は投球数をリセット
-// =========================================================
-{
-  const prevPitcherId =
-    typeof initialAssignments?.["投"] === "number"
-      ? Number(initialAssignments["投"])
-      : null;
+const newPitcherId =
+  typeof finalAssignments["投"] === "number" ? Number(finalAssignments["投"]) : null;
 
-  const nextPitcherId =
-    typeof finalAssignments?.["投"] === "number"
-      ? Number(finalAssignments["投"])
-      : null;
+const pitcherTotalsMap =
+  (await localForage.getItem<Record<number, number>>("pitcherTotals")) || {};
 
-  if (
-    prevPitcherId !== null &&
-    nextPitcherId !== null &&
-    prevPitcherId !== nextPitcherId
-  ) {
-    const nextPitcherTotals =
-      (await localForage.getItem<Record<number, number>>("pitcherTotals")) || {};
+const newTotalPitchCount =
+  newPitcherId != null ? Number(pitcherTotalsMap[newPitcherId] ?? 0) : 0;
 
-    nextPitcherTotals[nextPitcherId] = 0;
+await localForage.setItem("pitchCounts", {
+  current: 0,
+  total: newTotalPitchCount,
+  pitcherId: newPitcherId,
+});
 
-    await localForage.setItem("pitcherTotals", nextPitcherTotals);
-    await localForage.setItem("pitchCounts", {
-      current: 0,
-      total: 0,
-      pitcherId: nextPitcherId,
-    });
-
-    console.log("[PITCH RESET] pitcher changed", {
-      prevPitcherId,
-      nextPitcherId,
-    });
-  }
-}
 await localForage.setItem("lineupAssignments", finalAssignments);
 await localForage.setItem("battingReplacements", {});
 await localForage.setItem("battingOrder", committedOrder);
