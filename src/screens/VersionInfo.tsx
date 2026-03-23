@@ -49,7 +49,12 @@ const historyData: HistoryItem[] = [
   {
     date: "2026.03.17",
     version: "Vesion 2.01 β",
-    details: ["リエントリー時の不具合修正"],
+    details: ["リエントリー時の不具合修正 他"],
+  },
+  {
+    date: "2026.03.23",
+    version: "Vesion 2.02 β",
+    details: ["投球数の不具合修正 他"],
   },
 ];
 
