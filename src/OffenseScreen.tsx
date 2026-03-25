@@ -4333,9 +4333,10 @@ onClick={() => {
 {/* 出場済み選手（出場不可） */}
 {/* 出場済み選手（出場不可） */}
 <div>
-  <div className="flex items-center justify-between mb-2">
-    <div className="text-sm font-bold text-slate-700">出場済み選手（出場不可）</div>
+<div className="flex items-center justify-between mb-2">
+  <div className="text-sm font-bold text-slate-700">出場済み選手（出場不可）</div>
 
+  {leagueMode !== "boys" && (
     <button
       type="button"
       onClick={() => {
@@ -4349,8 +4350,6 @@ onClick={() => {
           return;
         }
 
-        // 必要ならここで候補判定にしたい選手を自動選択
-        // まずは先頭候補で呼ぶ形
         handleRunnerReentryClick();
       }}
       className="
@@ -4363,7 +4362,8 @@ onClick={() => {
     >
       リエントリー
     </button>
-  </div>
+  )}
+</div>
 
   <div className="grid grid-cols-2 gap-2 mb-3">
     {orderByBattingFromPrev(
