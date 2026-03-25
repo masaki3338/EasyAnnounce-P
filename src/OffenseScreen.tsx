@@ -2602,13 +2602,13 @@ useEffect(() => {
 
 
 
-  {isLeadingBatter && (
-    <div className="flex items-center text-blue-600 font-bold mb-0">
-      <div className="bg-yellow-100 text-yellow-800 bord最初er-l-4 border-yellw-500 px-4 py-2 text-sm font-semibold text-left">
-        <span className="mr-2 text-lg">⚠️</span>攻撃回最初のバッター紹介は、キャッチャー2塁送球後 
-      </div>
+{isLeadingBatter && (
+  <div className="flex items-center text-blue-600 font-bold mb-0">
+    <div className="bg-yellow-100 text-yellow-800 bord最初er-l-4 border-yellw-500 px-4 py-2 text-sm font-semibold text-left">
+      <span className="mr-2 text-lg">⚠️</span>回の最初のバッター紹介は、キャッチャー2塁送球後 
     </div>
-  )}
+  </div>
+)}
 
   <div className="border border-red-500 bg-red-200 text-red-700 p-2 rounded relative text-left">
     <div className="flex items-center mb-2">
