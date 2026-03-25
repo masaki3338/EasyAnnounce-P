@@ -1146,7 +1146,7 @@ const handleStop = () => { ttsStop(); };
 
     return (    
       <div
-        className="max-w-4xl mx-auto p-4 select-none"
+        className="max-w-4xl mx-auto px-2 pt-1 pb-2 select-none"
         onContextMenu={(e) => e.preventDefault()}        // 右クリック/長押しのメニュー抑止
         onSelectStart={(e) => e.preventDefault()}         // テキスト選択開始を抑止
         style={{
@@ -1156,7 +1156,7 @@ const handleStop = () => { ttsStop(); };
         }}
       >
 
-      <section className="mb-4">
+      <section className="mb-2">
 <h2
   ref={titleRef}
   className={`font-bold mb-2 inline-flex items-center gap-2 whitespace-nowrap overflow-hidden ${
@@ -1173,7 +1173,7 @@ const handleStop = () => { ttsStop(); };
     decoding="async"
     draggable="false"
   />
-  <span className="px-2 py-1 rounded bg-orange-500 text-white whitespace-nowrap flex-shrink-0">
+  <span className="px-2 py-0.5 rounded bg-orange-500 text-white whitespace-nowrap flex-shrink-0">
     守備中
   </span>
 <div className="flex flex-wrap justify-center gap-x-1 text-center">
@@ -1190,10 +1190,10 @@ const handleStop = () => { ttsStop(); };
 
 
 
-      <div className="mb-2">
-        <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
+      <div className="mb-1">
+        <div className="flex items-center gap-1 flex-nowrap overflow-x-auto">
           {/* 左：状態（縮む・折り返さない） */}
-          <div className="flex items-center gap-2 min-w-0 flex-1">
+          <div className="flex items-center gap-1 min-w-0 flex-1">
             <select
               value={inning}
               onChange={async (e) => {
@@ -1358,7 +1358,7 @@ const handleStop = () => { ttsStop(); };
   </tbody>
         </table>
       </section>
-      <div className="relative w-full max-w-2xl mx-auto my-6">
+      <div className="relative w-full max-w-2xl mx-auto my-2">
         <img src="/field.png" alt="フィールド図" className="w-full rounded shadow" />
         {positions.map(pos => {
           const playerId = assignmentsForDisplay[pos]; // ★ 表示用に差し替え
@@ -1438,11 +1438,11 @@ const handleStop = () => { ttsStop(); };
 
 {/* 🔽 マイクアイコン付きアナウンスエリア */}
 {announceMessages.length > 0 && (
-  <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
+  <div className="border border-red-500 bg-red-200 text-red-700 p-2 rounded relative text-left">
     {/* 🔴 上段：マイクアイコン + 注意書き */}
     <div className="flex items-start gap-2">
       <img src="/mic-red.png" alt="mic" className="w-6 h-6 mt-[-2px]" />
-      <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-0.5 text-sm font-semibold whitespace-nowrap leading-tight mt-[-2px]">
+      <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-2 py-0 text-xs font-semibold whitespace-nowrap leading-tight">
         <span className="mr-2 text-2xl">⚠️</span> 守備回終了時に🎤
       </div>
     </div>
@@ -1462,8 +1462,8 @@ const handleStop = () => { ttsStop(); };
       <div className="mt-2 grid grid-cols-2 gap-2">
         <button
           onClick={handleSpeak}
-          className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
-                    inline-flex items-center justify-center gap-2"
+ className="w-full h-8 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
+          inline-flex items-center justify-center gap-2 text-sm"
         >
           <span className="inline-flex items-center gap-2 whitespace-nowrap align-middle">
             <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
@@ -1474,8 +1474,8 @@ const handleStop = () => { ttsStop(); };
 
         <button
           onClick={handleStop}
-          className="w-full h-10 rounded-xl bg-red-600 hover:bg-red-700 text-white
-                    inline-flex items-center justify-center"
+className="w-full h-8 rounded-xl bg-red-600 hover:bg-red-700 text-white
+          inline-flex items-center justify-center text-sm"
         >
           <span className="whitespace-nowrap leading-none">停止</span>
         </button>
@@ -1486,13 +1486,13 @@ const handleStop = () => { ttsStop(); };
 )}
 
 {/* 🔽 守備交代 + 得点±1 + イニング終了（1行固定） */}
-<div className="my-6 flex gap-2">
+<div className="my-3 flex gap-2">
   {/* 守備交代 */}
   <button
     type="button"
     onClick={onChangeDefense}
     className="
-      flex-1 h-14
+      flex-1 h-12
       bg-orange-500 hover:bg-orange-600
       text-white font-bold
       rounded-xl shadow-lg
@@ -1509,7 +1509,7 @@ const handleStop = () => { ttsStop(); };
     type="button"
     onClick={() => changeRun(-1)}
     className="
-      flex-[0.6] h-14 min-w-0
+      flex-[0.6] h-12 min-w-0
       bg-red-600 hover:bg-red-700
       text-white font-extrabold
       text-[clamp(12px,3.5vw,16px)]
@@ -1530,7 +1530,7 @@ const handleStop = () => { ttsStop(); };
     type="button"
     onClick={() => changeRun(+1)}
     className="
-      flex-1 h-14
+      flex-1 h-12
       bg-blue-600 hover:bg-blue-700
       text-white font-extrabold text-lg
       rounded-xl shadow-lg
@@ -1558,7 +1558,7 @@ const handleStop = () => { ttsStop(); };
       setShowModal(true);
     }}
     className="
-      flex-[1.4] h-14 min-w-0
+      flex-[1.4] h-12 min-w-0
       bg-black hover:bg-gray-900
       text-white font-extrabold
       text-[clamp(13px,3.6vw,18px)]
