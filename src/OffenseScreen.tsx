@@ -2206,12 +2206,12 @@ useEffect(() => {
   return (
 <DndProvider backend={HTML5Backend}>
 
-  <div className="flex justify-end mb-2">
+  <div className="flex justify-end mb-0">
 
 
 </div>
       <div
-        className="max-w-4xl mx-auto p-4 select-none overflow-x-hidden"
+        className="max-w-4xl mx-auto px-2 pt-1 pb-2 select-none overflow-x-hidden"
         onContextMenu={(e) => e.preventDefault()}        // 右クリック/長押しのメニュー抑止
         onSelectStart={(e) => e.preventDefault()}         // テキスト選択開始を抑止
         onPointerDown={(e) => {
@@ -2225,7 +2225,7 @@ useEffect(() => {
           userSelect: "none",
         }}
       >
-      <h2 className="text-base font-bold mb-2 inline-flex items-center gap-2 whitespace-nowrap overflow-hidden min-w-0">
+      <h2 className="text-base font-bold mb-1 inline-flex items-center gap-1 whitespace-nowrap overflow-hidden min-w-0">
         <img
           src="/Ofence.png"   // ← public/Ofence.png に置く
           alt=""
@@ -2236,7 +2236,7 @@ useEffect(() => {
           decoding="async"
           draggable="false"
         />
-        <span className="px-2 py-1 rounded bg-blue-600 text-white whitespace-nowrap flex-shrink-0">
+        <span className="px-2 py-0.5 rounded bg-blue-600 text-white whitespace-nowrap flex-shrink-0">
           攻撃中
         </span>
         <div className="flex flex-wrap justify-center gap-x-1 text-center">
@@ -2319,7 +2319,7 @@ useEffect(() => {
         </div>
 
 
- <table className="w-full border border-gray-400 text-center text-sm mb-6"> 
+ <table className="w-full border border-gray-400 text-center text-xs mb-2">
     <colgroup>
       {/* チーム名列： */}
       <col className="w-40" />
@@ -2474,7 +2474,7 @@ useEffect(() => {
 
 
     
-<div className="space-y-1 text-sm font-bold text-gray-800">
+<div className="space-y-0 text-sm font-bold text-gray-800">
 {currentGameState.battingOrder9.map((slot, idx) => {
   const player = getPlayer(slot.currentId);
   const isCurrent = idx === currentBatterIndex;
@@ -2548,10 +2548,10 @@ useEffect(() => {
 })}
 </div>
 
-<div className="w-full grid grid-cols-3 gap-2 my-2">
+<div className="w-full grid grid-cols-3 gap-2 my-1">
   <button
     onClick={handlePrev}
-    className="col-span-1 w-full h-10 rounded bg-green-500 text-white"
+    className="col-span-1 w-full h-8 rounded bg-green-500 text-white text-sm"
   >
     ⬅ 前の打者
   </button>
@@ -2567,8 +2567,8 @@ useEffect(() => {
 
 {/* ⚠️ ファウルボール注意文（常時表示） */}
 
-<div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
-  <div className="flex items-center mb-2">
+<div className="border border-red-500 bg-red-200 text-red-700 p-2 rounded relative text-left">
+  <div className="mt-2 w-full flex gap-2">
 
     <span className="text-red-600 font-bold whitespace-pre-line">
       {leagueMode === "boys"
@@ -2580,10 +2580,10 @@ useEffect(() => {
   </div>
 
   {/* ボタンを左寄せ */}
-    <div className="mt-3 w-full flex gap-2">
+    <div className="mt-2 w-full flex gap-2">
       <button
         onClick={handleFoulRead}
-        className="flex-1 h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white inline-flex items-center justify-center gap-2 shadow-md"
+        className="flex-1 h-8 rounded-xl bg-blue-600 hover:bg-blue-700 text-white inline-flex items-center justify-center gap-2 shadow-md text-sm"
         title="読み上げ"
       >
         <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
@@ -2592,7 +2592,7 @@ useEffect(() => {
 
       <button
         onClick={handleStop}
-        className="flex-1 h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white inline-flex items-center justify-center shadow-md"
+        className="flex-1 h-8 rounded-xl bg-rose-600 hover:bg-rose-700 text-white inline-flex items-center justify-center shadow-md text-sm"
         title="停止"
       >
         <span className="whitespace-nowrap leading-none">停止</span>
@@ -2610,7 +2610,7 @@ useEffect(() => {
     </div>
   )}
 
-  <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
+  <div className="border border-red-500 bg-red-200 text-red-700 p-2 rounded relative text-left">
     <div className="flex items-center mb-2">
 
         <span className="text-red-600 font-bold whitespace-pre-line">
@@ -2619,13 +2619,13 @@ useEffect(() => {
 
     </div>
     {/* 🔊 打順アナウンス：読み上げ／停止（横いっぱい・半分ずつ） */}
-    <div className="mt-3 w-full flex gap-2">
+    <div className="mt-2 w-full flex gap-2">
      <button
         onMouseDown={prefetchCurrent}
         onTouchStart={prefetchCurrent}
         onClick={handleRead}
 	      disabled={isSpeakingRef.current || speaking}
-        className="flex-1 h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white inline-flex items-center justify-center gap-2 shadow-md"
+        className="flex-1 h-8 rounded-xl bg-blue-600 hover:bg-blue-700 text-white inline-flex items-center justify-center gap-2 shadow-md text-sm"
         title="読み上げ"
       >
         <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
@@ -2634,7 +2634,7 @@ useEffect(() => {
 
       <button
         onClick={handleStop}
-        className="flex-1 h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white inline-flex items-center justify-center shadow-md"
+        className="flex-1 h-8 rounded-xl bg-rose-600 hover:bg-rose-700 text-white inline-flex items-center justify-center shadow-md text-sm"
         title="停止"
       >
         <span className="whitespace-nowrap leading-none">停止</span>
@@ -2643,7 +2643,7 @@ useEffect(() => {
   </div>
 
 {/* 一番下のイニング終了ボタン（左に 得点-1 / 得点+1 を追加） */}
-<div className="mt-6 flex gap-2">
+<div className="mt-3 flex gap-2">
   {/* 得点 -1（小さく） */}
   <button
     type="button"
@@ -2669,7 +2669,7 @@ useEffect(() => {
       }
     }}
     className="
-      flex-[0.6] h-11
+      flex-[0.7] h-9
       bg-red-600 hover:bg-red-700
       text-white font-bold text-sm
       rounded-lg shadow
@@ -2706,7 +2706,7 @@ useEffect(() => {
       }
     }}
     className="
-      flex-1 h-11
+      flex-1 h-9
       bg-blue-600 hover:bg-blue-700
       text-white font-extrabold text-lg
       rounded-xl shadow-lg
@@ -2768,7 +2768,7 @@ useEffect(() => {
       setShowModal(true);
     }}
     className="
-      flex-[2.2] h-12
+      flex-[2.1] h-10
       bg-black hover:bg-gray-900
       text-white font-extrabold text-xl tracking-wider
       rounded-2xl shadow-xl
@@ -2786,12 +2786,12 @@ useEffect(() => {
 
 
   {/* 操作ボタン（横いっぱい・等幅・固定順：DH解除 → リエントリー → 代走 → 代打） */}
-  <div className="w-full grid grid-cols-3 gap-2 mt-4">
+  <div className="w-full grid grid-cols-3 gap-2 mt-2">
     {/* DH解除（常に表示。条件を満たさない時は disabled） */}
     <button
       onClick={() => setShowDhDisableModal(true)}
       disabled={!isDhTurn || !dhActive || !pitcherId}
-      className="w-full h-10 rounded bg-gray-800 text-white px-2
+      className="w-full h-8 rounded bg-gray-800 text-white px-2 text-sm
                 inline-flex items-center justify-center
                 disabled:bg-gray-300 disabled:text-white disabled:cursor-not-allowed"
       title="DH解除"
@@ -2811,7 +2811,7 @@ useEffect(() => {
         setRunnerModalMode("runner");
         setShowRunnerModal(true);
       }}
-      className="w-full h-10 rounded bg-orange-600 text-white"
+      className="w-full h-8 rounded bg-orange-600 text-white text-sm"
       title="代走"
     >
       🏃‍♂️代走
@@ -2820,7 +2820,7 @@ useEffect(() => {
     {/* 代打 */}
     <button
       onClick={() => setShowSubModal(true)}
-      className="w-full h-10 rounded bg-orange-600 text-white"
+      className="w-full h-8 rounded bg-orange-600 text-white text-sm"
       title="代打"
     >
       🏏代打
@@ -2948,7 +2948,7 @@ const speak = async () => {
                 <button
                   onClick={speak}
                   disabled={isSpeakingRef.current || speaking}
-                  className="flex-1 h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white inline-flex items-center justify-center gap-2 shadow-md"
+                  className="flex-1 h-8 rounded-xl bg-blue-600 hover:bg-blue-700 text-white inline-flex items-center justify-center gap-2 shadow-md text-sm"
                   title="読み上げ"
                 >
                   <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
@@ -2961,7 +2961,7 @@ const speak = async () => {
                     isSpeakingRef.current = false; // 連打ロック解除（保険）
                     setSpeaking(false);
                   }}
-                  className="flex-1 h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white inline-flex items-center justify-center shadow-md"
+                  className="flex-1 h-8 rounded-xl bg-rose-600 hover:bg-rose-700 text-white inline-flex items-center justify-center shadow-md text-sm"
                   title="停止"
                 >
                   <span className="whitespace-nowrap leading-none">停止</span>
