@@ -114,11 +114,10 @@ const posNameToSymbol: Record<string, string> = {
 };
 
 const normalizeFieldAssignments = (
-  assignments: Record<string, number | null>
+  assignments: Record<string, number | null>,
+  options?: { allowPitcherDhDuplicate?: boolean }
 ): Record<string, number | null> => {
   const next = { ...assignments };
-
-  // 同じ選手が複数ポジションに入っていたら、最後に入れた1か所だけ残す
   const placed = new Map<number, string>();
 
   for (const [pos, id] of Object.entries(next)) {
@@ -126,8 +125,15 @@ const normalizeFieldAssignments = (
 
     const prevPos = placed.get(id);
     if (prevPos && prevPos !== pos) {
-      next[prevPos] = null;
+      const allowOhtaniDup =
+        options?.allowPitcherDhDuplicate &&
+        ((prevPos === "投" && pos === "指") || (prevPos === "指" && pos === "投"));
+
+      if (!allowOhtaniDup) {
+        next[prevPos] = null;
+      }
     }
+
     placed.set(id, pos);
   }
 
@@ -4976,8 +4982,19 @@ const applyBenchDropToField = ({ toPos, playerId, replacedId }: BenchDropPayload
       }
     }
 
-    newAssignments[toPos] = playerId;
-    newAssignments = normalizeFieldAssignments(newAssignments);
+newAssignments[toPos] = playerId;
+
+const allowPitcherDhDuplicate =
+  typeof newAssignments["投"] === "number" &&
+  typeof newAssignments["指"] === "number" &&
+  typeof initialAssignments?.["投"] === "number" &&
+  typeof initialAssignments?.["指"] === "number" &&
+  Number(initialAssignments["投"]) === Number(initialAssignments["指"]) &&
+  Number(newAssignments["投"]) === Number(newAssignments["指"]);
+
+newAssignments = normalizeFieldAssignments(newAssignments, {
+  allowPitcherDhDuplicate,
+});
 
     if (typeof replacedId === "number") {
       updateLog(toPos, replacedId, toPos, playerId);
@@ -6143,17 +6160,48 @@ const committedOrder = updatedOrder.map((entry: any) => ({
 // =========================================================
 // 12) 保存
 // =========================================================
+const prevPitchCounts =
+  (await localForage.getItem<{
+    current: number;
+    total: number;
+    pitcherId?: number | null;
+  }>("pitchCounts")) || {
+    current: 0,
+    total: 0,
+    pitcherId: null,
+  };
+
 const newPitcherId =
   typeof finalAssignments["投"] === "number" ? Number(finalAssignments["投"]) : null;
+
+const prevPitcherId =
+  typeof prevPitchCounts.pitcherId === "number"
+    ? Number(prevPitchCounts.pitcherId)
+    : null;
 
 const pitcherTotalsMap =
   (await localForage.getItem<Record<number, number>>("pitcherTotals")) || {};
 
-const newTotalPitchCount =
-  newPitcherId != null ? Number(pitcherTotalsMap[newPitcherId] ?? 0) : 0;
+// ✅ 前投手がいなくても、新投手IDが変わったら投手交代とみなす
+const didPitcherChange =
+  newPitcherId !== prevPitcherId;
+
+// ✅ 投手交代なら新投手の累計も 0 から始める
+if (didPitcherChange && newPitcherId != null) {
+  pitcherTotalsMap[newPitcherId] = 0;
+  await localForage.setItem("pitcherTotals", pitcherTotalsMap);
+}
+
+const newCurrentPitchCount = didPitcherChange
+  ? 0
+  : Number(prevPitchCounts.current ?? 0);
+
+const newTotalPitchCount = didPitcherChange
+  ? 0
+  : Number(prevPitchCounts.total ?? 0);
 
 await localForage.setItem("pitchCounts", {
-  current: 0,
+  current: newCurrentPitchCount,
   total: newTotalPitchCount,
   pitcherId: newPitcherId,
 });
@@ -6995,7 +7043,7 @@ ${(isReentryBlue)
         </div>
       ) : (
         <span className="text-gray-300 text-base inline-block" style={{ minWidth: "64px" }}>
-          DHなし
+          {pos === "指" ? "DHなし" : "未設定"}
         </span>
       )}
     </div>
