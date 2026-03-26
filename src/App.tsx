@@ -238,6 +238,17 @@ const [seatIntroBackScreen, setSeatIntroBackScreen] = useState<"announcement" | 
 
 const [defenseInningStartTrigger, setDefenseInningStartTrigger] = useState(0);
 
+useEffect(() => {
+  const saveLastGameScreen = async () => {
+    // 「試合を継続する」で戻したい画面だけ保存
+    if (screen === "offense" || screen === "defense") {
+      await localForage.setItem("lastGameScreen", screen);
+    }
+  };
+
+  void saveLastGameScreen();
+}, [screen]);
+
 const showCoolingNoticePopup = (message: string) => {
   setWaterBreakPopupMessage(message);
   setShowWaterBreakPopupMessage(true);
@@ -647,10 +658,23 @@ const handleSpeak = async () => {
                 const match = await localForage.getItem("matchInfo");
                 if (match && typeof match === "object" && "isHome" in match) {
                   const { isHome } = match as { isHome: boolean };
+
                   const isTop = true;
                   const isOffense = isHome === false;
 
-                  setScreen(isOffense ? "offense" : "defense");
+                  await localForage.setItem("matchInfo", {
+                    ...(match as any),
+                    inning: 1,
+                    isTop: true,
+                    isDefense: !isOffense,
+                  });
+
+                  if (isOffense) {
+                    setScreen("offense");
+                  } else {
+                    setDefenseInningStartTrigger((n) => n + 1);
+                    setScreen("defense");
+                  }
                 } else {
                   alert("試合情報が見つかりません。試合作成画面で設定してください。");
                 }
@@ -1084,16 +1108,31 @@ if (totalMyScore > totalOpponentScore) {
   )}
 </select>
     </div>
-        <OffenseScreen
-          onSwitchToDefense={() => setScreen("defense")}
-          onGoToSeatIntroduction={() => {
-            fromGameRef.current = true;
-            lastOffenseRef.current = true;
-            setScreen("seatIntroduction");
-          }}
-          openIntentionalWalkTrigger={intentionalWalkTrigger}
-          isContinueGame={isContinueGame}
-        />
+      <OffenseScreen
+        onSwitchToDefense={async () => {
+          const match =
+            (await localForage.getItem("matchInfo")) as
+              | { inning?: number; isTop?: boolean; isDefense?: boolean }
+              | null;
+
+          await localForage.setItem("matchInfo", {
+            ...(match || {}),
+            inning: Number(match?.inning ?? 1),
+            isTop: typeof match?.isTop === "boolean" ? match.isTop : true,
+            isDefense: true,
+          });
+
+          setDefenseInningStartTrigger((n) => n + 1);
+          setScreen("defense");
+        }}
+        onGoToSeatIntroduction={() => {
+          fromGameRef.current = true;
+          lastOffenseRef.current = true;
+          setScreen("seatIntroduction");
+        }}
+        openIntentionalWalkTrigger={intentionalWalkTrigger}
+        isContinueGame={isContinueGame}
+      />
         </>
       )}
 
