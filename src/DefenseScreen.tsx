@@ -559,6 +559,46 @@ useEffect(() => {
     setOpponentTeamName(String(savedMatchInfo?.opponentTeam || ""));
     setTeamPlayers(Array.isArray(teamData?.players) ? teamData!.players! : []);
 
+        // ★ 守備画面を開いた時点で投球数アナウンスを表示
+    const restoredPlayers = Array.isArray(teamData?.players) ? teamData.players : [];
+    const restoredPitcherId =
+      typeof savedPitchCounts?.pitcherId === "number"
+        ? savedPitchCounts.pitcherId
+        : savedAssignments?.["投"];
+
+    const restoredCurrent = Number(savedPitchCounts?.current || 0);
+    const restoredTotal = Number(savedPitchCounts?.total || 0);
+
+    if (typeof restoredPitcherId === "number") {
+      const pitcher = restoredPlayers.find(
+        (p) => Number(p.id) === Number(restoredPitcherId)
+      );
+
+      if (pitcher) {
+        const suffix = pitcher.isFemale ? "さん" : "くん";
+        const pitcherRuby = nameRubyHTML(pitcher);
+
+        const msgs: string[] = [];
+        msgs.push(
+          `${pitcherCall(pitcherRuby, suffix)}、この回の投球数は${restoredCurrent}球です`
+        );
+
+        if (restoredCurrent !== restoredTotal) {
+          msgs.push(
+            isBoys
+              ? `合計投球数は${restoredTotal}球です`
+              : `トータル${restoredTotal}球です`
+          );
+        }
+
+        setAnnounceMessages(msgs);
+      } else {
+        setAnnounceMessages([]);
+      }
+    } else {
+      setAnnounceMessages([]);
+    }
+    
     // ★ 代打/代走/臨時代走の確認モーダルを出す
     const restoredBattingOrder = Array.isArray(savedBattingOrder) ? savedBattingOrder : [];
     const restoredTempRunnerByOrder = savedTempRunnerByOrder || {};
