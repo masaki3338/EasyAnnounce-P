@@ -289,6 +289,9 @@ const OffenseScreen: React.FC<OffenseScreenProps> = ({
   >([]);
   const [assignments, setAssignments] = useState<{ [pos: string]: number | null }>({});
   const [currentBatterIndex, setCurrentBatterIndex] = useState(0);
+  useEffect(() => {
+    void localForage.setItem("lastBatterIndex", currentBatterIndex);
+  }, [currentBatterIndex]);
   const [announcement, setAnnouncement] = useState<React.ReactNode>(null);
   const [announcementOverride, setAnnouncementOverride] = useState<React.ReactNode | null>(null);
   const [scores, setScores] = useState<{ [inning: number]: { top: number; bottom: number } }>({});
@@ -1141,11 +1144,12 @@ const handleFoulStop = () => {
         setBattingOrder(order as { id: number; reason: string }[]);
 
         // ✅ 前回の打者を取得して次の先頭打者に設定
+        // ✅ 保存していた現在打者を復元
         const lastBatter = await localForage.getItem<number>("lastBatterIndex");
         if (lastBatter !== null && typeof lastBatter === "number" && order.length > 0) {
-          const nextBatterIndex = (lastBatter) % order.length;
-          setCurrentBatterIndex(nextBatterIndex);
-          setIsLeadingBatter(true); // 先頭打者として認識
+          const restoredBatterIndex = lastBatter % order.length;
+          setCurrentBatterIndex(restoredBatterIndex);
+          setIsLeadingBatter(true);
         }
       }
       if (lineup && typeof lineup === "object") {

@@ -654,7 +654,8 @@ const handleSpeak = async () => {
             <StartGame
               onStart={async () => {
                 setIsContinueGame(false);
-
+                await localForage.removeItem("lastBatterIndex");  
+                
                 const match = await localForage.getItem("matchInfo");
                 if (match && typeof match === "object" && "isHome" in match) {
                   const { isHome } = match as { isHome: boolean };
