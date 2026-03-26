@@ -4807,9 +4807,6 @@ const handlePositionDragStart = (
 
 const getDisplayedPlayerIdForPos = (pos: string): number | null => {
   // DH は既存ロジック優先
-  if (pos === "指") {
-    return typeof dhDisplayId === "number" ? dhDisplayId : null;
-  }
 
   const assignedId =
     typeof assignments?.[pos] === "number" ? Number(assignments[pos]) : null;
@@ -5528,17 +5525,29 @@ if (!fromIsField && toPos !== BENCH) {
       });
       
       // ---- assignments 更新の直後に追加 ----
-      if (isNumber(toId) && isNumber(fromId)) {
-        setBattingOrderDraft((prev) => {
-          const next = [...prev];
-          const idx = next.findIndex((e) => e.id === fromId);
-          if (idx >= 0) {
-            next[idx] = { ...next[idx], id: toId };
-            console.log("✍️ ドラフト打順更新", { slot: idx + 1, fromId, toId, next });
-          }
-          return next;
-        });
-      }
+if (isNumber(toId) && isNumber(fromId)) {
+  setBattingOrderDraft((prev) => {
+    const next = [...prev];
+    const idx = next.findIndex((e) => e.id === fromId);
+    if (idx >= 0) {
+      const draftInsertId =
+        srcFrom === "指" && toPos !== "指" && typeof assignments?.["投"] === "number"
+          ? Number(assignments["投"])
+          : Number(toId);
+
+      next[idx] = { ...next[idx], id: draftInsertId };
+      console.log("✍️ ドラフト打順更新", {
+        slot: idx + 1,
+        fromId,
+        toId,
+        draftInsertId,
+        next,
+      });
+    }
+    return next;
+  });
+}
+
       setDraggingFrom(null);
       return;
     }
@@ -6789,11 +6798,27 @@ const dhCurrentId =
 
 
       // ✅ DHスロットの選手が「指以外」に配置されている場合は、フィールド図のDH表示を消す
+const isOhtaniSharedDhPitcher =
+  ohtaniRule &&
+  typeof dhCurrentId === "number" &&
+  typeof assignments?.["投"] === "number" &&
+  Number(assignments["投"]) === Number(dhCurrentId) &&
+  typeof initialAssignments?.["投"] === "number" &&
+  typeof initialAssignments?.["指"] === "number" &&
+  Number(initialAssignments["投"]) === Number(initialAssignments["指"]);
+
 const dhIsPlacedElsewhere =
   typeof dhCurrentId === "number" &&
-  Object.entries(assignments || {}).some(
-    ([sym, id]) => sym !== "指" && typeof id === "number" && id === dhCurrentId
-  );
+  Object.entries(assignments || {}).some(([sym, id]) => {
+    if (sym === "指") return false;
+    if (typeof id !== "number") return false;
+    if (Number(id) !== Number(dhCurrentId)) return false;
+
+    // 大谷ルール中は「投」に同じ選手がいてもDHは消さない
+    if (isOhtaniSharedDhPitcher && sym === "投") return false;
+
+    return true;
+  });
 
 const dhDisplayId = dhIsPlacedElsewhere ? null : dhCurrentId;
 
@@ -6876,7 +6901,10 @@ const pinchRunnerForPos = (() => {
 
 // ✅ まだその守備位置を手で触っていない間は、代走選手を最優先表示
 // ✅ 守備交代でその位置を触った後だけ assignments を優先
-const currentId = getDisplayedPlayerIdForPos(pos);
+const currentId =
+  pos === "指"
+    ? dhDisplayId
+    : getDisplayedPlayerIdForPos(pos);
 
 
   const initialId =
@@ -7055,61 +7083,65 @@ ${(isReentryBlue)
 
           const dhActive = !!assignments["指"];
 
-          const displayId = slot.id;
+const displayId = slot.id;
 
-          // 取消線用の「交代前選手」は、この画面を開いた時点の battingOrder を基準にする
-          const beforeEntry = battingOrder[index];
-          const beforeId = beforeEntry?.id ?? slot.id;
+// 取消線用の「交代前選手」は、この画面を開いた時点の battingOrder を基準にする
+const beforeEntry = battingOrder[index];
+const beforeId = beforeEntry?.id ?? slot.id;
 
-          const starter = teamPlayers.find((p) => p.id === beforeId); // 旧表示用
-          const player =
-            (orderViewReplacements as any)[index]
-              ? (orderViewReplacements as any)[index]
-              : teamPlayers.find((p) => p.id === displayId); // 新表示用
-          if (!starter || !player) return null;
+const starter = teamPlayers.find((p) => p.id === beforeId); // 旧表示用
+const player =
+  (orderViewReplacements as any)[index]
+    ? (orderViewReplacements as any)[index]
+    : teamPlayers.find((p) => p.id === displayId); // 新表示用
+if (!starter || !player) return null;
 
-          let currentPos = getOrderDisplayPos(assignments, displayId);
-          let initialPos = getOrderDisplayPos(orderViewBaseAssignments, beforeId);
+// ★ 実際に表示している選手IDを使う
+const currentDisplayId =
+  typeof player?.id === "number" ? Number(player.id) : Number(displayId);
 
-          // ① 代打/代走でまだ守備位置解決できないときは fromPos を使う
-          if (!currentPos || currentPos === "-" || currentPos === "－") {
-            const pinchInfo = Object.values(usedPlayerInfo || {}).find(
-              (info: any) =>
-                Number(info?.subId) === Number(displayId) &&
-                ["代打", "代走", "臨時代走"].includes(String(info?.reason ?? ""))
-            );
+let currentPos = getOrderDisplayPos(assignments, currentDisplayId);
+let initialPos = getOrderDisplayPos(orderViewBaseAssignments, beforeId);
 
-            if (pinchInfo?.fromPos) {
-              currentPos = posNameToSymbol[pinchInfo.fromPos] ?? pinchInfo.fromPos;
-            }
-          }
+// ① 代打/代走でまだ守備位置解決できないときは fromPos を使う
+if (!currentPos || currentPos === "-" || currentPos === "－") {
+  const pinchInfo = Object.values(usedPlayerInfo || {}).find(
+    (info: any) =>
+      Number(info?.subId) === Number(currentDisplayId) &&
+      ["代打", "代走", "臨時代走"].includes(String(info?.reason ?? ""))
+  );
 
-          // ② リエントリー済みの元スタメンなら、元の守備位置を表示
-          if (!currentPos || currentPos === "-" || currentPos === "－") {
-            const usedEntry = (usedPlayerInfo as any)?.[displayId];
+  if (pinchInfo?.fromPos) {
+    currentPos = posNameToSymbol[pinchInfo.fromPos] ?? pinchInfo.fromPos;
+  }
+}
 
-            if (usedEntry?.hasReentered) {
-              const reentryPos = getOrderDisplayPos(initialAssignments, displayId);
-              if (reentryPos && reentryPos !== "-" && reentryPos !== "－") {
-                currentPos = reentryPos;
-              }
-            }
-          }
+// ② リエントリー済みの元スタメンなら、元の守備位置を表示
+if (!currentPos || currentPos === "-" || currentPos === "－") {
+  const usedEntry = (usedPlayerInfo as any)?.[currentDisplayId];
 
-          // ③ まだ取れない場合は、元の打順選手の初期守備位置を最後の保険に使う
-          if (!currentPos || currentPos === "-" || currentPos === "－") {
-            if (initialPos && initialPos !== "-" && initialPos !== "－") {
-              currentPos = initialPos;
-            }
-          }
+  if (usedEntry?.hasReentered) {
+    const reentryPos = getOrderDisplayPos(initialAssignments, currentDisplayId);
+    if (reentryPos && reentryPos !== "-" && reentryPos !== "－") {
+      currentPos = reentryPos;
+    }
+  }
+}
 
-          if (dhActive && dhSlotIndex === index) {
-            currentPos = "指";
-            if (!initialPos || initialPos === "-") initialPos = "指";
-          }
+// ③ まだ取れない場合は、元の打順選手の初期守備位置を最後の保険に使う
+if (!currentPos || currentPos === "-" || currentPos === "－") {
+  if (initialPos && initialPos !== "-" && initialPos !== "－") {
+    currentPos = initialPos;
+  }
+}
 
-          const playerChanged = displayId !== beforeId;
-          const positionChanged = currentPos !== initialPos;
+if (dhActive && dhSlotIndex === index) {
+  currentPos = "指";
+  if (!initialPos || initialPos === "-") initialPos = "指";
+}
+
+const playerChanged = currentDisplayId !== beforeId;
+const positionChanged = currentPos !== initialPos;
 
           const isPinchHitter = slot.reason === "代打";
           const isPinchRunner = slot.reason === "代走";
