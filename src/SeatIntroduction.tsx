@@ -7,7 +7,6 @@ import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
 interface Props {
   onNavigate: (screen: ScreenType) => void;
   onBack?: () => void;
-  leagueMode: "pony" | "boys";
 }
 
 type PositionInfo = {
@@ -62,7 +61,7 @@ const resolveBackTarget = async (): Promise<ScreenType> => {
   return "startGame" as ScreenType;
 };
 
-const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
+const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
   const [teamName, setTeamName] = useState("");
   const [positions, setPositions] = useState<{ [key: string]: PositionInfo }>({});
   const [isHome, setIsHome] = useState(true); // true → 後攻
@@ -77,9 +76,7 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) =
     })();
   }, []);
 
-  const [umpires, setUmpires] = useState<
-    { role: string; name: string; furigana: string }[]
-  >([]);
+
 
   const positionLabels: [string, string][] = [
     ["投", "ピッチャー"],
@@ -93,29 +90,22 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) =
     ["右", "ライト"],
   ];
 
-  const isBoys = leagueMode === "boys";
-
   const inning = isHome ? "1回の表" : "1回の裏";
 
   useEffect(() => {
     const loadData = async () => {
  const team = await localForage.getItem<any>("team");
  // ✅ まずスタメン専用キーを読む。無ければ従来キーにフォールバック
- const starting = await localForage.getItem<Record<string, number | null>>("startingassignments");
- const fallback = await localForage.getItem<Record<string, number | null>>("lineupAssignments");
- const assignments: Record<string, number | null> = starting ?? fallback ?? {};
+const latest = await localForage.getItem<Record<string, number | null>>("lineupAssignments");
+const starting = await localForage.getItem<Record<string, number | null>>("startingassignments");
+const assignments: Record<string, number | null> = latest ?? starting ?? {};
  const matchInfo = await localForage.getItem<any>("matchInfo");
       const last = (await localForage.getItem<string>("lastScreen")) || "";
 
       console.log("SeatIntro lastScreen=", last, " isDefense=", matchInfo?.isDefense);
 
       if (team) setTeamName(team.name || "");
-      if (matchInfo) {
-        setIsHome(matchInfo.isHome ?? true);
-        if (Array.isArray(matchInfo.umpires)) {
-          setUmpires(matchInfo.umpires);
-        }
-      }
+      if (matchInfo) setIsHome(matchInfo.isHome ?? true);
 
       // 戻り先の判定（大小無視の部分一致＋保険）
       const s = (last || "").toLowerCase();
@@ -156,88 +146,42 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) =
   // 初回だけ VOICEVOX を温めて初回の待ち時間を短縮
   useEffect(() => { void prewarmTTS(); }, []);
 
-const speakText = () => {
-  const boysUmpireText =
-    `審判は球審 ${umpires[0]?.furigana || umpires[0]?.name || "――"}、` +
-    `塁審 ${umpires[1]?.furigana || umpires[1]?.name || "――"} 一塁、` +
-    `${umpires[2]?.furigana || umpires[2]?.name || "――"}、` +
-    `二塁 ${umpires[3]?.furigana || umpires[3]?.name || "――"}、` +
-    `三塁 ${umpires[4]?.furigana || umpires[4]?.name || "――"}、` +
-    `以上四氏でございます。`;
-
-    const boysFielders = positionLabels
-      .map(([pos, label], index) => {
-        const p = positions[pos];
-        if (!p) return `${label}`;
-
-        const name = `${p.lastNameKana || ""} ${p.firstNameKana || ""}${p.honorific}`;
-
-        return index === 0
-          ? `${label}は ${name}`
-          : `${label} ${name}`;
-      })
-      .join("、");
-
-  const ponyText =
-    [
-      `${inning} 守ります、${teamName}のシートをお知らせします。`,
-      ...positionLabels.map(([pos, label]) => {
-        const p = positions[pos];
-        const ln = p?.lastName || "";
-        const forceFull = ln && dupLastNames.has(ln);
-        const yomi = forceFull
-          ? `${p?.lastNameKana || ""} ${p?.firstNameKana || ""}`
-          : `${p?.lastNameKana || ""}`;
-        return `${label} ${yomi}${p?.honorific || "くん"}`;
-      }),
-    ].join("、") + "です。";
-
-  const boysIntro = isHome
-    ? `1回の表、まず守ります ${teamName} の、`
-    : `1回の裏、守ります ${teamName} の、`;
-
-  const boysText =
-    `${boysIntro}` +
-    `${boysFielders}` +
-    `${isHome ? `、${boysUmpireText}` : ""}`;
-
-  const text = isBoys ? boysText : ponyText;
-
-  setSpeaking(true);
-  void (async () => {
-    try {
-      await ttsSpeak(text, { progressive: true, cache: true });
-    } finally {
-      setSpeaking(false);
-    }
-  })();
-};
-
+  const speakText = () => {
+    // 表示と同じ文面（読みやすい句切り）で VOICEVOX 読み上げ
+    const text =
+      [
+        `${inning} 守ります、${teamName}のシートをお知らせします。`,
+        ...positionLabels.map(([pos, label]) => {
+          const p = positions[pos];
+          const ln = p?.lastName || "";
+          const forceFull = ln && dupLastNames.has(ln);
+          const yomi = forceFull
+            ? `${p?.lastNameKana || ""} ${p?.firstNameKana || ""}`
+            : `${p?.lastNameKana || ""}`;
+          return `${label} ${yomi}${p?.honorific || "くん"}`;
+        }),
+      ].join("、") + "です。";
+    setSpeaking(true);
+    // ❗️待たずに発火（IIFEでtry/finally）
+    void (async () => {
+      try {
+        await ttsSpeak(text, { progressive: true, cache: true });
+      } finally {
+        setSpeaking(false);
+      }
+    })();
+  };
   const stopSpeaking = () => {
     ttsStop();
     setSpeaking(false);
   };
 
 
-const formattedAnnouncement = isBoys
-  ? `${isHome ? "1回の表、まず守ります" : "1回の裏、守ります"} ${teamName} の<br />` +
-    positionLabels
-      .map(([pos, label], index) => {
-        const p = positions[pos];
-        const nameHTML = p
-          ? `<ruby>${p.lastName}<rt>${p.lastNameKana || ""}</rt></ruby>` +
-            `<ruby>${p.firstName || ""}<rt>${p.firstNameKana || ""}</rt></ruby>`
-          : "（選手名）";
-        return `${index === 0 ? label + "は" : label}　${nameHTML}${p?.honorific || "くん"}`;
-      })
-      .join("、<br />") +
-    (isHome
-      ? `<br /><br />審判は球審 ${umpires[0]?.name || "――"}、一塁 ${umpires[1]?.name || "――"}、<br />` +
-        `二塁 ${umpires[2]?.name || "――"}、三塁 ${umpires[3]?.name || "――"}、以上四氏でございます。`
-      : "")
-  : `${inning}　守ります　${teamName} のシートをお知らせします。<br /><br />` +
+  const formattedAnnouncement =
+    `${inning}　守ります　${teamName} のシートをお知らせします。\n\n` +
     positionLabels
       .map(([pos, label]) => {
+        const player = positions[pos];
         const p = positions[pos];
         const ln = p?.lastName || "";
         const forceFull = ln && dupLastNames.has(ln);
@@ -248,6 +192,7 @@ const formattedAnnouncement = isBoys
               : `<ruby>${p.lastName}<rt>${p.lastNameKana || ""}</rt></ruby>`)
           : "（苗字）";
         return `${label}　${nameHTML}　${p?.honorific || "くん"}`;
+
       })
       .join("<br />") + "です。";
 

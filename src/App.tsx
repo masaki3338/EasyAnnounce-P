@@ -1146,15 +1146,60 @@ if (totalMyScore > totalOpponentScore) {
         onSwitchToDefense={async () => {
           const match =
             (await localForage.getItem("matchInfo")) as
-              | { inning?: number; isTop?: boolean; isDefense?: boolean }
+              | { inning?: number; isTop?: boolean; isDefense?: boolean; isHome?: boolean }
               | null;
+
+          const battingOrder =
+            (await localForage.getItem("battingOrder")) as
+              | { id: number; reason?: string }[]
+              | null;
+
+          const usedPlayerInfo =
+            (await localForage.getItem("usedPlayerInfo")) as
+              | Record<string, any>
+              | null;
+
+          const inning = Number(match?.inning ?? 1);
+          const isTop = typeof match?.isTop === "boolean" ? match.isTop : true;
+          const isVisitor = match?.isHome === false;
+
+          const hasPinchInBattingOrder =
+            Array.isArray(battingOrder) &&
+            battingOrder.some(
+              (e) =>
+                e?.reason === "代打" ||
+                e?.reason === "代走" ||
+                e?.reason === "臨時代走"
+            );
+
+          const hasPinchInUsedInfo =
+            !!usedPlayerInfo &&
+            Object.values(usedPlayerInfo).some(
+              (info: any) =>
+                info?.reason === "代打" ||
+                info?.reason === "代走" ||
+                info?.reason === "臨時代走"
+            );
+
+          const shouldGoSeatIntroduction =
+            isVisitor &&
+            inning === 1 &&
+            isTop &&
+            (hasPinchInBattingOrder || hasPinchInUsedInfo);
 
           await localForage.setItem("matchInfo", {
             ...(match || {}),
-            inning: Number(match?.inning ?? 1),
-            isTop: typeof match?.isTop === "boolean" ? match.isTop : true,
+            inning,
+            isTop,
             isDefense: true,
           });
+
+          if (shouldGoSeatIntroduction) {
+            fromGameRef.current = true;
+            lastOffenseRef.current = true;
+            setScreen("seatIntroduction");
+            return;
+          }
 
           openDefenseScreenWithSnapshot();
         }}
@@ -1427,28 +1472,28 @@ if (totalMyScore > totalOpponentScore) {
   </>
 )}
 
-{screen === "defenseChange" && (
-  <>
-{/* 
-<button
-  className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
-  onClick={() => {
-    // 下ボタンと同じ“遷移の実体”だけを呼ぶ（未保存チェックは DefenseChange 側に任せない）
-    (window as any).__app_go_defense?.();
-  }}
->
-  ← 守備画面に戻る
-</button>
-*/}
 
-    <DefenseChange
-      onConfirmed={() => {
-        console.log("✅ setScreen to defense");
-        openDefenseScreenWithoutSnapshot();
-      }}
-    />
-  </>
+{screen === "defenseChange" && (
+  <DefenseChange
+    onBack={() => setScreen("defense")}
+    onConfirmed={(opts?: { goSeatIntroduction?: boolean }) => {
+      if (opts?.goSeatIntroduction) {
+        console.log("✅ 1回先攻・代打あり：シート紹介画面へ遷移します");
+        fromGameRef.current = true;
+        lastOffenseRef.current = false; // 守備交代画面から来た
+        setScreen("seatIntroduction");
+      } else {
+        console.log("✅ 通常の守備交代：守備画面へ戻ります");
+        if (typeof openDefenseScreenWithoutSnapshot === "function") {
+          openDefenseScreenWithoutSnapshot();
+        } else {
+          setScreen("defense");
+        }
+      }
+    }}
+  />
 )}
+
 {screen === "operationSettings" && (
   <>
     <button

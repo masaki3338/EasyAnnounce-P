@@ -3487,7 +3487,7 @@ const formatLog = (pos: string, player?: Player | null): string => {
 };
 
 type DefenseChangeProps = {
-  onConfirmed: () => void;
+  onConfirmed: (opts?: { goSeatIntroduction?: boolean }) => void | Promise<void>;
 };
 
 
@@ -3620,6 +3620,8 @@ const [touchedFieldPos, setTouchedFieldPos] = useState<Set<string>>(new Set());
   const hasDH = Boolean(assignments?.["指"]);
   const [teamPlayers, setTeamPlayers] = useState<Player[]>([]);
   const [battingOrder, setBattingOrder] = useState<{ id: number; reason: string }[]>([]); // ✅ 攻撃画面の打順
+  const [shouldGoSeatIntroductionAfterConfirm, setShouldGoSeatIntroductionAfterConfirm] =
+  useState(false);
   // ★ 打順：確定待ちでも即時に変わる“ドラフト”用
 const [battingOrderDraft, setBattingOrderDraft] =
   useState<{ id: number; reason: string }[]>([]);
@@ -4218,6 +4220,33 @@ if (startedAsOhtani0) {
 
     setInitialAssignments(newAssignments);
     setUsedPlayerInfo(usedInfo);
+    const match =
+  (await localForage.getItem("matchInfo")) as
+    | { inning?: number; isHome?: boolean }
+    | null;
+
+const inning = Number(match?.inning ?? 1);
+const isVisitor = match?.isHome === false;
+
+const hasPinchAtLoad = Object.values(usedInfo || {}).some((info: any) => {
+  const reason = String(info?.reason ?? "").trim();
+  return (
+    reason === "代打" ||
+    reason === "代走" ||
+    reason === "臨時代走"
+  );
+});
+
+setShouldGoSeatIntroductionAfterConfirm(
+  isVisitor && inning === 1 && hasPinchAtLoad
+);
+
+console.log("[SEAT INTRO FLAG]", {
+  inning,
+  isVisitor,
+  hasPinchAtLoad,
+  shouldGo: isVisitor && inning === 1 && hasPinchAtLoad,
+});
     setAssignments(newAssignments);
     setTeamPlayers(updatedTeamPlayers);
 
@@ -6054,6 +6083,9 @@ const onFieldIds = new Set<number>(effectiveSavedState.onFieldPlayerIds);
     .filter(([_, u]: any) => ["代打", "代走", "臨時代走"].includes(u?.fromPos))
     .map(([id]) => Number(id));
 
+const hadPinchAtConfirmStart = pinchIds.length > 0;
+console.log("[CONFIRM-CHECK] hadPinchAtConfirmStart", hadPinchAtConfirmStart);
+
   const missing = pinchIds.filter((id) => !onFieldIds.has(id));
 
   console.log("[CONFIRM-CHECK] pinchIds", pinchIds);
@@ -6248,15 +6280,29 @@ snapshotRef.current = JSON.stringify({
 });
 setIsDirty(false);
 
-onConfirmed();
+// =========================================================
+// 1回表・先攻チームで、代打/代走/臨時代走が入っている場合は
+// 守備交代確定後にシート紹介画面へ進める
+// =========================================================
+const match =
+  (await localForage.getItem("matchInfo")) as
+    | { inning?: number; isTop?: boolean; isHome?: boolean }
+    | null;
 
-if (window.history.length > 1) {
-  navigate(-1);
-} else {
-  navigate("/defense", { replace: true });
-}
+const inning = Number(match?.inning ?? 1);
+const isVisitor = match?.isHome === false;
 
-console.log("✅ onConfirmed called");
+// ★ 保存後の committed～ ではなく、掃除前の updatedOrder / usedInfo を使って判定
+const goSeatIntroduction = shouldGoSeatIntroductionAfterConfirm;
+
+console.log("[SAVE CHECK] goSeatIntroduction =", goSeatIntroduction);
+console.log("[SAVE CHECK] shouldGoSeatIntroductionAfterConfirm =", shouldGoSeatIntroductionAfterConfirm);
+
+// ✅ 画面遷移は App.tsx 側に一本化
+await onConfirmed({ goSeatIntroduction });
+
+console.log("✅ onConfirmed called", { goSeatIntroduction });
+return;
 };
 
   // 新たにアナウンス表示だけの関数を定義
