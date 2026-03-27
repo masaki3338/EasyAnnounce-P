@@ -232,11 +232,50 @@ const App = () => {
   const [waterBreakPopupMessage, setWaterBreakPopupMessage] = useState("");
   const [showWaterBreakPopupMessage, setShowWaterBreakPopupMessage] = useState(false);
   const [waterBreakNotice, setWaterBreakNotice] = useState("");
-const [coolingPopupMessage, setCoolingPopupMessage] = useState("");
-const [showCoolingPopup, setShowCoolingPopup] = useState(false);
-const [seatIntroBackScreen, setSeatIntroBackScreen] = useState<"announcement" | "boysPreGameAnnouncement">("announcement");
+  const [coolingPopupMessage, setCoolingPopupMessage] = useState("");
+  const [showCoolingPopup, setShowCoolingPopup] = useState(false);
+  const [seatIntroBackScreen, setSeatIntroBackScreen] = useState<"announcement" | "boysPreGameAnnouncement">("announcement");
 
-const [defenseInningStartTrigger, setDefenseInningStartTrigger] = useState(0);
+  const [defenseInningStartTrigger, setDefenseInningStartTrigger] = useState(0);
+
+  const openDefenseScreenWithSnapshot = () => {
+    setDefenseInningStartTrigger((n) => n + 1);
+    setScreen("defense");
+  };
+
+  const handleSeatIntroductionNavigate = (next: ScreenType) => {
+  if (next === "defense") {
+    // 先攻で「攻撃 → シート紹介 → 初回守備」に入るときだけ保存付きで開く
+    if (fromGameRef.current && lastOffenseRef.current) {
+      openDefenseScreenWithSnapshot();
+    } else {
+      openDefenseScreenWithoutSnapshot();
+    }
+    return;
+  }
+
+  setScreen(next);
+};
+
+const handleSeatIntroductionBack = () => {
+  if (!fromGameRef.current) {
+    setScreen(isBoys ? "boysPreGameAnnouncement" : "announcement");
+    return;
+  }
+
+  // 攻撃画面から来たなら攻撃へ戻す
+  if (lastOffenseRef.current) {
+    setScreen("offense");
+    return;
+  }
+
+  // 守備画面から来たなら通常の守備へ戻す
+  openDefenseScreenWithoutSnapshot();
+};
+
+  const openDefenseScreenWithoutSnapshot = () => {
+    setScreen("defense");
+  };
 
 useEffect(() => {
   const saveLastGameScreen = async () => {
@@ -465,7 +504,7 @@ useEffect(() => {
 
 // 🔽 守備画面へ遷移する関数をグローバル公開（DefenseChangeから呼ぶ）
 useEffect(() => {
-  (window as any).__app_go_defense = () => setScreen("defense");
+  (window as any).__app_go_defense = () => openDefenseScreenWithoutSnapshot();
   return () => { delete (window as any).__app_go_defense; };
 }, []);
 
@@ -652,9 +691,9 @@ const handleSpeak = async () => {
             ← メニューに戻る
           </button>
             <StartGame
-              onStart={async () => {
-                setIsContinueGame(false);
-                await localForage.removeItem("lastBatterIndex");  
+                onStart={async () => {
+                  setIsContinueGame(false);
+                  await localForage.removeItem("lastBatterIndex");
                 
                 const match = await localForage.getItem("matchInfo");
                 if (match && typeof match === "object" && "isHome" in match) {
@@ -673,8 +712,7 @@ const handleSpeak = async () => {
                   if (isOffense) {
                     setScreen("offense");
                   } else {
-                    setDefenseInningStartTrigger((n) => n + 1);
-                    setScreen("defense");
+                    openDefenseScreenWithSnapshot();
                   }
                 } else {
                   alert("試合情報が見つかりません。試合作成画面で設定してください。");
@@ -845,19 +883,14 @@ const handleSpeak = async () => {
         <>
           <button
             className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
-            onClick={() => setScreen(fromGameRef.current ? "defense" : (isBoys ? "boysPreGameAnnouncement" : "announcement"))}
+            onClick={handleSeatIntroductionBack}
           >
             ← {fromGameRef.current ? "試合に戻る" : "試合前アナウンスメニューに戻る"}
           </button>
+
           <SeatIntroduction
-            onNavigate={setScreen}
-            onBack={() =>
-              setScreen(
-                fromGameRef.current
-                  ? (lastOffenseRef.current ? "offense" : "defense")
-                  : (isBoys ? "boysPreGameAnnouncement" : "announcement")
-              )
-            }
+            onNavigate={handleSeatIntroductionNavigate}
+            onBack={handleSeatIntroductionBack}
             leagueMode={leagueMode}
           />
         </>
@@ -1123,8 +1156,7 @@ if (totalMyScore > totalOpponentScore) {
             isDefense: true,
           });
 
-          setDefenseInningStartTrigger((n) => n + 1);
-          setScreen("defense");
+          openDefenseScreenWithSnapshot();
         }}
         onGoToSeatIntroduction={() => {
           fromGameRef.current = true;
@@ -1385,12 +1417,13 @@ if (totalMyScore > totalOpponentScore) {
       </select>
     </div>
 
-  <DefenseScreen
-    key="defense"
-    onChangeDefense={() => setScreen("defenseChange")}
-    onSwitchToOffense={() => setScreen("offense")}
-    saveInningStartTrigger={defenseInningStartTrigger}
-  />
+
+    <DefenseScreen
+      key="defense"
+      onChangeDefense={() => setScreen("defenseChange")}
+      onSwitchToOffense={() => setScreen("offense")}
+      saveInningStartTrigger={defenseInningStartTrigger}
+    />
   </>
 )}
 
@@ -1408,11 +1441,12 @@ if (totalMyScore > totalOpponentScore) {
 </button>
 */}
 
-
-    <DefenseChange onConfirmed={() => {
-      console.log("✅ setScreen to defense");
-      setScreen("defense");
-    }} />
+    <DefenseChange
+      onConfirmed={() => {
+        console.log("✅ setScreen to defense");
+        openDefenseScreenWithoutSnapshot();
+      }}
+    />
   </>
 )}
 {screen === "operationSettings" && (

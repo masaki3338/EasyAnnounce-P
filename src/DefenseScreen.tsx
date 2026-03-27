@@ -76,6 +76,7 @@ type Scores = {
 
 
 const DEFENSE_RESTORE_EVENT = "restore-defense-inning-start";
+let lastHandledDefenseSnapshotTrigger = 0;
 
 type DefenseScreenProps = {
   onChangeDefense: () => void;
@@ -83,7 +84,8 @@ type DefenseScreenProps = {
   onBack?: () => void;
   onGoToSeatIntroduction?: () => void;
 
-  saveInningStartTrigger?: number; // ★追加
+  saveInningStartTrigger?: number;
+
 };
 
 
@@ -244,6 +246,8 @@ const [reEntryMessage, setReEntryMessage] = useState("");
 // 投手IDごとの累計球数（例: { 12: 63, 18: 23 }）
 const [pitcherTotals, setPitcherTotals] = useState<Record<number, number>>({});
 
+const [snapshotReady, setSnapshotReady] = useState(false);
+
 useEffect(() => {
   const saveEndGamePitcherInfo = async () => {
     const pitcherId = assignments?.["投"];
@@ -374,7 +378,37 @@ const nameRubyHTML = (p: any) => {
   return ln ? ruby(ln, lnKana) : "";
 };
 
+const buildPitchAnnouncementMessages = (
+  pitcherId: number | null | undefined,
+  current: number,
+  total: number,
+  players: Player[]
+): string[] => {
+  if (typeof pitcherId !== "number") return [];
 
+  const pitcher = players.find(
+    (p) => Number(p.id) === Number(pitcherId)
+  );
+  if (!pitcher) return [];
+
+  const suffix = pitcher.isFemale ? "さん" : "くん";
+  const pitcherRuby = nameRubyHTML(pitcher);
+
+  const msgs: string[] = [];
+  msgs.push(
+    `${pitcherCall(pitcherRuby, suffix)}、この回の投球数は${current}球です`
+  );
+
+  if (current !== total) {
+    msgs.push(
+      isBoys
+        ? `合計投球数は${total}球です`
+        : `トータル${total}球です`
+    );
+  }
+
+  return msgs;
+};
 
 
 // 代打/代走ポップアップ内の「リエントリー」ボタンから呼ばれる
@@ -559,7 +593,7 @@ useEffect(() => {
     setOpponentTeamName(String(savedMatchInfo?.opponentTeam || ""));
     setTeamPlayers(Array.isArray(teamData?.players) ? teamData!.players! : []);
 
-        // ★ 守備画面を開いた時点で投球数アナウンスを表示
+    // ★ 守備画面を開いた時点で投球数アナウンスを表示
     const restoredPlayers = Array.isArray(teamData?.players) ? teamData.players : [];
     const restoredPitcherId =
       typeof savedPitchCounts?.pitcherId === "number"
@@ -569,35 +603,14 @@ useEffect(() => {
     const restoredCurrent = Number(savedPitchCounts?.current || 0);
     const restoredTotal = Number(savedPitchCounts?.total || 0);
 
-    if (typeof restoredPitcherId === "number") {
-      const pitcher = restoredPlayers.find(
-        (p) => Number(p.id) === Number(restoredPitcherId)
-      );
-
-      if (pitcher) {
-        const suffix = pitcher.isFemale ? "さん" : "くん";
-        const pitcherRuby = nameRubyHTML(pitcher);
-
-        const msgs: string[] = [];
-        msgs.push(
-          `${pitcherCall(pitcherRuby, suffix)}、この回の投球数は${restoredCurrent}球です`
-        );
-
-        if (restoredCurrent !== restoredTotal) {
-          msgs.push(
-            isBoys
-              ? `合計投球数は${restoredTotal}球です`
-              : `トータル${restoredTotal}球です`
-          );
-        }
-
-        setAnnounceMessages(msgs);
-      } else {
-        setAnnounceMessages([]);
-      }
-    } else {
-      setAnnounceMessages([]);
-    }
+    setAnnounceMessages(
+      buildPitchAnnouncementMessages(
+        restoredPitcherId,
+        restoredCurrent,
+        restoredTotal,
+        restoredPlayers
+      )
+    );
     
     // ★ 代打/代走/臨時代走の確認モーダルを出す
     const restoredBattingOrder = Array.isArray(savedBattingOrder) ? savedBattingOrder : [];
@@ -702,19 +715,12 @@ const addPitch = async () => {
   const pitcher = teamPlayers.find((p) => p.id === pitcherId);
   if (!pitcher) return;
 
-  const pitcherSuffix = pitcher.isFemale ? "さん" : "くん";
-  const pitcherRuby = nameRubyHTML(pitcher);
-
-  const newMessages: string[] = [];
-  newMessages.push(`${pitcherCall(pitcherRuby, pitcherSuffix)}、この回の投球数は${newCurrent}球です`);
-
-  if (newCurrent !== newTotal) {
-    newMessages.push(
-      isBoys
-        ? `合計投球数は${newTotal}球です`
-        : `トータル${newTotal}球です`
-    );
-  }
+  const newMessages = buildPitchAnnouncementMessages(
+    pitcherId,
+    newCurrent,
+    newTotal,
+    teamPlayers
+  );
 
   // ★ 警告判定も newTotal を基準にする（そのまま）
 const warn1 = Math.max(0, pitchLimitSelected - 10);
@@ -736,52 +742,42 @@ if (!isBoys && (newTotal === warn1 || newTotal === warn2)) {
 
   setAnnounceMessages(newMessages);
 };
-const subtractPitch = async () => {
-  const pitcherId = assignments["投"];
+  const subtractPitch = async () => {
+    const pitcherId = assignments["投"];
 
-  const newCurrent = Math.max(currentPitchCount - 1, 0);
+    const newCurrent = Math.max(currentPitchCount - 1, 0);
 
-  // ★ pitcherTotals（唯一の正）を更新して newTotal を決める
-  let newTotal = totalPitchCount; // fallback
-  if (typeof pitcherId === "number") {
-    const map =
-      (await localForage.getItem<Record<number, number>>("pitcherTotals")) || {};
-    const next = Math.max((map[pitcherId] ?? 0) - 1, 0);
-    map[pitcherId] = next;
+    // ★ pitcherTotals（唯一の正）を更新して newTotal を決める
+    let newTotal = totalPitchCount; // fallback
+    if (typeof pitcherId === "number") {
+      const map =
+        (await localForage.getItem<Record<number, number>>("pitcherTotals")) || {};
+      const next = Math.max((map[pitcherId] ?? 0) - 1, 0);
+      map[pitcherId] = next;
 
-    await localForage.setItem("pitcherTotals", map);
-    setPitcherTotals({ ...map });
+      await localForage.setItem("pitcherTotals", map);
+      setPitcherTotals({ ...map });
 
-    newTotal = next;
-    setTotalPitchCount(newTotal);
-  } else {
-    setTotalPitchCount(totalPitchCount);
-  }
+      newTotal = next;
+      setTotalPitchCount(newTotal);
+    } else {
+      setTotalPitchCount(totalPitchCount);
+    }
 
-  setCurrentPitchCount(newCurrent);
+    setCurrentPitchCount(newCurrent);
 
-  await localForage.setItem("pitchCounts", {
-    current: newCurrent,
-    total: newTotal,
-    pitcherId: pitcherId ?? null,
-  });
+    await localForage.setItem("pitchCounts", {
+      current: newCurrent,
+      total: newTotal,
+      pitcherId: pitcherId ?? null,
+    });
 
-  const pitcher = teamPlayers.find((p) => p.id === pitcherId);
-  if (!pitcher) return;
-
-  const suffix = pitcher.isFemale ? "さん" : "くん";
-  const pitcherRuby = nameRubyHTML(pitcher);
-
-  const newMessages: string[] = [];
-  newMessages.push(`${pitcherCall(pitcherRuby, suffix)}、この回の投球数は${newCurrent}球です`);
-
-  if (newCurrent !== newTotal) {
-    newMessages.push(
-      isBoys
-        ? `合計投球数は${newTotal}球です`
-        : `トータル${newTotal}球です`
-    );
-  }
+  const newMessages = buildPitchAnnouncementMessages(
+    pitcherId,
+    newCurrent,
+    newTotal,
+    teamPlayers
+  );
 
   setAnnounceMessages(newMessages);
 };
@@ -983,10 +979,11 @@ const normalizeForTTS = (input: string) => {
    void ttsSpeak(text, { progressive: true, cache: true });
  };
 
-const savedSnapshotKeyRef = useRef<string>("");
 
 const saveDefenseInningStartSnapshot = async () => {
-  // ★ 守備配置が空なら保存しない
+  if (!snapshotReady) return;
+
+  // 守備配置が空なら保存しない
   const assignedCount = Object.values(assignments || {}).filter(
     (v): v is number => typeof v === "number"
   ).length;
@@ -1018,38 +1015,6 @@ const saveDefenseInningStartSnapshot = async () => {
 
   const matchKey = buildDefenseMatchKey(matchInfo || {});
   const storageKey = getDefenseSnapshotKey(matchKey);
-
-  const existing =
-    await localForage.getItem<DefenseInningSnapshot>(storageKey);
-
-  // ★ 既存 snapshot が「使える保存」か判定
-  const existingAssignedCount = Object.values(existing?.lineupAssignments || {}).filter(
-    (v): v is number => typeof v === "number"
-  ).length;
-
-  const existingLooksBroken =
-    !existing ||
-    existing.matchKey !== matchKey ||
-    existingAssignedCount === 0 ||
-    !Array.isArray(existing.battingOrder) ||
-    existing.battingOrder.length === 0;
-
-  // ★ 同じ試合・同じ回・同じ表裏で、しかも既存が正常なら上書きしない
-  if (
-    existing &&
-    !existingLooksBroken &&
-    existing.matchKey === matchKey &&
-    Number(existing.inning) === Number(inning) &&
-    Boolean(existing.isTop) === Boolean(isTop)
-  ) {
-    console.log("[DEFENSE SNAPSHOT] skip overwrite", {
-      matchKey,
-      inning,
-      isTop,
-      existing,
-    });
-    return;
-  }
 
   const snapshot: DefenseInningSnapshot = {
     savedAt: Date.now(),
@@ -1091,14 +1056,32 @@ const saveDefenseInningStartSnapshot = async () => {
     dhEnabledAtStart: !!dhEnabledAtStart,
   };
 
+  // 常に最新の守備回開始時点で上書きする
   await localForage.setItem(storageKey, snapshot);
-  console.log("[DEFENSE SNAPSHOT] saved", { storageKey, snapshot });
-
-  useEffect(() => {
-    if (!saveInningStartTrigger) return;
-    void saveDefenseInningStartSnapshot();
-  }, [saveInningStartTrigger]);
+  console.log("[DEFENSE SNAPSHOT] saved", {
+    storageKey,
+    inning,
+    isTop,
+    savedAt: snapshot.savedAt,
+  });
 };
+
+
+useEffect(() => {
+  if (!snapshotReady) return;
+
+  const trigger = Number(saveInningStartTrigger ?? 0);
+  if (trigger <= 0) return;
+
+  // ★ すでに処理済みの trigger なら再保存しない
+  if (trigger === lastHandledDefenseSnapshotTrigger) {
+    console.log("[DEFENSE SNAPSHOT] skip duplicate trigger", { trigger });
+    return;
+  }
+
+  lastHandledDefenseSnapshotTrigger = trigger;
+  void saveDefenseInningStartSnapshot();
+}, [snapshotReady, saveInningStartTrigger]);
 
 const restoreDefenseInningStartSnapshot = async () => {
   const matchInfo =
@@ -1170,7 +1153,20 @@ const restoreDefenseInningStartSnapshot = async () => {
     isHome,
   });
 
-  setAnnounceMessages([]);
+  const restoredPitcherId =
+    typeof snapshot.pitchCounts?.pitcherId === "number"
+      ? snapshot.pitchCounts.pitcherId
+      : safeAssignments["投"];
+
+  setAnnounceMessages(
+    buildPitchAnnouncementMessages(
+      restoredPitcherId,
+      Number(snapshot.pitchCounts?.current ?? 0),
+      Number(snapshot.pitchCounts?.total ?? 0),
+      teamPlayers
+    )
+  );
+
   setPitchLimitMessages([]);
   setShowPitchLimitModal(false);
   setShowConfirmModal(false);
