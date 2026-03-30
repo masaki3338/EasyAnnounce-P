@@ -749,6 +749,25 @@ const goSeatIntroFromOffense = async () => {
   onGoToSeatIntroduction();
 };
 
+const reserveSeatIntroAfterDefense = async () => {
+  await localForage.setItem("postDefenseSeatIntro", {
+    enabled: true,
+    from: "first-top-offense",
+    inning: 1,
+    isTop: true,
+  });
+  await localForage.setItem("seatIntroLock", false);
+};
+
+const hasPendingDefenseSetup = async () => {
+  const order =
+    (await localForage.getItem<{ id: number; reason?: string }[]>("battingOrder")) || [];
+
+  return order.some((e) =>
+    e?.reason === "代打" || e?.reason === "代走" || e?.reason === "臨時代走"
+  );
+};
+
   const handleStartGame = () => {
     const now = new Date();
     const timeString = now.toLocaleTimeString("ja-JP", { hour: '2-digit', minute: '2-digit' });
@@ -1657,9 +1676,16 @@ await saveMatchInfo({
     if (isHome && inning === 4 && !isTop) {
       setShowGroundPopup(true);
     } else if (inning === 1 && isTop) {
-      await localForage.setItem("postDefenseSeatIntro", { enabled: false });
-      await localForage.setItem("seatIntroLock", false);
-      await goSeatIntroFromOffense();
+      const hasPendingDefense = await hasPendingDefenseSetup();
+
+      if (hasPendingDefense) {
+        await reserveSeatIntroAfterDefense();
+        onSwitchToDefense();
+      } else {
+        await localForage.setItem("postDefenseSeatIntro", { enabled: false });
+        await localForage.setItem("seatIntroLock", false);
+        await goSeatIntroFromOffense();
+      }
     } else {
       onSwitchToDefense();
     }
@@ -2006,6 +2032,8 @@ const handleStop = () => {
   }
 };
 
+
+
 // 🔸 現在の打順に対してリエントリー対象（元スタメンで退場中）を探す
 // 🔍 リエントリー候補の詳細デバッグ版
 // 現在の打順に対してリエントリー対象（元スタメンで退場中）を探す
@@ -2164,19 +2192,17 @@ const handleRunnerReentryClick = async () => {
   }));
 
   // ★ アナウンスもその場で作る
-  const honorificFrom = replaced?.isFemale ? "さん" : "くん";
-  const honorificTo = B?.isFemale ? "さん" : "くん";
+const honorificFrom = replaced?.isFemale ? "さん" : "くん";
+const honorificTo = B?.isFemale ? "さん" : "くん";
 
-  const fromName = `${formatNameForAnnounce(replaced, true)}${honorificFrom}`;
-  const toNameFull = `${formatNameForAnnounce(B, false)}${honorificTo}`;
-  const toNameLast = `${formatNameForAnnounce(B, true)}${honorificTo}`;
-  const num = (B.number ?? "").trim();
+const fromName = `${formatNameForAnnounce(replaced, true)}${honorificFrom}`;
+const toNameLast = `${formatNameForAnnounce(B, true)}${honorificTo}`;
 
-  const prefix = `${selectedBase}ランナー`;
-  const text =
-    `${prefix} ${fromName}に代わりまして、` +
-    `${toNameFull}、${prefix}は ${toNameLast}` +
-    `${num ? `、背番号 ${num}。` : "。"}`;
+const prefix = `${selectedBase}ランナー`;
+const text =
+  `${prefix} ${fromName}に代わりまして、` +
+  `${toNameLast}がリエントリーで戻ります。` +
+  `${prefix}は ${toNameLast}。`; 
 
   setRunnerAnnouncement((prev) => {
     const updated = prev.filter((msg) => !msg.startsWith(prefix));
@@ -3225,9 +3251,16 @@ onClick={async () => {
     setShowGroundPopup(true);
   }  
   else if (lastEndedHalfRef.current?.inning === 1 && lastEndedHalfRef.current?.isTop) {
-    await goSeatIntroFromOffense();
-  } else {
-    onSwitchToDefense();
+    const hasPendingDefense = await hasPendingDefenseSetup();
+
+    if (hasPendingDefense) {
+      await reserveSeatIntroAfterDefense();
+      onSwitchToDefense();
+    } else {
+      await localForage.setItem("postDefenseSeatIntro", { enabled: false });
+      await localForage.setItem("seatIntroLock", false);
+      await goSeatIntroFromOffense();
+    }
   }
 }}
 
