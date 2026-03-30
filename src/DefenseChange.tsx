@@ -2931,7 +2931,7 @@ if (pinchReasonForShift) {
   }
 
   // from/to を抽出
-  const fromRe = new RegExp(`^${POS_JA}の\\s`);
+  const fromRe = new RegExp(`^${POS_JA}の`);
   const toRe1  = new RegExp(`入り\\s*${POS_JA}`);         // …入り ◯◯へ/に
   const toRe2  = new RegExp(`リエントリーで\\s*${POS_JA}`); // …リエントリーで ◯◯
   const toRe3  = new RegExp(`が\\s*${POS_JA}\\s*(?:へ|に)?\\s*[、。]?$`); // …が ◯◯、
