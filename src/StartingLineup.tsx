@@ -547,14 +547,24 @@ const handleDragStart = (
     // ① ベンチ外リストに追加（重複防止）
     setBenchOutIds((prev) => (prev.includes(playerId) ? prev : [...prev, playerId]));
 
-    // ② 守備配置から完全に外す（DH含む）
-    const oldDhId = assignments[DH] ?? null;
+// ② 守備配置から外す
+const oldDhId = assignments[DH] ?? null;
+const next = { ...assignments };
 
-    const next = { ...assignments };
-    for (const k of Object.keys(next)) {
-      if (next[k] === playerId) next[k] = null;
-    }
-    setAssignments(next);
+// DHの選手を出場しない選手へ移した場合は、DHだけ外して投手は残す
+if (oldDhId === playerId) {
+  next[DH] = null;
+
+  setOhtaniRule(false);
+  prevDhIdRef.current = null;
+  void localForage.setItem("ohtaniRule", false);
+} else {
+  for (const k of Object.keys(next)) {
+    if (next[k] === playerId) next[k] = null;
+  }
+}
+
+setAssignments(next);
 
     // ③ 打順更新
     setBattingOrder((prev) => {
@@ -616,6 +626,12 @@ const handleDragStart = (
     const oldDhId = assignments[DH] ?? null;
     const next = { ...assignments, [DH]: null };
     setAssignments(next);
+
+    if (oldDhId === playerId) {
+      setOhtaniRule(false);
+      prevDhIdRef.current = null;
+      void localForage.setItem("ohtaniRule", false);
+    }
 
     // ④ 打順：DHを外したら投手を打順へ戻して9人に（元仕様）
     setBattingOrder((prev) => {
