@@ -797,17 +797,21 @@ const buildBattingSlots = (src: BattingEntry[]) =>
  * - reason は常に「スタメン」
  * - 空きスロットはそのまま維持
  */
-const sanitizeBattingSlots = (src: Array<BattingEntry | undefined>) => {
+const sanitizeBattingSlots = (src: Array<BattingEntry | undefined>): BattingEntry[] => {
   const seen = new Set<number>();
 
-  const slots = src.map((entry) => {
-    if (!entry) return undefined;
-    if (seen.has(entry.id)) return undefined;
-    seen.add(entry.id);
-    return { id: entry.id, reason: "スタメン" as const };
-  });
-
-  return slots as BattingEntry[];
+  return src
+    .filter((entry): entry is BattingEntry => !!entry && typeof entry.id === "number")
+    .filter((entry) => {
+      if (seen.has(entry.id)) return false;
+      seen.add(entry.id);
+      return true;
+    })
+    .map((entry) => ({
+      id: entry.id,
+      reason: "スタメン" as const,
+    }))
+    .slice(0, 9);
 };
 
 /**
