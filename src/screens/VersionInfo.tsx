@@ -61,6 +61,11 @@ const historyData: HistoryItem[] = [
     version: "Vesion 2.03 β",
     details: ["選手交代の不具合修正 他"],
   },
+  {
+    date: "2026.03.31",
+    version: "Vesion 2.04 β",
+    details: ["不具合修正 他"],
+  },
 ];
 
 export default function VersionInfo({ version, onBack }: Props) {
