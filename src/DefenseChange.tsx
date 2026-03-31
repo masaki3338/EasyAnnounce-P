@@ -4088,10 +4088,24 @@ Object.entries(usedPlayerInfo).forEach(([originalIdStr, info]) => {
   const { fromPos, reason } = info;
   if (!(reason === "代打" || reason === "代走" || reason === "臨時代走")) return;
 
-  const sym = (posNameToSymbol as any)[fromPos] ?? fromPos;
+  const origId = Number(originalIdStr);
+  const rawSym = (posNameToSymbol as any)[fromPos] ?? fromPos;
+
+  const p0 =
+    typeof assignments?.["投"] === "number" ? Number(assignments["投"]) : null;
+  const d0 =
+    typeof assignments?.["指"] === "number" ? Number(assignments["指"]) : null;
+
+  const startedAsOhtani = p0 != null && d0 != null && p0 === d0;
+
+  const sym =
+    startedAsOhtani && p0 != null && origId === p0
+      ? "指"
+      : rawSym;
+
   if (!(sym in updatedAssignments)) return;
 
-  const latest = resolveLatestSubId(Number(originalIdStr), usedPlayerInfo as any);
+  const latest = resolveLatestSubId(origId, usedPlayerInfo as any);
   if (latest) {
     updatedAssignments[sym] = latest;
   }
@@ -4160,29 +4174,53 @@ setOhtaniRule(ohtaniNow);
 
 
 // ✅ 代打・代走の割り当て（“連鎖”の末端まで辿る）
-for (const [originalIdStr, info] of Object.entries(usedInfo)) {
-   const { fromPos, reason } = info;
-   if (!["代打", "代走", "臨時代走"].includes(reason)) continue;
-   const sym = posNameToSymbol[fromPos ?? ""] ?? fromPos ?? "";
-   if (!sym) continue;
+for (const [originalIdStr, rawInfo] of Object.entries(usedInfo)) {
+  const info = rawInfo as any;
+  const reason = String(info?.reason ?? "").trim();
+  if (!["代打", "代走", "臨時代走"].includes(reason)) continue;
 
-   const origId  = Number(originalIdStr);
-   const latest  = resolveLatestSubId(origId, usedInfo);
-   if (!latest) continue;
+  const origId = Number(originalIdStr);
+  const latest = resolveLatestSubId(origId, usedInfo as any);
+  if (!latest) continue;
 
-   // 🔒 自動反映は「まだ何も確定していない素の状態」のときだけ
-   const isOriginalStillHere = newAssignments[sym] === origId; // その守備が今も元選手のまま
-   const isOriginalElsewhere = Object.entries(newAssignments)
-     .some(([k, v]) => v === origId && k !== sym);             // 元選手が他守備へ移動済み？
-   const isPinchOnField = Object.values(newAssignments).includes(latest); // 代打がどこかに既に入ってる？
+  const rawSym =
+    (posNameToSymbol as any)[info?.fromPos ?? ""] ?? info?.fromPos ?? "";
 
-   if (isOriginalStillHere && !isOriginalElsewhere && !isPinchOnField) {
-     newAssignments[sym] = latest; // ← このときだけ自動で代打を同じ守備へ
-     console.log(`[AUTO] 代打/代走 ${latest} を ${sym} に自動配置`);
-   } else {
-     console.log(`[SKIP] 自動配置せず（元or代打が他で確定済み） sym=${sym}`);
-   }
- }
+  const p0 =
+    typeof originalAssignments?.["投"] === "number"
+      ? Number(originalAssignments["投"])
+      : null;
+  const d0 =
+    typeof originalAssignments?.["指"] === "number"
+      ? Number(originalAssignments["指"])
+      : null;
+
+  const startedAsOhtani = p0 != null && d0 != null && p0 === d0;
+
+  // ★ここが本体
+  const shouldTreatAsDhPinch =
+    startedAsOhtani &&
+    origId === p0;
+
+  const sym = shouldTreatAsDhPinch ? "指" : rawSym;
+  if (!sym) continue;
+
+  // ★ 大谷開始の本人への直接代打/代走は、投手ではなくDHだけ差し替える
+  if (shouldTreatAsDhPinch) {
+    newAssignments["投"] = p0;
+    newAssignments["指"] = latest;
+    continue;
+  }
+
+  const isOriginalStillHere = newAssignments[sym] === origId;
+  const isOriginalElsewhere = Object.entries(newAssignments)
+    .some(([k, v]) => v === origId && k !== sym);
+  const isPinchOnField = Object.values(newAssignments).includes(latest);
+
+  if (isOriginalStillHere && !isOriginalElsewhere && !isPinchOnField) {
+    newAssignments[sym] = latest;
+  }
+}
 
     // ステート更新
     setBattingOrder(order);          // ← 既存
@@ -4199,7 +4237,12 @@ if (startedAsOhtani0) {
     const latestDhId = resolveLatestSubId(dhStarterId, usedInfo as any);
 
     if (latestDhId && latestDhId !== dhStarterId) {
-      // フィールド図（assignments参照）のDHも代打IDにする
+      // ★追加：大谷開始時にDHへ代打/代走が出ても、投手は元のまま固定
+      if (typeof originalAssignments?.["投"] === "number") {
+        newAssignments["投"] = Number(originalAssignments["投"]);
+      }
+
+      // フィールド図（assignments参照）のDHも代打/代走IDにする
       newAssignments["指"] = latestDhId;
 
       let dhSlotIndex = startingOrderRef.current.findIndex((e) => e.id === dhStarterId);
@@ -4213,7 +4256,9 @@ if (startedAsOhtani0) {
         });
 
         const dhPlayer = updatedTeamPlayers.find((p) => p.id === latestDhId);
-        if (dhPlayer) setBattingReplacements((prev) => ({ ...prev, [dhSlotIndex]: dhPlayer }));
+        if (dhPlayer) {
+          setBattingReplacements((prev) => ({ ...prev, [dhSlotIndex]: dhPlayer }));
+        }
       }
     }
   }

@@ -4626,7 +4626,6 @@ const currentPos =
   Object.entries(lineup).find(([, id]) => Number(id) === Number(replaced.id))?.[0] ??
   "";
 
-// ★ リエントリーで戻す選手(sub)が、もともと持っていた守備位置も保険で使う
 const originalFromPosOfSub =
   (usedPlayerInfo?.[sub.id]?.fromPos as string | undefined) || "";
 
@@ -4636,17 +4635,38 @@ const fromPos =
   originalFromPosOfSub ||
   "";
 
-        newUsed[replaced.id] = {
-          fromPos,
-          subId: sub.id,
-          reason: "代走",
-          order: idx + 1,
-          wasStarter: !!wasStarterMap[replaced.id],
-        };
+// ★ 大谷ルール開始時（投＝指）で、その同一選手に代走を出した場合は
+//   「投」ではなく必ず「指」の代走として扱う
+const startedAsOhtani =
+  typeof lineup["投"] === "number" &&
+  typeof lineup["指"] === "number" &&
+  Number(lineup["投"]) === Number(lineup["指"]);
 
-        if (fromPos) {
-          lineup[fromPos] = sub.id;
-        }
+const fixedFromPos =
+  startedAsOhtani &&
+  Number(replaced.id) === Number(lineup["投"])
+    ? "指"
+    : fromPos;
+
+newUsed[replaced.id] = {
+  fromPos: fixedFromPos,
+  subId: sub.id,
+  reason: "代走",
+  order: idx + 1,
+  wasStarter: !!wasStarterMap[replaced.id],
+};
+
+if (fixedFromPos) {
+  lineup[fixedFromPos] = sub.id;
+}
+
+// ★ 大谷ルール時は投手は絶対にそのまま維持
+if (
+  startedAsOhtani &&
+  Number(replaced.id) === Number(lineup["投"])
+) {
+  lineup["投"] = replaced.id;
+}
 
         if (!teamPlayerList.some((p) => p.id === sub.id)) {
           teamPlayerList = [...teamPlayerList, sub];
