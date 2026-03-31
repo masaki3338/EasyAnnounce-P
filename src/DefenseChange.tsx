@@ -3249,7 +3249,7 @@ const positions = Object.keys(positionStyles);
 const BENCH = "控え";
 
 // --- 守備番号（審判の「1が9」の入力用） ---
-const POS_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
+const POS_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 const numberToPosSymbol: Record<number, string> = {
   1: "投",
   2: "捕",
@@ -3260,6 +3260,7 @@ const numberToPosSymbol: Record<number, string> = {
   7: "左",
   8: "中",
   9: "右",
+  10: "指",
 };
 
 // --- 手書きメモ（保存しない・書く/消すだけ） ---
@@ -6357,58 +6358,9 @@ const applyPosNumberChanges = () => {
     return;
   }
 
-  // ✅ swapの検証は swapRows だけにかける
-// ✅ 1〜9チェック用
-const isValidNum = (n: number) => Number.isInteger(n) && n >= 1 && n <= 9;
+// ✅ 1〜10チェック用（10 = 指名打者）
+const isValidNum = (n: number) => Number.isInteger(n) && n >= 1 && n <= 10;
 const hasDup = (arr: number[]) => new Set(arr).size !== arr.length;
-
-// ✅ swapだけの「from=to禁止」は維持（replaceは同じ守備でもOKなので除外）
-if (swapRows.some((r) => {
-  if (r.from !== r.to) return false;
-
-  // 同じ番号（例：1が1）の場合、
-  // その守備にいる選手が代打/代走なら許可する
-
-  const posSym = numberToPosSymbol[Number(r.from)];
-  const currentId = posSym ? (assignments as any)?.[posSym] : null;
-
-  if (!currentId) return true; // 通常エラー
-
-  // battingOrder から reason を確認
-  const direct = battingOrder?.find((e: any) => Number(e?.id) === Number(currentId))?.reason;
-
-  if (["代打", "代走", "臨時代走"].includes(String(direct))) {
-    return false; // OKにする
-  }
-
-  // usedPlayerInfo も確認
-  const info = Object.values(usedPlayerInfo || {}).find(
-    (x: any) => Number(x?.subId) === Number(currentId)
-  );
-
-  if (info && ["代打", "代走", "臨時代走"].includes(String(info.reason))) {
-    return false; // OK
-  }
-
-  return true; // 通常はエラー
-})) {
-  setPosNumberError("同じ番号同士（例：1が1）は指定できません。");
-  return;
-}
-
-// ✅ swap の数字チェック（toが空なら NaN になるので弾く）
-if (
-  swapRows.some((r) => !isValidNum(Number(r.from)) || !isValidNum(Number(r.to)))
-) {
-  setPosNumberError("守備番号は1〜9を選択してください。");
-  return;
-}
-
-// ✅ replace の from は必須、to は任意（未選択なら同じ守備に入る扱い）
-if (replaceRows.some((r) => !isValidNum(Number(r.from)))) {
-  setPosNumberError("守備番号は1〜9を選択してください。");
-  return;
-}
 
 // ✅ 全体の「出ていく集合」と「入る集合」を作る
 //  - swap: from -> to
@@ -6688,6 +6640,7 @@ const posNumberOptionsSimple = POS_NUMBERS.map((n) => {
     posSym === "左" ? "(レフト)" :
     posSym === "中" ? "(センター)" :
     posSym === "右" ? "(ライト)" :
+    posSym === "指" ? "(指名打者)" :
     String(posSym ?? "");
 
   return {
