@@ -346,7 +346,7 @@ return (
 
 
       {/* 中央大タイトル */}
-      <div className="mt-3 text-center select-none">
+      <div className="mt-2 text-center select-none">
         <h1
           className="
             inline-flex items-center gap-2
@@ -369,7 +369,7 @@ return (
     </header>
 
     {/* 本体：カード群 */}
-    <main className="w-full max-w-3xl mt-5 space-y-5">
+    <main className="w-full max-w-3xl mt-3 space-y-3">
 
 {/* 大会名（1行目） */}
 <div className="space-y-2">
@@ -387,7 +387,7 @@ return (
         setLastPickedName(v);
       }}
       onFocus={() => setShowTList(true)}
-      className="w-full p-3 pr-10 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
+      className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
       placeholder="大会名を入力（候補から選択可）"
       autoComplete="off"
       inputMode="text"
@@ -464,9 +464,10 @@ return (
 </div>
 
 {/* 本日の試合 + 次の試合（2行目） */}
-<div className="mt-4 flex flex-col sm:flex-row sm:items-end gap-3">
+{/* 本日の試合 + 次の試合（2行目） */}
+<div className="mt-2 grid grid-cols-[140px_1fr] gap-3 items-end">
   {/* 左：本日の 第n試合 */}
-  <div className="w-full sm:w-40">
+  <div className="w-full">
     <label className="block text-xs text-white/70 mb-1">本日の試合</label>
     <select
       value={matchNumber}
@@ -478,7 +479,7 @@ return (
         await localForage.setItem("matchNumberStash", num);
         console.log("[MC:change] matchNumber saved →", num);
       }}
-      className="w-full p-3 rounded-xl bg-white text-gray-900 border border-white/20"
+      className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 border border-white/20"
     >
       {[1, 2, 3, 4, 5].map((num) => (
         <option key={num} value={num}>
@@ -488,34 +489,31 @@ return (
     </select>
   </div>
 
-  {/* 右：次の試合 あり/なし（ラジオ） */}
-{/* 右：次の試合 あり/なし（ボーイズは非表示） */}
-{!isBoys && (
-  <fieldset className="flex items-center gap-4 p-3 rounded-xl bg-white/10 border border-white/10">
-    <legend className="text-xs text-white/70">次の試合</legend>
-    <label className="inline-flex items-center gap-2 text-sm">
-      <input
-        type="radio"
-        name="nextGame"
-        className="w-4 h-4 accent-rose-600"
-        checked={!noNextGame}
-        onChange={() => setNoNextGame(false)}
-      />
-      あり
-    </label>
-    <label className="inline-flex items-center gap-2 text-sm">
-      <input
-        type="radio"
-        name="nextGame"
-        className="w-4 h-4 accent-rose-600"
-        checked={noNextGame}
-        onChange={() => setNoNextGame(true)}
-      />
-      なし
-    </label>
-  </fieldset>
-)}
-
+  {!isBoys && (
+    <fieldset className="min-w-0 flex items-center gap-4 px-3 py-2 rounded-xl bg-white/10 border border-white/10">
+      <legend className="text-xs text-white/70 px-1">次の試合</legend>
+      <label className="inline-flex items-center gap-2 text-sm whitespace-nowrap">
+        <input
+          type="radio"
+          name="nextGame"
+          className="w-4 h-4 accent-rose-600"
+          checked={!noNextGame}
+          onChange={() => setNoNextGame(false)}
+        />
+        あり
+      </label>
+      <label className="inline-flex items-center gap-2 text-sm whitespace-nowrap">
+        <input
+          type="radio"
+          name="nextGame"
+          className="w-4 h-4 accent-rose-600"
+          checked={noNextGame}
+          onChange={() => setNoNextGame(true)}
+        />
+        なし
+      </label>
+    </fieldset>
+  )}
 </div>
 
 
@@ -524,8 +522,8 @@ return (
 
 
       {/* 相手チーム名＋ふりがな */}
-<section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
-  <div className="flex items-center gap-3 mb-3">
+<section className="rounded-2xl bg-white/10 border border-white/10 p-3 shadow-lg">
+  <div className="flex items-center gap-3 mb-2">
     <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
       <IconVs />
     </div>
@@ -538,7 +536,7 @@ return (
     type="text"
     value={opponentTeam}
     onChange={(e) => setOpponentTeam(e.target.value)}
-    className="w-full p-3 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
+    className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
     placeholder="相手チーム名を入力"
   />
 
@@ -548,15 +546,15 @@ return (
     type="text"
     value={opponentTeamFurigana}
     onChange={(e) => setOpponentTeamFurigana(e.target.value)}
-    className="w-full p-3 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
+    className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
     placeholder="相手チーム名のふりがな"
   />
 </section>
 
 
       {/* 自チーム情報（先攻/後攻・ベンチ側） */}
-      <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
-        <div className="flex items-center gap-3 mb-3">
+      <section className="rounded-2xl bg-white/10 border border-white/10 p-3 shadow-lg">
+        <div className="flex items-center gap-3 mb-2">
           <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
             <IconHomeAway />
           </div>
@@ -567,7 +565,7 @@ return (
           <select
             value={isHome}
             onChange={(e) => setIsHome(e.target.value)}
-            className="w-full p-3 rounded-xl bg-white text-gray-900 border border-white/20"
+            className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 border border-white/20"
           >
             <option>先攻</option>
             <option>後攻</option>
@@ -578,7 +576,7 @@ return (
             <select
               value={benchSide}
               onChange={(e) => setBenchSide(e.target.value)}
-              className="w-full p-3 rounded-xl bg-white text-gray-900 border border-white/20"
+              className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 border border-white/20"
             >
               <option>1塁側</option>
               <option>3塁側</option>
@@ -588,7 +586,7 @@ return (
 
         {/* メンバー交換ボタン（条件一致時のみ） */}
         {matchNumber === 1 && benchSide === "1塁側" && (
-          <div className="mt-4">
+          <div className="mt-2">
             <button
               onClick={() => setShowExchangeModal(true)}
               className="px-4 py-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded-xl text-base active:scale-95"
@@ -600,77 +598,78 @@ return (
       </section>
 
 {/* 審判 */}
- <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
-<div className="mb-3">
-  {/* 審判ラベル行 */}
-  <div className="flex items-center gap-3 mb-2">
-    <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
-      <IconUmpire />
+<section className="rounded-2xl bg-white/10 border border-white/10 p-3 shadow-lg">
+<div className="mb-2">
+  <div className="flex items-center gap-4 mb-2">
+    <div className="flex items-center gap-3 shrink-0">
+      <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
+        <IconUmpire />
+      </div>
+      <div className="font-semibold">審判</div>
     </div>
-    <div className="font-semibold">審判</div>
-  </div>
 
-{/* 2審制/4審制 ラジオ（ボーイズは非表示＝4審固定） */}
-{!isBoys && (
-  <div
-    className="ml-14 flex flex-col gap-2 text-sm select-none"
-    role="radiogroup"
-    aria-label="審判人数"
-  >
-    <div className="flex gap-4">
-      <label className="inline-flex items-center gap-1">
-        <input
-          type="radio"
-          name="umpireMode"
-          className="w-4 h-4 accent-emerald-600"
-          checked={isTwoUmp === true}
-          onChange={() => setIsTwoUmp(true)}
-        />
-        2審
-      </label>
-      <label className="inline-flex items-center gap-1">
-        <input
-          type="radio"
-          name="umpireMode"
-          className="w-4 h-4 accent-emerald-600"
-          checked={isTwoUmp === false}
-          onChange={() => setIsTwoUmp(false)}
-        />
-        4審
-      </label>
-      <span className="text-xs text-white/70">後攻チームのみ使用</span>
-    </div>
+    {!isBoys && (
+      <div
+        className="flex items-center gap-3 text-sm select-none flex-wrap"
+        role="radiogroup"
+        aria-label="審判人数"
+      >
+        <label className="inline-flex items-center gap-1 whitespace-nowrap">
+          <input
+            type="radio"
+            name="umpireMode"
+            className="w-4 h-4 accent-emerald-600"
+            checked={isTwoUmp === true}
+            onChange={() => setIsTwoUmp(true)}
+          />
+          2審
+        </label>
+
+        <label className="inline-flex items-center gap-1 whitespace-nowrap">
+          <input
+            type="radio"
+            name="umpireMode"
+            className="w-4 h-4 accent-emerald-600"
+            checked={isTwoUmp === false}
+            onChange={() => setIsTwoUmp(false)}
+          />
+          4審
+        </label>
+
+        <span className="text-xs text-white/70 whitespace-nowrap">
+          後攻チームのみ使用
+        </span>
+      </div>
+    )}
   </div>
-)}
 </div>
 
 
-  <div className="space-y-3">
+  <div className="space-y-2">
     {umpires.slice(0, isTwoUmp ? 2 : 4).map((umpire, index) => (
-      // ✅ レイアウトを刷新：役割は左（md以上）／上（モバイル）
-      <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
-        {/* 役割ラベル */}
-        <span className="font-medium text-sm md:text-base md:col-span-3">
+      <div
+        key={index}
+        className="grid grid-cols-[64px_1fr_1fr] gap-2 items-center"
+      >
+        <span className="font-medium text-sm">
           {umpire.role}
         </span>
 
-        {/* 氏名＋ふりがな：常に横並びで1/2ずつ */}
-        <div className="md:col-span-9 grid grid-cols-2 gap-2">
-          <input
-            type="text"
-            placeholder="氏名"
-            value={umpire.name}
-            onChange={(e) => handleUmpireChange(index, "name", e.target.value)}
-            className="w-full p-3 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
-          />
-          <input
-            type="text"
-            placeholder="ふりがな"
-            value={umpire.furigana}
-            onChange={(e) => handleUmpireChange(index, "furigana", e.target.value)}
-            className="w-full p-3 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
-          />
-        </div>
+        <input
+          type="text"
+          placeholder="氏名"
+          value={umpire.name}
+          onChange={(e) => handleUmpireChange(index, "name", e.target.value)}
+          className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
+        />
+
+        <input
+          type="text"
+          placeholder="ふりがな"
+          value={umpire.furigana}
+          onChange={(e) => handleUmpireChange(index, "furigana", e.target.value)}
+          className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
+        />
       </div>
     ))}
   </div>
@@ -790,7 +789,7 @@ return (
             </p>
 
             {/* 赤枠内の操作ボタン */}
-            <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="mt-2 grid grid-cols-2 gap-2">
               <button
                 onClick={speakExchangeMessage}
                 disabled={speakingExchange}
@@ -809,7 +808,7 @@ return (
           </div>
 
           {/* フッター（OKのみ） */}
-          <div className="mt-4">
+          <div className="mt-2">
             <button
               type="button"
               onClick={() => { stopExchangeMessage(); setShowExchangeModal(false); }}
