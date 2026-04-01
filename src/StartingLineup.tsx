@@ -1705,7 +1705,7 @@ useEffect(() => {
             <span className="inline-flex w-9 h-9 rounded-xl bg-white/15 border border-white/20 items-center justify-center">
               <IconOrder />
             </span>
-            打順（1～9番）
+            打順
             <span className="ml-2 text-[11px] px-2 py-0.5 rounded-full bg-white/10 border border-white/10">
               選手,守備位置を長押しして変更
             </span>
