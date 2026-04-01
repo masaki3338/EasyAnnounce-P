@@ -189,6 +189,7 @@ const StartingLineup = () => {
   const [draggingPlayerId, setDraggingPlayerId] = useState<number | null>(null);
   const [hoverPosKey, setHoverPosKey] = useState<string | null>(null); // フィールド各ポジション用
   const [hoverOrderPlayerId, setHoverOrderPlayerId] = useState<number | null>(null); // 打順行の選手用
+  const benchDropRef = React.useRef<HTMLDivElement | null>(null);
 
   // いま何のドラッグか：守備ラベル入替(swapPos) / 打順入替(order)
   const [dragKind, setDragKind] = useState<"swapPos" | "order" | null>(null);
@@ -439,9 +440,22 @@ const handleDragStart = (
     }
 
     // 最終的にtoへ配置
-    next[toPos] = playerId;
+// 最終的にtoへ配置
+next[toPos] = playerId;
 
-    setAssignments(next);
+// ✅ DHに入れた選手が投手と別人なら、大谷ルールは解除
+if (toPos === DH) {
+  const pitcherId = next["投"] ?? null;
+  const dhId = next[DH] ?? null;
+
+  if (pitcherId && dhId && pitcherId !== dhId) {
+    setOhtaniRule(false);
+    prevDhIdRef.current = dhId;
+    void localForage.setItem("ohtaniRule", false);
+  }
+}
+
+setAssignments(next);
 
     // 打順更新：DHあり/なしの整合（元仕様）
     setBattingOrder((prev) => {
@@ -611,10 +625,12 @@ setAssignments(next);
     if (!playerId) return;
 
     // fromPosition が取れない端末のフォールバック（元仕様）
-    const fromPosRaw = e.dataTransfer.getData("fromPosition") || "";
-    const fromPos =
-      fromPosRaw ||
-      (Object.entries(assignments).find(([, id]) => id === playerId)?.[0] ?? "");
+const fromPosRaw = e.dataTransfer.getData("fromPosition") || "";
+const fromPos = fromPosRaw
+  ? fromPosRaw
+  : assignments[DH] === playerId
+    ? DH
+    : (Object.entries(assignments).find(([, id]) => id === playerId)?.[0] ?? "");
 
     // ① ベンチ外 → 控え
     setBenchOutIds((prev) => prev.filter((id) => id !== playerId));
@@ -1526,13 +1542,32 @@ useEffect(() => {
                   setHoverPosKey(null);
                 }}
                 onTouchStart={() => player && setTouchDrag({ playerId: player.id, fromPos: pos })}
-                onTouchEnd={() => {
+                onTouchEnd={(ev) => {
                   if (!touchDrag) return;
+
+                  const t = ev.changedTouches?.[0];
+                  const x = t?.clientX ?? lastTouchRef.current?.x ?? 0;
+                  const y = t?.clientY ?? lastTouchRef.current?.y ?? 0;
+
+                  const el = document.elementFromPoint(x, y) as HTMLElement | null;
+                  const droppedOnBench =
+                    !!benchDropRef.current &&
+                    !!el &&
+                    benchDropRef.current.contains(el);
+
                   const fake = makeFakeDragEvent({
                     playerId: String(touchDrag.playerId),
                     "text/plain": String(touchDrag.playerId),
                     fromPosition: touchDrag.fromPos ?? "",
                   });
+
+                  // スマホで DH → ベンチ入り選手 の時だけ、守備位置処理ではなくベンチ処理に送る
+                  if (touchDrag.fromPos === DH && droppedOnBench) {
+                    handleDropToBench(fake);
+                    setTouchDrag(null);
+                    return;
+                  }
+
                   handleDropToPosition(fake, pos);
                   setTouchDrag(null);
                 }}
@@ -1587,36 +1622,37 @@ useEffect(() => {
             </span>
             ベンチ入り選手
           </h2>
-          <div
-            className="flex flex-wrap gap-2 min-h-[60px] p-2 bg-white/10 border border-white/10 rounded-xl ring-1 ring-inset ring-white/10"
-            onDragOver={allowDrop}
-            onDrop={handleDropToBench}
-            onTouchEnd={() => {
-              if (!touchDrag) return;
-              const fake = makeFakeDragEvent({
-                playerId: String(touchDrag.playerId),
-                "text/plain": String(touchDrag.playerId),
-                fromPosition: touchDrag.fromPos ?? "",
-              });
-              handleDropToBench(fake);
-              setTouchDrag(null);
-            }}
-          >
-          {availablePlayers.map((p) => (
-            <div
-              key={p.id}
-              draggable
-              onDragStart={(e) => handleDragStart(e, p.id)}
-              onTouchStart={() => setTouchDrag({ playerId: p.id })}
-              style={{ touchAction: "none" }}
-              className={`px-2.5 py-1.5 bg-white/85 text-gray-900 border border-rose-200 rounded-lg cursor-move select-none shadow-sm
-                            ${draggingPlayerId === p.id ? "ring-4 ring-amber-400 bg-amber-100" : ""}`}
-            >
-              {p.lastName}
-              {p.firstName} #{p.number}
-            </div>
-          ))}
-          </div>
+<div
+  ref={benchDropRef}
+  className="flex flex-wrap gap-2 min-h-[60px] p-2 bg-white/10 border border-white/10 rounded-xl ring-1 ring-inset ring-white/10"
+  onDragOver={allowDrop}
+  onDrop={handleDropToBench}
+  onTouchEnd={() => {
+    if (!touchDrag) return;
+    const fake = makeFakeDragEvent({
+      playerId: String(touchDrag.playerId),
+      "text/plain": String(touchDrag.playerId),
+      fromPosition: touchDrag.fromPos ?? "",
+    });
+    handleDropToBench(fake);
+    setTouchDrag(null);
+  }}
+>
+  {availablePlayers.map((p) => (
+    <div
+      key={p.id}
+      draggable
+      onDragStart={(e) => handleDragStart(e, p.id)}
+      onTouchStart={() => setTouchDrag({ playerId: p.id })}
+      style={{ touchAction: "none" }}
+      className={`px-2.5 py-1.5 bg-white/85 text-gray-900 border border-rose-200 rounded-lg cursor-move select-none shadow-sm
+        ${draggingPlayerId === p.id ? "ring-4 ring-amber-400 bg-amber-100" : ""}`}
+    >
+      {p.lastName}
+      {p.firstName} #{p.number}
+    </div>
+  ))}
+</div>
         </div>
 
         {/* ベンチ外選手 */}
