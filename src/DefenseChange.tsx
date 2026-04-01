@@ -3248,20 +3248,7 @@ const positionStyles: Record<string, React.CSSProperties> = {
 const positions = Object.keys(positionStyles);
 const BENCH = "控え";
 
-// --- 守備番号（審判の「1が9」の入力用） ---
-const POS_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
-const numberToPosSymbol: Record<number, string> = {
-  1: "投",
-  2: "捕",
-  3: "一",
-  4: "二",
-  5: "三",
-  6: "遊",
-  7: "左",
-  8: "中",
-  9: "右",
-  10: "指",
-};
+
 
 // --- 手書きメモ（保存しない・書く/消すだけ） ---
 type MiniScribblePadProps = {
@@ -3618,7 +3605,6 @@ useEffect(() => {
 
 const [touchedFieldPos, setTouchedFieldPos] = useState<Set<string>>(new Set());
   const [assignments, setAssignments] = useState<Record<string, number | null>>({});
-  const hasDH = Boolean(assignments?.["指"]);
   const [teamPlayers, setTeamPlayers] = useState<Player[]>([]);
   const [battingOrder, setBattingOrder] = useState<{ id: number; reason: string }[]>([]); // ✅ 攻撃画面の打順
   const [shouldGoSeatIntroductionAfterConfirm, setShouldGoSeatIntroductionAfterConfirm] =
@@ -3653,6 +3639,35 @@ const markReentryBlue = (pid: number) => {
   });
 };
 
+// ★ YESで「通常交代として続行」した選手
+const [forcedNormalSubIds, setForcedNormalSubIds] = useState<Set<number>>(new Set());
+
+const markForcedNormalSub = (pid: number) => {
+  const n = Number(pid);
+
+  // 青枠対象から外す
+  setReentryPreviewIds((prev) => {
+    const next = new Set(prev);
+    next.delete(n);
+    return next;
+  });
+
+  setReentryFixedIds((prev) => {
+    const next = new Set(prev);
+    next.delete(n);
+    return next;
+  });
+
+  // 通常交代扱いとして保持
+  setForcedNormalSubIds((prev) => {
+    const next = new Set(prev);
+    next.add(n);
+    return next;
+  });
+};
+
+const isForcedNormalSubId = (id: number) => forcedNormalSubIds.has(Number(id));
+
 // ★ スタメン時の打順（不変）を保持して即参照できるように
 const startingOrderRef = useRef<{ id: number; reason?: string }[]>([]);
 
@@ -3672,8 +3687,31 @@ const startingOrderRef = useRef<{ id: number; reason?: string }[]>([]);
 // ←★ このあたりが目印
 
   // DH解除を確定時にまとめて適用するための保留フラグ
-  const [pendingDisableDH, setPendingDisableDH] = useState(false);
-  const [dhDisableDirty, setDhDisableDirty] = useState(false);
+const [pendingDisableDH, setPendingDisableDH] = useState(false);
+const [dhDisableDirty, setDhDisableDirty] = useState(false);
+
+// ✅ 実際に今DHがいるか、または開始時DHありで未解除ならDHあり扱い
+const hasDH =
+  (typeof assignments?.["指"] === "number" && Number(assignments["指"]) > 0) ||
+  (dhEnabledAtStart && !pendingDisableDH);
+
+// --- 守備番号（審判の「1が9」の入力用） ---
+const POS_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+const posNumbersForModal = hasDH
+  ? POS_NUMBERS
+  : POS_NUMBERS.filter((n) => n !== 10);
+const numberToPosSymbol: Record<number, string> = {
+  1: "投",
+  2: "捕",
+  3: "一",
+  4: "二",
+  5: "三",
+  6: "遊",
+  7: "左",
+  8: "中",
+  9: "右",
+  10: "指",
+};
   const [dhDisableSnapshot, setDhDisableSnapshot] =
   useState<{ dhId: number; pitcherId: number } | null>(null);
   const [battingReplacements, setBattingReplacements] = useState<{ [index: number]: Player }>({});
@@ -5286,104 +5324,21 @@ const keepExistingReentryBlue =
   toPos !== BENCH && reentryFixedIds.size > 0;
 
 // ★ ベンチ→守備のときだけ、新規リエントリー成立判定を行う
+// ==== v2 リエントリー判定 ====
 if (!fromIsField && toPos !== BENCH) {
+  const ok = checkReentryForBenchToField({
+    toPos,
+    toId: Number(toId),
+    fromId: Number(fromId),
+  });
+  if (!ok) return;
+} else {
+  const keepExistingReentryBlue =
+    toPos !== BENCH && reentryFixedIds.size > 0;
+
   if (!keepExistingReentryBlue) {
     resetBlue?.();
   }
-
-  if (forceNormalSubOnce) {
-    setForceNormalSubOnce(false);
-  } else {
-    // toId = ベンチから来た選手
-    const origIdForTo = resolveOriginalStarterId(toId, usedPlayerInfo, initialAssignments);
-    const wasStarter = origIdForTo !== null;
-
-    // ✅ 出場済み判定（元スタメンはorigId、途中出場はtoId自身）
-    const isUsedAlready =
-      (wasStarter && !!(usedPlayerInfo as any)?.[Number(origIdForTo)]) ||
-      (!!(usedPlayerInfo as any)?.[Number(toId)]);
-
-    // ✅ 未出場（控え）ならリエントリー判定せず通常交代
-    if (!isUsedAlready) {
-      if (!keepExistingReentryBlue) {
-        resetBlue?.();
-      }
-    } else {
-      const isOffField = !Object.values(assignments || {}).includes(Number(toId));
-
-      // ★ 元の打順：スタメン時点の打順を使う
-      const originalOrderSource =
-        startingOrderRef.current?.length === 9
-          ? startingOrderRef.current
-          : battingOrder;
-
-      // ★ 現在の打順：確定前の見た目に合わせて draft を優先
-      const currentOrderSource =
-        battingOrderDraft?.length === 9
-          ? battingOrderDraft
-          : battingOrder;
-
-      // ★ 戻そうとしている元スタメンの「当初の打順」
-      const originalOrderIndex =
-        wasStarter && origIdForTo != null
-          ? originalOrderSource.findIndex(
-              (e) => Number(e.id) === Number(origIdForTo)
-            )
-          : -1;
-
-      // ★ 今、交代される選手(fromId)が入っている「現在の打順」
-      const currentOrderIndexOfFrom =
-        typeof fromId === "number"
-          ? currentOrderSource.findIndex(
-              (e) => Number(e.id) === Number(fromId)
-            )
-          : -1;
-
-      const isReentryNow =
-        wasStarter &&
-        isOffField &&
-        originalOrderIndex >= 0 &&
-        currentOrderIndexOfFrom >= 0 &&
-        originalOrderIndex === currentOrderIndexOfFrom;
-
-      console.log("[REENTRY CHECK same-order]", {
-        toId,
-        fromId,
-        origIdForTo,
-        wasStarter,
-        isOffField,
-        originalOrderIndex,
-        currentOrderIndexOfFrom,
-        originalOrderSource,
-        currentOrderSource,
-        isReentryNow,
-      });
-
-      if (isReentryNow) {
-        // ✅ リエントリー対象（成立）→ この画面中は保持
-        markReentryBlue(Number(toId));
-      } else {
-        // ✅ リエントリー対象外（不成立）→ 非リエントリー確認
-        if (!keepExistingReentryBlue) {
-          resetBlue?.();
-        }
-
-        setPendingNonReentryDrop({
-          toPos,
-          playerId: Number(toId),
-          replacedId: Number(fromId),
-        });
-        setShowNonReentryConfirm(true);
-        setHoverPos(null);
-        setDraggingFrom(null);
-        return;
-      }
-    }
-  }
-} else if (!keepExistingReentryBlue) {
-  // ★ 守備位置どうしの交代、通常の守備変更、空き枠移動などでも
-  //   既に成立しているリエントリーがあるなら消さない
-  resetBlue?.();
 }
 
 
@@ -6380,6 +6335,116 @@ const handleBackToDefense = () => {
   onConfirmed();
 };
 
+const checkReentryForBenchToField = ({
+  toPos,
+  toId,
+  fromId,
+}: {
+  toPos: string;
+  toId: number;
+  fromId: number;
+}): boolean => {
+  // ★ すでに成立したリエントリーは、この画面内では保持する
+  const keepExistingReentryBlue =
+    toPos !== BENCH && reentryFixedIds.size > 0;
+
+  if (!keepExistingReentryBlue) {
+    resetBlue?.();
+  }
+
+  if (forceNormalSubOnce) {
+    setForceNormalSubOnce(false);
+    return true;
+  }
+
+  // toId = ベンチから来た選手
+  const origIdForTo = resolveOriginalStarterId(toId, usedPlayerInfo, initialAssignments);
+  const wasStarter = origIdForTo !== null;
+
+  // ✅ 出場済み判定（元スタメンはorigId、途中出場はtoId自身）
+  const isUsedAlready =
+    (wasStarter && !!(usedPlayerInfo as any)?.[Number(origIdForTo)]) ||
+    (!!(usedPlayerInfo as any)?.[Number(toId)]);
+
+  // ✅ 未出場（控え）ならリエントリー判定せず通常交代
+  if (!isUsedAlready) {
+    if (!keepExistingReentryBlue) {
+      resetBlue?.();
+    }
+    return true;
+  }
+
+  const isOffField = !Object.values(assignments || {}).includes(Number(toId));
+
+  // ★ 元の打順：スタメン時点の打順を使う
+  const originalOrderSource =
+    startingOrderRef.current?.length === 9
+      ? startingOrderRef.current
+      : battingOrder;
+
+  // ★ 現在の打順：確定前の見た目に合わせて draft を優先
+  const currentOrderSource =
+    battingOrderDraft?.length === 9
+      ? battingOrderDraft
+      : battingOrder;
+
+  // ★ 戻そうとしている元スタメンの「当初の打順」
+  const originalOrderIndex =
+    wasStarter && origIdForTo != null
+      ? originalOrderSource.findIndex(
+          (e) => Number(e.id) === Number(origIdForTo)
+        )
+      : -1;
+
+  // ★ 今、交代される選手(fromId)が入っている「現在の打順」
+  const currentOrderIndexOfFrom =
+    typeof fromId === "number"
+      ? currentOrderSource.findIndex(
+          (e) => Number(e.id) === Number(fromId)
+        )
+      : -1;
+
+  const isReentryNow =
+    wasStarter &&
+    isOffField &&
+    originalOrderIndex >= 0 &&
+    currentOrderIndexOfFrom >= 0 &&
+    originalOrderIndex === currentOrderIndexOfFrom;
+
+  console.log("[REENTRY CHECK same-order][modal/common]", {
+    toId,
+    fromId,
+    toPos,
+    origIdForTo,
+    wasStarter,
+    isUsedAlready,
+    isOffField,
+    originalOrderIndex,
+    currentOrderIndexOfFrom,
+    originalOrderSource,
+    currentOrderSource,
+    isReentryNow,
+  });
+
+  if (isReentryNow) {
+    markReentryBlue(Number(toId));
+    return true;
+  }
+
+  if (!keepExistingReentryBlue) {
+    resetBlue?.();
+  }
+
+  setPendingNonReentryDrop({
+    toPos,
+    playerId: Number(toId),
+    replacedId: Number(fromId),
+  });
+  setShowNonReentryConfirm(true);
+  setHoverPos(null);
+  setDraggingFrom(null);
+  return false;
+};
 
 // --- 守備番号で交代（●が● / ●に代わって）を反映する ---
 const applyPosNumberChanges = () => {
@@ -6431,6 +6496,34 @@ replaceRows.forEach((r) => {
 if (hasDup(allFromNums) || hasDup(allToNums)) {
   setPosNumberError("左側（守備番号）/右側（入る守備）それぞれで同じ番号は重複できません。");
   return;
+}
+
+// ✅ 守備番号モーダルでも、出場済み選手の「控え→守備」は
+//    フィールド図ドロップと同じリエントリー判定を通す
+for (const r of replaceRows) {
+  const fromNum = Number(r.from);
+  const toNum = r.to && String(r.to).trim() ? Number(r.to) : fromNum;
+
+  const toPos = numberToPosSymbol[toNum];
+  const incomingId = Number(r.benchPlayerId);
+  const replacedId = assignments?.[toPos];
+
+  if (
+    typeof incomingId === "number" &&
+    !Number.isNaN(incomingId) &&
+    typeof replacedId === "number"
+  ) {
+    const ok = checkReentryForBenchToField({
+      toPos,
+      toId: incomingId,
+      fromId: Number(replacedId),
+    });
+
+    if (!ok) {
+      // 非リエントリー確認モーダルを出したので、ここで中断
+      return;
+    }
+  }
 }
 
 // ✅ swap+replace 全体で「出る番号集合」と「入る番号集合」が一致しているならOK
@@ -6672,7 +6765,7 @@ setTouchedFieldPos((prev) => {
 };
 
 // 右側（swap用）守備番号リスト：番号＋守備位置名（※選手名なし）
-const posNumberOptionsSimple = POS_NUMBERS.map((n) => {
+const posNumberOptionsSimple = posNumbersForModal.map((n) => {
   const posSym = numberToPosSymbol[Number(n)];
 
   const posName =
@@ -6753,7 +6846,7 @@ const getDisplayedIdForPositionNumberModal = (posSym: string): number | null => 
   return assignedId;
 };
 
-const posNumberOptions = POS_NUMBERS.map((n) => {
+const posNumberOptions = posNumbersForModal.map((n) => {
   const posSym = numberToPosSymbol[Number(n)];
 
   const posName =
@@ -7031,7 +7124,7 @@ const currentId =
   // ★ 追加：リエントリー青枠フラグ（handleDropでセットしたIDを参照）
 // 絶対条件のみで青枠にする
 const isReentryBlue = player ? alwaysReentryIds.has(player.id) : false;
-
+const isForcedNormal = player ? isForcedNormalSubId(player.id) : false;
 const canDropHere =
   pos !== "指" || dhEnabledAtStart || dhDisableDirty || !!player;
 
@@ -7071,13 +7164,16 @@ const canDropHere =
           className={`text-base md:text-lg font-bold rounded px-2 py-1 leading-tight text-white ${
             draggingFrom === pos ? "bg-black/80" : "bg-black/80"
           } whitespace-nowrap
-${(isReentryBlue) 
-  ? "ring-2 ring-inset ring-blue-400"
-  : (isSub || isChanged)
-    ? "ring-2 ring-inset ring-yellow-400"
-    : (hoverPos === pos)
-      ? "ring-2 ring-inset ring-emerald-400"
-      : ""}
+
+${isForcedNormal
+  ? "ring-2 ring-inset ring-yellow-400"
+  : (isReentryBlue)
+    ? "ring-2 ring-inset ring-blue-400"
+    : (isSub || isChanged)
+      ? "ring-2 ring-inset ring-yellow-400"
+      : (hoverPos === pos)
+        ? "ring-2 ring-inset ring-emerald-400"
+        : ""}
 `
           }
           style={{ minWidth: "78px", maxWidth: "38vw", touchAction: "none" }}
@@ -8089,29 +8185,29 @@ const positionChanged = currentPos !== initialPos;
             NO
           </button>
 
-          <button
-            className="w-full py-3 rounded-full bg-green-600 text-white font-semibold hover:bg-green-700 active:bg-green-800"
-            onClick={() => {
-              const p = pendingNonReentryDrop;
-              setShowNonReentryConfirm(false);
-              setPendingNonReentryDrop(null);
-              if (!p) return;
+<button
+  className="w-full py-3 rounded-full bg-green-600 text-white font-semibold hover:bg-green-700 active:bg-green-800"
+  onClick={() => {
+    const p = pendingNonReentryDrop;
+    setShowNonReentryConfirm(false);
+    setPendingNonReentryDrop(null);
+    if (!p) return;
 
-              // ✅ 次の1回だけリエントリー判定を無視して続行
-              setForceNormalSubOnce(true);
+    // ✅ 次の1回だけリエントリー判定を無視
+    setForceNormalSubOnce(true);
 
-              // ✅ ここは「交代処理を実行する関数」を呼ぶ必要がある
-              // 現状はまだ無いので、次の手順4で applyDrop を作る
-              applyBenchDropToField({
-                toPos: p.toPos,
-                playerId: p.playerId,
-                replacedId: p.replacedId,
-              });
+    // ✅ この選手は「リエントリーではなく通常交代」
+    markForcedNormalSub(p.playerId);
 
-            }}
-          >
-            YES
-          </button>
+    applyBenchDropToField({
+      toPos: p.toPos,
+      playerId: p.playerId,
+      replacedId: p.replacedId,
+    });
+  }}
+>
+  YES
+</button>
         </div>
       </div>
     </div>
