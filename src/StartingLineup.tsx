@@ -1613,83 +1613,91 @@ useEffect(() => {
       {/* 控え＋打順（縦並び） */}
       <div className="flex flex-col gap-6">
         {/* 控え選手 */}
-        <div>
-          <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
-            <span className="inline-flex w-9 h-9 rounded-xl bg-white/15 border border-white/20 items-center justify-center">
-              <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
-                <path d="M4 15h16v2H4zm2-4h12v2H6zm2-4h8v2H8z" />
-              </svg>
-            </span>
-            ベンチ入り選手
-          </h2>
-<div
-  ref={benchDropRef}
-  className="flex flex-wrap gap-2 min-h-[60px] p-2 bg-white/10 border border-white/10 rounded-xl ring-1 ring-inset ring-white/10"
-  onDragOver={allowDrop}
-  onDrop={handleDropToBench}
-  onTouchEnd={() => {
-    if (!touchDrag) return;
-    const fake = makeFakeDragEvent({
-      playerId: String(touchDrag.playerId),
-      "text/plain": String(touchDrag.playerId),
-      fromPosition: touchDrag.fromPos ?? "",
-    });
-    handleDropToBench(fake);
-    setTouchDrag(null);
-  }}
->
-  {availablePlayers.map((p) => (
-    <div
-      key={p.id}
-      draggable
-      onDragStart={(e) => handleDragStart(e, p.id)}
-      onTouchStart={() => setTouchDrag({ playerId: p.id })}
-      style={{ touchAction: "none" }}
-      className={`px-2.5 py-1.5 bg-white/85 text-gray-900 border border-rose-200 rounded-lg cursor-move select-none shadow-sm
-        ${draggingPlayerId === p.id ? "ring-4 ring-amber-400 bg-amber-100" : ""}`}
-    >
-      {p.lastName}
-      {p.firstName} #{p.number}
-    </div>
-  ))}
-</div>
+<div>
+  <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
+    <span className="inline-flex w-9 h-9 rounded-xl bg-white/15 border border-white/20 items-center justify-center">
+      <IconBench />
+    </span>
+    ベンチ入り選手
+  </h2>
+
+  <div
+    ref={benchDropRef}
+    className="flex flex-wrap items-start content-start gap-1.5 p-1.5 bg-white/10 border border-white/10 rounded-xl ring-1 ring-inset ring-white/10"
+    onDragOver={allowDrop}
+    onDrop={handleDropToBench}
+    onTouchEnd={() => {
+      if (!touchDrag) return;
+      const fake = makeFakeDragEvent({
+        playerId: String(touchDrag.playerId),
+        "text/plain": String(touchDrag.playerId),
+        fromPosition: touchDrag.fromPos ?? "",
+      });
+      handleDropToBench(fake);
+      setTouchDrag(null);
+    }}
+  >
+    {availablePlayers.length === 0 ? (
+      <div className="min-h-[34px] px-2 py-1 text-[14px] font-bold text-gray-400 flex items-center">
+        ベンチ入り選手はいません
+      </div>
+    ) : (
+      availablePlayers.map((p) => (
+        <div
+          key={p.id}
+          draggable
+          onDragStart={(e) => handleDragStart(e, p.id)}
+          onTouchStart={() => setTouchDrag({ playerId: p.id })}
+          style={{ touchAction: "none" }}
+          className={`px-2 py-1 text-[14px] font-bold leading-tight bg-white/85 text-gray-900 border border-rose-200 rounded-lg cursor-move select-none shadow-sm
+            ${draggingPlayerId === p.id ? "ring-4 ring-amber-400 bg-amber-100" : ""}`}
+        >
+          {p.lastName}
+          {p.firstName} #{p.number}
         </div>
+      ))
+    )}
+  </div>
+</div>
 
         {/* ベンチ外選手 */}
-        <div>
-          <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
-            <span className="inline-flex w-9 h-9 rounded-xl bg-rose-400/25 border border-rose-300/50 items-center justify-center">
-              <IconOut />
-            </span>
-            出場しない選手
-          </h2>
-          <div
-            className="flex flex-wrap gap-2 min-h-[60px] p-2
-              rounded-2xl border ring-1 ring-inset
-              border-rose-600/90 ring-rose-600/60
-              bg-gradient-to-br from-rose-600/45 via-rose-500/35 to-rose-400/25"
-            onDragOver={allowDrop}
-            onDrop={handleDropToBenchOut}
-          >
-            {benchOutPlayers.length === 0 ? (
-              <div className="text-gray-400">出場しない選手はいません</div>
-            ) : (
-              benchOutPlayers.map((p) => (
-                <div
-                  key={p.id}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, p.id)}
-                  onTouchStart={() => setTouchDrag({ playerId: p.id })}
-                  style={{ touchAction: "none" }}
-                  className="px-2.5 py-1.5 bg-white/85 text-gray-900 border border-rose-200 rounded-lg cursor-move select-none shadow-sm"
-                >
-                  {p.lastName}
-                  {p.firstName} #{p.number}
-                </div>
-              ))
-            )}
-          </div>
+<div>
+  <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
+    <span className="inline-flex w-9 h-9 rounded-xl bg-rose-400/25 border border-rose-300/50 items-center justify-center">
+      <IconOut />
+    </span>
+    出場しない選手
+  </h2>
+
+  <div
+    className="flex flex-wrap items-start content-start gap-1.5 p-1.5
+      rounded-2xl border ring-1 ring-inset
+      border-rose-600/90 ring-rose-600/60
+      bg-gradient-to-br from-rose-600/45 via-rose-500/35 to-rose-400/25"
+    onDragOver={allowDrop}
+    onDrop={handleDropToBenchOut}
+  >
+    {benchOutPlayers.length === 0 ? (
+      <div className="min-h-[34px] px-2 py-1 text-[14px] font-bold text-gray-400 flex items-center">
+        出場しない選手はいません
+      </div>
+    ) : (
+      benchOutPlayers.map((p) => (
+        <div
+          key={p.id}
+          draggable
+          onDragStart={(e) => handleDragStart(e, p.id)}
+          onTouchStart={() => setTouchDrag({ playerId: p.id })}
+          style={{ touchAction: "none" }}
+          className="px-2 py-1 text-[14px] font-bold leading-tight bg-white/85 text-gray-900 border border-rose-200 rounded-lg cursor-move select-none shadow-sm"
+        >
+          {p.lastName}
+          {p.firstName} #{p.number}
         </div>
+      ))
+    )}
+  </div>
+</div>
 
         {/* 打順 */}
         <div>
