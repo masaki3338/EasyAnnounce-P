@@ -1383,7 +1383,7 @@ useEffect(() => {
         <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
         <div className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-red-100 border border-red-300">
           <span className="text-sm font-extrabold text-red-600">
-            ドラッグ＆ドロップで打順通り配置してください
+            選手を長押しして打順通り配置してください
           </span>
         </div>
       </div>
@@ -1707,7 +1707,7 @@ useEffect(() => {
             </span>
             打順（1～9番）
             <span className="ml-2 text-[11px] px-2 py-0.5 rounded-full bg-white/10 border border-white/10">
-              ドラッグ＆ドロップで変更
+              選手,守備位置を長押しして変更
             </span>
           </h2>
 
