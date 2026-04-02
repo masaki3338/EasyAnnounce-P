@@ -157,8 +157,9 @@ const StepRow: React.FC<{
 const PreGameAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
   // 先攻/後攻を文字で統一
   const [attackLabel, setAttackLabel] = useState<"先攻" | "後攻">("先攻");
-
-  useEffect(() => {
+  const [showHelp, setShowHelp] = useState(false);
+  
+    useEffect(() => {
     const load = async () => {
       const matchInfo = await localForage.getItem("matchInfo");
       if (matchInfo && typeof matchInfo === "object") {
@@ -247,19 +248,23 @@ const handleStepClick = async (s: typeof steps[number]) => {
       >
 
       {/* ヘッダー */}
-      <header className="w-full max-w-md md:max-w-none text-center select-none mt-1">
-        <h1 className="inline-flex items-center gap-2 text-3xl md:text-4xl font-extrabold tracking-wide leading-tight">
-          <span className="text-2xl md:text-3xl">🎤</span>
+      <header className="relative w-full max-w-md md:max-w-none text-center select-none mt-1">
+        <h1 className="flex items-center justify-center gap-2 text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-wide leading-tight pr-12">
+          <span className="text-xl sm:text-2xl md:text-3xl">🎤</span>
           <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-blue-100 to-blue-400 drop-shadow">
             試合前アナウンス
           </span>
         </h1>
-        <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
-        <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs">
-          <span>上から順番に実施</span>
-          <span className="opacity-70">／</span>
-          <span>現在の担当: {isFirst ? "先攻" : "後攻"}</span>
-        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowHelp(true)}
+          className="absolute right-0 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-9 h-9 rounded-full bg-white/15 border border-white/20 text-white font-extrabold text-lg shadow hover:bg-white/25 active:scale-95"
+          aria-label="使い方を表示"
+          title="使い方"
+        >
+          ？
+        </button>
       </header>
 
       {/* 縦ステッパー本体 */}
@@ -285,6 +290,61 @@ const handleStepClick = async (s: typeof steps[number]) => {
           ← 試合開始画面に戻る
         </button>
       </main>
+
+      {/* 使い方モーダル */}
+      {showHelp && (
+        <div
+          className="fixed inset-0 z-[1050] flex items-center justify-center bg-black/60 px-6"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setShowHelp(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+            role="document"
+          >
+            <div className="bg-blue-600 text-white text-center font-bold py-3">
+              試合前アナウンスの使い方
+            </div>
+
+            <div className="px-5 py-5 text-[15px] leading-relaxed">
+              <div className="rounded-2xl bg-white border border-gray-200 px-4 py-4 space-y-4">
+                <div className="rounded-2xl bg-blue-50 border-2 border-blue-300 px-4 py-4">
+                  <div className="font-extrabold text-gray-900 text-[17px] leading-snug">
+                    試合前アナウンスは先攻、後攻で読み上げる項目が違います
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-sky-100 border-2 border-sky-300 px-4 py-4 shadow-sm">
+                  <div className="flex items-start gap-2">
+                    <div className="pt-0.5 font-extrabold text-sky-900 text-[16px] leading-snug">
+                      グレー表示されている項目は相手チームの読み上げ項目です
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-sky-100 border-2 border-sky-300 px-4 py-4 shadow-sm">
+                  <div className="flex items-start gap-2">
+                    <div className="pt-0.5 font-extrabold text-sky-900 text-[16px] leading-snug">
+                      項目は上から読み上げる順番になっています
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 pb-5">
+              <button
+                className="w-full py-3 rounded-full bg-blue-600 text-white font-semibold hover:bg-blue-700 active:bg-blue-800"
+                onClick={() => setShowHelp(false)}
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

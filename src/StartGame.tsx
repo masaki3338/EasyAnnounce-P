@@ -77,6 +77,7 @@ const StartGame = ({
   // 「試合開始」押下時に出す案内モーダルの表示フラグ
   const [showStartHint, setShowStartHint] = useState(false);
 
+  const [showHelpModal, setShowHelpModal] = useState(false);
 
 
 useEffect(() => {
@@ -360,16 +361,28 @@ return (
         userSelect: "none",
       }}
     >
-    {/* ヘッダー：中央大タイトル＋細ライン */}
-    <header className="w-full max-w-md text-center select-none mt-1">
-      <h1 className="inline-flex items-center gap-2 text-3xl md:text-4xl font-extrabold tracking-wide leading-tight">
-        <span className="text-2xl md:text-3xl">🏁</span>
-        <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-blue-100 to-blue-400 drop-shadow">
-          試合開始
-        </span>
-      </h1>
-      <div className="mx-auto mt-2 h-0.5 w-20 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
-    </header>
+{/* ヘッダー：中央大タイトル＋細ライン */}
+<header className="w-full max-w-md text-center select-none mt-1">
+  <div className="inline-flex items-center gap-2">
+    <h1 className="inline-flex items-center gap-2 text-3xl md:text-4xl font-extrabold tracking-wide leading-tight">
+      <span className="text-2xl md:text-3xl">🏁</span>
+      <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-blue-100 to-blue-400 drop-shadow">
+        試合開始
+      </span>
+    </h1>
+
+    <button
+      type="button"
+      onClick={() => setShowHelpModal(true)}
+      className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-lg shadow active:scale-95"
+      aria-label="試合開始画面の使い方"
+    >
+      ？
+    </button>
+  </div>
+
+  <div className="mx-auto mt-2 h-0.5 w-20 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
+</header>
 
     {/* 本体：カード群 */}
     <main className="w-full max-w-md md:max-w-none mt-5 space-y-5">
@@ -555,6 +568,51 @@ return (
       </div>
     )}
 
+    {/* ====== 使い方モーダル ====== */}
+    {showHelpModal && (
+      <div
+        className="fixed inset-0 z-[9998] flex items-center justify-center bg-black px-4 py-4"
+        role="dialog"
+        aria-modal="true"
+        onClick={() => setShowHelpModal(false)}
+      >
+        <div
+          className="w-full max-w-xl rounded-2xl bg-gray-900 text-white shadow-2xl border border-white/15 overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+          role="document"
+        >
+          <div className="px-5 py-4 bg-blue-600 text-white font-bold text-center text-lg">
+            試合開始画面の使い方
+          </div>
+
+          <div className="px-5 py-5 space-y-4 text-sm leading-relaxed bg-gray-950">
+            <div className="text-white/95">
+              試合作成で入力した内容が表示されるので確認してください。
+            </div>
+
+            <div className="text-white/95 font-bold text-sky-300">
+              問題なければ<br />
+              【試合前アナウンス】ボタンを押してください
+            </div>
+
+            <div className="text-white/95 font-bold text-emerald-300">
+              試合前アナウンスが終了したら<br />
+              【試合を開始する】ボタンを押してください
+            </div>
+          </div>
+
+          <div className="px-5 pb-5">
+            <button
+              type="button"
+              onClick={() => setShowHelpModal(false)}
+              className="w-full py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-semibold active:scale-95"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
 
   </div>
 );

@@ -31,6 +31,7 @@ const TeamRegister = () => {
 
 
   const [restoreMessage, setRestoreMessage] = useState("");
+  const [showHelpModal, setShowHelpModal] = useState(false);
   const [formError, setFormError] = useState("");
   // 必須入力欄
   const firstNameInputRef = useRef<HTMLInputElement>(null);
@@ -142,13 +143,21 @@ const handleTeamChange = (e: React.ChangeEvent<HTMLInputElement>) => {
   setTeam((prev) => ({ ...prev, [name]: value }));
 };
 
-  const handlePlayerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type, checked } = e.target;
-    setEditingPlayer((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value,
-    }));
-  };
+const handlePlayerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const { name, value, type, checked } = e.target;
+
+  const nextValue =
+    type === "checkbox"
+      ? checked
+      : name === "number"
+      ? value.replace(/[^0-9]/g, "")
+      : value;
+
+  setEditingPlayer((prev) => ({
+    ...prev,
+    [name]: nextValue,
+  }));
+};
 
 
 
@@ -251,15 +260,25 @@ const saveTeam = async () => {
      paddingBottom: "max(16px, env(safe-area-inset-bottom))",
    }}
  >
- <div className="mt-2 text-center select-none mb-3 w-full">
-   <h1 className="inline-flex items-center gap-2 text-3xl font-extrabold tracking-wide leading-tight">
-     <span className="text-2xl">🧢</span>
-     <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-sky-100 to-sky-400 drop-shadow">
-       チーム／選手登録
-     </span>
-   </h1>
-   <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
- </div>
+<div className="relative mt-2 text-center select-none mb-3 w-full">
+  <h1 className="flex items-center justify-center gap-2 text-2xl sm:text-3xl font-extrabold tracking-wide leading-tight pr-12">
+    <span className="text-xl sm:text-2xl">🧢</span>
+    <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-sky-100 to-sky-400 drop-shadow">
+      チーム／選手登録
+    </span>
+  </h1>
+
+  <button
+    type="button"
+    onClick={() => setShowHelpModal(true)}
+    className="absolute right-0 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-lg shadow active:scale-95"
+    aria-label="チーム／選手登録の使い方"
+  >
+    ？
+  </button>
+
+  <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
+</div>
 
     <div className="flex gap-3 justify-center mt-4 mb-2 w-full">
       <button
@@ -334,18 +353,21 @@ const saveTeam = async () => {
             <label htmlFor={id} className="block text-sm font-semibold text-white/90 drop-shadow">
               {label}
             </label>
-            <input
-              id={id}
-              name={id}
-              ref={inputRefs[id]}
-              value={(editingPlayer as any)[id] || ""}
-              onChange={handlePlayerChange}
-              className="w-full mt-1 px-3 py-2 rounded-xl
-+             bg-white/90 text-gray-900 placeholder-gray-600
-+             border border-white/70 shadow-sm
-+             focus:outline-none focus:ring-2 focus:ring-sky-400"
-              placeholder={placeholder}
-            />
+              <input
+                id={id}
+                name={id}
+                ref={inputRefs[id]}
+                value={(editingPlayer as any)[id] || ""}
+                onChange={handlePlayerChange}
+                inputMode={id === "number" ? "numeric" : undefined}
+                pattern={id === "number" ? "[0-9]*" : undefined}
+                autoComplete="off"
+                className="w-full mt-1 px-3 py-2 rounded-xl
+                          bg-white/90 text-gray-900 placeholder-gray-600
+                          border border-white/70 shadow-sm
+                          focus:outline-none focus:ring-2 focus:ring-sky-400"
+                placeholder={placeholder}
+              />
           </div>
         ))}
 
@@ -408,7 +430,88 @@ const saveTeam = async () => {
   </div>
 </div>
 
+    {/* 使い方モーダル */}          
+    {showHelpModal && (
+      <div
+        className="fixed inset-0 z-[9998] flex items-center justify-center bg-black px-4 py-4"
+        role="dialog"
+        aria-modal="true"
+        onClick={() => setShowHelpModal(false)}
+      >
+        <div
+          className="w-full max-w-2xl rounded-2xl bg-gray-900 text-white shadow-2xl border border-white/15 overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+          role="document"
+        >
+          <div className="px-5 py-4 bg-sky-600 text-white font-bold text-center text-lg">
+            チーム／選手登録の使い方
+          </div>
 
+          <div className="px-5 py-5 space-y-4 text-sm leading-relaxed bg-gray-950">
+            <div>
+              <div className="font-bold text-base text-sky-200">・チーム名を入力</div>
+              <div className="mt-1 text-white/90">
+                ふりがなはルビ表示、機械読み上げに使用されます。
+              </div>
+            </div>
+
+            <div>
+              <div className="font-bold text-base text-sky-200">・選手を追加</div>
+              <div className="mt-1 text-white/90">
+                ふりがなはルビ表示、機械読み上げに使用されます。<br />
+                女子選手の場合、女子選手にチェックをしてください。<br />
+                （"くん" から "さん" になります）<br />
+                入力後に【追加】ボタンを押すと登録されます。
+              </div>
+            </div>
+
+            <div>
+              <div className="font-bold text-base text-sky-200">・登録済選手の編集</div>
+              <div className="mt-1 text-white/90">
+                選手名の【編集】ボタンを押すと現在の選手情報が表示されるので、
+                変更したい項目を入力してください。<br />
+                【更新】ボタンを押すと更新されます。
+              </div>
+            </div>
+
+            <div>
+              <div className="font-bold text-base text-sky-200">・登録済選手の削除</div>
+              <div className="mt-1 text-white/90">
+                選手名の【削除】ボタンを押すと「削除していいですか？」のメッセージが表示され、
+                【OK】を押すと削除されます。
+              </div>
+            </div>
+
+            <div>
+              <div className="font-bold text-base text-sky-200">・バックアップ</div>
+              <div className="mt-1 text-white/90">
+                現在、登録されているチーム、選手のバックアップが出来ます。<br />
+                [日付、時間.json] の名前で保存されます。<br />
+                必要に応じて、保存場所、名称を変更してください。
+              </div>
+            </div>
+
+            <div>
+              <div className="font-bold text-base text-sky-200">・復元</div>
+              <div className="mt-1 text-white/90">
+                復元したいファイルを選択することで、
+                バックアップしたファイルを読み込み復元することが出来ます。
+              </div>
+            </div>
+          </div>
+
+          <div className="px-5 pb-5">
+            <button
+              type="button"
+              onClick={() => setShowHelpModal(false)}
+              className="w-full py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-semibold active:scale-95"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </div>
   );
 };

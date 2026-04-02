@@ -3776,6 +3776,7 @@ type PositionNumberChangeRow = {
   benchPlayerId: string;   // replaceのときに控え選手ID
 };
 const [showPosNumberModal, setShowPosNumberModal] = useState(false);
+const [showPosNumberHelpModal, setShowPosNumberHelpModal] = useState(false);
 // 手書きメモ（モーダルを閉じても保持、交代確定で消す）
 const [posNumberMemoDataUrl, setPosNumberMemoDataUrl] = useState<string>("");
 const [dirty, setDirty] = useState(false);
@@ -3804,6 +3805,7 @@ const [pendingNonReentryDrop, setPendingNonReentryDrop] =
   useState<PendingNonReentryDrop | null>(null);
 
 const [showNonReentryConfirm, setShowNonReentryConfirm] = useState(false);
+const [showHelpModal, setShowHelpModal] = useState(false);
 
 // ✅ YES時に「次の1回だけリエントリー判定を無視する」フラグ
 const [forceNormalSubOnce, setForceNormalSubOnce] = useState(false);
@@ -6915,23 +6917,35 @@ const p = typeof id === "number" ? teamPlayers.find((x) => x.id === id) : null;
     >
 
     {/* スマホ風ヘッダー */}
-    <div className="sticky top-0 z-40 bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
-      <div className="max-w-4xl mx-auto px-4">
-        <div className="h-14 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={handleBackClick}
-            className="rounded-full w-9 h-9 flex items-center justify-center bg-white/15 hover:bg-white/25 active:bg-white/30 text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-            aria-label="戻る"
-            title="戻る"
-          >
+<div className="sticky top-0 z-40 bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
+  <div className="max-w-4xl mx-auto px-4">
+    <div className="relative h-14 flex items-center justify-center">
+      <button
+        type="button"
+        onClick={handleBackClick}
+        className="absolute left-0 top-1/2 -translate-y-1/2 rounded-full w-9 h-9 flex items-center justify-center bg-white/15 hover:bg-white/25 active:bg-white/30 text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+        aria-label="戻る"
+        title="戻る"
+      >
+        ←
+      </button>
 
-          </button>
-          <div className="font-extrabold text-lg tracking-wide">🔀守備交代</div>
-          <span className="w-9" />
-        </div>
+      <div className="font-extrabold text-base sm:text-lg tracking-wide px-12 text-center whitespace-nowrap">
+        🔀守備交代
       </div>
+
+      <button
+        type="button"
+        onClick={() => setShowHelpModal(true)}
+        className="absolute right-0 top-1/2 -translate-y-1/2 rounded-full w-9 h-9 flex items-center justify-center bg-white/15 hover:bg-white/25 active:bg-white/30 text-white font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+        aria-label="守備交代画面の使い方"
+        title="使い方"
+      >
+        ？
+      </button>
     </div>
+  </div>
+</div>
 
 <div className="max-w-4xl mx-auto px-4 mt-4">
   <button
@@ -7781,33 +7795,46 @@ const positionChanged = currentPos !== initialPos;
     <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl ring-1 ring-black/10 overflow-hidden">
       {/* header */}
       <div className="sticky top-0 bg-slate-50/95 backdrop-blur border-b border-slate-100 px-4 pt-4 pb-3">
-  <div className="relative flex flex-col items-center justify-center text-center">
-  {/* タイトル行 */}
-  <div className="flex items-center justify-center gap-3">
-    <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 text-xl shadow-sm">
-      🔁
-    </span>
-    <h2 className="text-xl sm:text-2xl font-extrabold tracking-wide text-slate-900">
-      守備番号で交代
-    </h2>
-  </div>
+        <div className="relative">
+          {/* タイトル＋右ボタン */}
+          <div className="relative flex items-center justify-center min-h-[44px]">
+            <div className="flex items-center justify-center gap-3 px-24 text-center">
+              <span className="inline-flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 text-lg sm:text-xl shadow-sm shrink-0">
+                🔁
+              </span>
+              <h2 className="text-lg sm:text-xl font-extrabold tracking-wide text-slate-900 whitespace-nowrap">
+                守備番号で交代
+              </h2>
+            </div>
 
-  {/* サブ説明 */}
-  <p className="mt-2 text-sm text-slate-600">
-    「1 が 9」「1 に代わり ○○」のように入力できます
-  </p>
+            <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowPosNumberHelpModal(true)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-white font-extrabold shadow-sm"
+                aria-label="守備番号交代の使い方"
+                title="使い方"
+              >
+                ？
+              </button>
 
-  {/* 右上 × ボタン */}
-  <button
-    type="button"
-    onClick={() => setShowPosNumberModal(false)}
-    className="absolute right-0 top-0 inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-300 hover:bg-slate-400 active:bg-slate-500 text-slate-800 font-bold shadow-sm"
-    aria-label="閉じる"
-    title="閉じる"
-  >
-    ✕
-  </button>
-</div>
+              <button
+                type="button"
+                onClick={() => setShowPosNumberModal(false)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-300 hover:bg-slate-400 active:bg-slate-500 text-slate-800 font-bold shadow-sm"
+                aria-label="閉じる"
+                title="閉じる"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          {/* サブ説明 */}
+          <p className="mt-2 text-sm text-slate-600 text-center px-2">
+            「1 が 9」「1 に代わり ○○」のように入力できます
+          </p>
+        </div>
 
         {/* error */}
         {posNumberError && (
@@ -8092,6 +8119,105 @@ const positionChanged = currentPos !== initialPos;
   </div>
 )}
 
+{/* 使い方（守備番号交代）モーダル */}
+{showPosNumberHelpModal && (
+  <div
+    className="fixed inset-0 z-[1400] flex items-center justify-center bg-black px-3 py-3"
+    role="dialog"
+    aria-modal="true"
+    onClick={() => setShowPosNumberHelpModal(false)}
+  >
+    <div
+      className="w-full max-w-xl rounded-xl bg-white text-slate-900 shadow-2xl overflow-hidden"
+      onClick={(e) => e.stopPropagation()}
+      role="document"
+    >
+      <div className="px-4 py-3 bg-emerald-600 text-white text-center">
+        <div className="text-base font-extrabold">守備番号交代の使い方</div>
+      </div>
+
+      <div className="px-4 py-4 space-y-3 text-[13px] leading-snug bg-slate-50">
+        <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2">
+          <div className="text-base font-extrabold text-emerald-700">
+            入力は ① → ② → ③ の順です
+          </div>
+        </div>
+
+        <div className="rounded-lg bg-white border border-slate-200 px-3 py-2">
+          <div className="font-bold text-slate-900">手書きメモ欄</div>
+          <div className="mt-0.5 text-slate-700">
+            審判に伝えられた内容を書きとめておく自由なエリアです。
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="rounded-lg bg-white border border-sky-200 px-3 py-2">
+            <div className="font-bold text-sky-700">
+              ① [守備番号] を選ぶ
+            </div>
+            <div className="mt-0.5 text-slate-700">
+              交代前の守備番号を選びます。<br />
+              守備位置と選手を確認して選んでください。
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-white border border-amber-200 px-3 py-2">
+            <div className="font-bold text-amber-700">
+              ② [交代] を選ぶ
+            </div>
+            <div className="mt-0.5 text-slate-700">
+              守備位置の入替なら <span className="font-bold">「が」</span>、<br />
+              選手交代なら <span className="font-bold">「に代わりまして」</span> を選びます。<br />
+              <span className="font-bold">「に代わりまして」</span> を選ぶと、
+              <span className="font-bold">[交代内容]</span> の行が追加されるので、<br />
+              <span className="font-bold">[控え選手]</span> と
+              <span className="font-bold">[入る守備]</span> を選んでください。
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-white border border-indigo-200 px-3 py-2">
+            <div className="font-bold text-indigo-700">
+              ③ [入替守備] を選ぶ
+            </div>
+            <div className="mt-0.5 text-slate-700">
+              交代後の守備番号を選びます。<br />
+              守備位置と選手を確認して選んでください。
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-2 pt-1">
+          <div className="rounded-lg bg-white border border-emerald-200 px-3 py-2">
+            <div className="font-bold text-emerald-700">【反映】ボタン</div>
+            <div className="mt-0.5 text-slate-700">
+              入力した内容が反映され、守備交代画面に戻ります。<br />
+              反映後は、フィールド図・打順・交代内容が正しいか確認してください。
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-white border border-rose-200 px-3 py-2">
+            <div className="font-bold text-rose-700">不整合メッセージ</div>
+            <div className="mt-0.5 text-slate-700">
+              守備位置の重複や不足などがある場合はメッセージが表示されます。<br />
+              内容を見直して正しく入力してください。
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-4 pb-4">
+        <button
+          type="button"
+          onClick={() => setShowPosNumberHelpModal(false)}
+          className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold active:scale-95"
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
 {/* 確認モーダル */}
 {showLeaveConfirm && (
   <div
@@ -8214,6 +8340,82 @@ const positionChanged = currentPos !== initialPos;
   </div>
 )}
 
+{/* 使い方モーダル */}
+{showHelpModal && (
+  <div
+    className="fixed inset-0 z-[1300] flex items-center justify-center bg-black px-3 py-3"
+    role="dialog"
+    aria-modal="true"
+    onClick={() => setShowHelpModal(false)}
+  >
+    <div
+      className="w-full max-w-xl rounded-xl bg-gray-900 text-white shadow-2xl overflow-hidden"
+      onClick={(e) => e.stopPropagation()}
+      role="document"
+    >
+      <div className="px-4 py-3 bg-emerald-600 text-white font-bold text-center text-base">
+        守備交代画面の使い方
+      </div>
+
+      <div className="px-4 py-4 space-y-3 text-sm leading-snug bg-gray-950">
+        <div className="rounded-lg bg-emerald-500/10 px-3 py-2">
+          <div className="text-base font-extrabold text-emerald-300">
+            交代のやり方は2つあります
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="rounded-lg bg-white/5 px-3 py-2">
+            <div className="font-bold text-sky-300">① 守備番号で交代する</div>
+            <div className="mt-1 text-white/90">
+              審判が言った通りに入力します。<br />
+              例：5が1、1に代わってサード○○<br />
+              ➥【守備番号で交代】ボタンを押して下さい
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-white/5 px-3 py-2">
+            <div className="font-bold text-amber-300">② フィールドに選手を配置する</div>
+            <div className="mt-1 text-white/90">
+              選手名を長押しして配置します。
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-2 pt-1">
+          <div className="px-3 py-2 rounded-lg bg-white/5">
+            <div className="font-bold text-rose-300">【アナウンス表示】ボタン</div>
+            <div className="text-white/90 mt-0.5">読み上げる内容が表示されます。</div>
+          </div>
+
+          <div className="px-3 py-2 rounded-lg bg-white/5">
+            <div className="font-bold text-emerald-300">【交代確定】ボタン</div>
+            <div className="text-white/90 mt-0.5">変更内容を確定して守備画面に戻ります。</div>
+          </div>
+
+          <div className="px-3 py-2 rounded-lg bg-white/5">
+            <div className="font-bold text-slate-200">【戻る】ボタン</div>
+            <div className="text-white/90 mt-0.5">
+              変更せずに守備画面に戻ります。<br />
+              変更がある場合は確認メッセージが表示され、<br />
+              【YES】で変更せずに戻ります。
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-4 pb-4">
+        <button
+          type="button"
+          onClick={() => setShowHelpModal(false)}
+          className="w-full py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white font-semibold active:scale-95"
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
   </div>
 );

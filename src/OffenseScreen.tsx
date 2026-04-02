@@ -1328,6 +1328,7 @@ const { activeBench, retiredBench } = useMemo(() => {
 const [noRunnerReEntryMessage, setNoRunnerReEntryMessage] = useState("");
 const [runnerModalMode, setRunnerModalMode] = useState<"runner" | "reentry">("runner");
 const [showRunnerModal, setShowRunnerModal] = useState(false);
+const [showRunnerHelpModal, setShowRunnerHelpModal] = useState(false);
 const [isRunnerConfirmed, setIsRunnerConfirmed] = useState(false);
 const [runnerAnnouncement, setRunnerAnnouncement] = useState<string[]>([]);
 const [runnerAssignments, setRunnerAssignments] = useState<{ [base: string]: any | null }>({
@@ -4078,32 +4079,50 @@ onClick={() => {
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {/* 固定ヘッダー（グラデ＋白文字） */}
-        <div className="sticky top-0 z-10 px-4 py-3 flex items-center justify-between
-                        bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
-          <div className="flex items-center gap-2">
-            <img
-              src="/Runner.png"
-              alt="ランナー"
-              width={28}
-              height={28}
-              className="w-7 h-7 object-contain select-none drop-shadow"
-              loading="lazy"
-              decoding="async"
-              draggable="false"
-            />
-            <h2 className="text-xl font-extrabold tracking-wide">代走</h2>
+        <div className="sticky top-0 z-10 px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
+          <div className="relative flex items-center justify-center min-h-[44px]">
+            <div className="flex items-center gap-2 min-w-0 pr-24">
+              <img
+                src="/Runner.png"
+                alt="ランナー"
+                width={28}
+                height={28}
+                className="w-6 h-6 sm:w-7 sm:h-7 object-contain select-none drop-shadow shrink-0"
+                loading="lazy"
+                decoding="async"
+                draggable="false"
+              />
+              <h2 className="text-lg sm:text-xl font-extrabold tracking-wide whitespace-nowrap">
+                代走
+              </h2>
+            </div>
+
+            <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowRunnerHelpModal(true)}
+                aria-label="代走モーダルの使い方"
+                className="rounded-full w-9 h-9 flex items-center justify-center
+                          bg-white/15 hover:bg-white/25 active:bg-white/30
+                          text-white text-lg font-bold
+                          focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+              >
+                ？
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowRunnerModal(false);
+                }}
+                aria-label="閉じる"
+                className="rounded-full w-9 h-9 flex items-center justify-center
+                          bg-white/15 hover:bg-white/25 active:bg-white/30
+                          text-white text-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+              >
+                ×
+              </button>
+            </div>
           </div>
-          <button
-            onClick={() => {
-              setShowRunnerModal(false);
-            }}
-            aria-label="閉じる"
-            className="rounded-full w-9 h-9 flex items-center justify-center
-                       bg-white/15 hover:bg-white/25 active:bg-white/30
-                       text-white text-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-          >
-            ×
-          </button>
         </div>
 
         {/* 本文 */}
@@ -5104,6 +5123,108 @@ if (
   </div>
 )}
 
+{/* ✅ 使い方（代走）モーダル */}
+{showRunnerHelpModal && (
+  <div className="fixed inset-0 z-[110]" role="dialog" aria-modal="true" aria-label="代走モーダルの使い方">
+    {/* 背景 */}
+    <div
+      className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+      onClick={() => setShowRunnerHelpModal(false)}
+    />
+
+    {/* 中央カード */}
+    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+      <div
+        className="bg-white shadow-2xl rounded-2xl w-full max-w-md max-h-[85vh] overflow-hidden flex flex-col"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {/* ヘッダー */}
+        <div className="sticky top-0 z-10 bg-gradient-to-r from-sky-600 to-cyan-600 text-white">
+          <div className="h-5 flex items-center justify-center">
+            <span className="mt-2 block h-1.5 w-12 rounded-full bg-white/60" />
+          </div>
+          <div className="px-4 py-3 flex items-center justify-between">
+            <h2 className="text-lg font-extrabold tracking-wide flex items-center gap-2">
+              <span className="text-xl">❓</span>
+              <span>代走モーダルの使い方</span>
+            </h2>
+            <button
+              onClick={() => setShowRunnerHelpModal(false)}
+              aria-label="閉じる"
+              className="rounded-full w-9 h-9 flex items-center justify-center bg-white/15 hover:bg-white/25 active:bg-white/30 text-white text-lg"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+
+        {/* 本文 */}
+        <div className="px-4 py-4 space-y-4 overflow-y-auto bg-slate-50">
+          <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 shadow-sm">
+            <p className="text-sky-900 font-bold leading-relaxed">
+              代走は、<span className="text-sky-700">選手 → 塁 → 代走する選手</span> の順に選びます。<br />
+              最後にアナウンス内容を確認して【確定】を押します。
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm">
+            <h3 className="font-extrabold text-emerald-700 mb-2">① 代走される選手を選ぶ</h3>
+            <p className="text-slate-800 leading-relaxed font-semibold">
+              最初に、代走される選手を選択します。
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-blue-200 bg-white p-4 shadow-sm">
+            <h3 className="font-extrabold text-blue-700 mb-2">② どこの塁にいるかを選ぶ</h3>
+            <p className="text-slate-800 leading-relaxed font-semibold">
+              次の画面で、その選手がどこの塁にいるかを選択します。
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-orange-200 bg-white p-4 shadow-sm">
+            <h3 className="font-extrabold text-orange-700 mb-2">③ 代走として出る選手を選ぶ</h3>
+            <p className="text-slate-800 leading-relaxed font-semibold">
+              次の画面で、代走として出場する選手を選択します。
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-red-300 bg-red-50 p-4 shadow-sm">
+            <h3 className="font-extrabold text-red-700 mb-2">④ アナウンスを確認して確定</h3>
+            <div className="space-y-2 text-red-700 leading-relaxed font-bold">
+              <p>アナウンス画面に読み上げる内容が表示されます。</p>
+              <p>【確定】ボタンを押します。</p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-violet-300 bg-violet-50 p-4 shadow-sm">
+            <h3 className="font-extrabold text-violet-800 mb-2">👥 2人以上同時に代走する場合</h3>
+            <p className="text-slate-800 leading-relaxed font-semibold">
+              【もう1人】ボタンを押して、1人目と同じように操作します。
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 shadow-sm">
+            <h3 className="font-extrabold text-amber-800 mb-2">🏃 臨時代走の場合</h3>
+            <p className="text-slate-800 leading-relaxed font-semibold">
+              【臨時代走】をチェックします。
+            </p>
+          </div>
+        </div>
+
+        {/* フッター */}
+        <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
+          <button
+            onClick={() => setShowRunnerHelpModal(false)}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
+          >
+            OK
+          </button>
+          <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
     </div>
      </DndProvider>

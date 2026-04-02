@@ -115,6 +115,7 @@ const [loaded, setLoaded] = useState(false);
   // 追加：未保存チェック用
   const [isDirty, setIsDirty] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [showHelpModal, setShowHelpModal] = useState(false);
   const snapshotRef = React.useRef<string | null>(null);
 
   // 現在の値をスナップショット化
@@ -345,27 +346,47 @@ return (
     <header className="w-full max-w-3xl">
 
 
-      {/* 中央大タイトル */}
-      <div className="mt-2 text-center select-none">
-        <h1
+    {/* 中央大タイトル */}
+    <div className="relative mt-2 text-center select-none w-full">
+      <h1
+        className="
+          flex items-center justify-center gap-2
+          text-2xl sm:text-3xl md:text-4xl
+          font-extrabold tracking-wide leading-tight
+          pr-12
+        "
+      >
+        <span className="text-xl sm:text-2xl md:text-3xl">🗓️</span>
+        <span
           className="
-            inline-flex items-center gap-2
-            text-3xl md:text-4xl font-extrabold tracking-wide leading-tight
+            bg-clip-text text-transparent
+            bg-gradient-to-r from-white via-blue-100 to-blue-400
+            drop-shadow
           "
         >
-          <span className="text-2xl md:text-3xl">🗓️</span>
-          <span
-            className="
-              bg-clip-text text-transparent
-              bg-gradient-to-r from-white via-blue-100 to-blue-400
-              drop-shadow
-            "
-          >
-            試合情報入力
-          </span>
-        </h1>
-        <div className="mx-auto mt-2 h-0.5 w-20 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
-      </div>
+          試合情報入力
+        </span>
+      </h1>
+
+      <button
+        type="button"
+        onClick={() => setShowHelpModal(true)}
+        className="
+          absolute right-0 top-1/2 -translate-y-1/2
+          inline-flex items-center justify-center
+          w-9 h-9 rounded-full
+          bg-white/10 hover:bg-white/20
+          border border-white/20
+          text-white font-bold text-lg
+          shadow active:scale-95
+        "
+        aria-label="試合情報入力の使い方"
+      >
+        ？
+      </button>
+
+      <div className="mx-auto mt-2 h-0.5 w-20 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
+    </div>
     </header>
 
     {/* 本体：カード群 */}
@@ -585,7 +606,7 @@ return (
         </div>
 
         {/* メンバー交換ボタン（条件一致時のみ） */}
-        {matchNumber === 1 && benchSide === "1塁側" && (
+        {!isBoys && matchNumber === 1 && benchSide === "1塁側" && (
           <div className="mt-2">
             <button
               onClick={() => setShowExchangeModal(true)}
@@ -742,19 +763,27 @@ return (
     </main>
 
     {/* 既存のモーダルはそのまま下に（読み上げ/停止/OK） */}
-    {showExchangeModal && (
-      <div className="fixed inset-0 z-50">
-        {/* 背景（タップで閉じる） */}
-        <div
-          className="absolute inset-0 bg-black/90 backdrop-blur-sm"
-          onClick={() => { stopExchangeMessage(); setShowExchangeModal(false); }}
-        />
+{showExchangeModal && (
+  <div
+    className="fixed inset-0 z-50 flex items-center justify-center px-4"
+    role="dialog"
+    aria-modal="true"
+  >
+    {/* 背景（タップで閉じる） */}
+    <div
+      className="absolute inset-0 bg-black/90 backdrop-blur-sm"
+      onClick={() => {
+        stopExchangeMessage();
+        setShowExchangeModal(false);
+      }}
+    />
 
-        {/* 本体パネル */}
-        <div className="absolute inset-x-0 bottom-0 sm:inset-0 sm:m-auto sm:h-auto
-                        bg-gradient-to-b from-gray-900 to-gray-850 text-white
-                        rounded-t-3xl sm:rounded-2xl shadow-2xl
-                        w-full max-w-[min(92vw,900px)] mx-auto p-5 sm:p-6">
+    {/* 本体パネル */}
+    <div
+      className="relative z-10 w-full max-w-[min(92vw,900px)]
+                 bg-gradient-to-b from-gray-900 to-gray-850 text-white
+                 rounded-2xl shadow-2xl p-5 sm:p-6"
+    >
     {/* ヘッダー行（両チップを横並びに） */}
     <div className="flex items-center justify-between mb-3 gap-3">
       <div className="flex items-center gap-2 flex-wrap">
@@ -869,9 +898,86 @@ return (
         </div>
       </div>
     </div>
-  )}
+    )}
+    
+    {/* 使い方モーダル */}
+    {showHelpModal && (
+        <div
+          className="fixed inset-0 z-[9998] flex items-center justify-center bg-black px-4 py-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setShowHelpModal(false)}
+        >
+        <div
+          className="w-full max-w-2xl rounded-2xl bg-gradient-to-b from-gray-900 to-gray-850 text-white shadow-2xl border border-white/10 overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+          role="document"
+        >
+          <div className="px-5 py-4 bg-blue-600 text-white font-bold text-center text-lg">
+            試合情報入力の使い方
+          </div>
 
+          <div className="px-5 py-5 space-y-4 text-sm leading-relaxed">
+            <div>
+              <div className="font-bold text-base text-blue-200">・大会名を入力</div>
+              <div className="mt-1 text-white/90">
+                一度登録されたものは選択できます。<br />
+                登録されたものを編集もできます（数字だけ変更など）。<br />
+                「練習試合」ボタンを押すと「練習試合」と入力されます。
+              </div>
+            </div>
 
+            <div>
+              <div className="font-bold text-base text-blue-200">・何試合目、次試合があるかを選択</div>
+            </div>
+
+            <div>
+              <div className="font-bold text-base text-blue-200">・相手チームを入力</div>
+              <div className="mt-1 text-white/90">
+                ふりがなはルビ表示、機械読み上げに使用されます。
+              </div>
+            </div>
+
+            <div>
+              <div className="font-bold text-base text-blue-200">・先攻/後攻、1塁側、3塁側を選択</div>
+              <div className="mt-1 text-white/90">
+                第1試合の1塁側が選択された場合のみ【メンバー交換】ボタンが表示されます。<br />
+                <span className="text-white/70 text-xs">
+                  ※ ボーイズリーグモードでは表示されません。
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <div className="font-bold text-base text-blue-200">・審判の名前を入力</div>
+              <div className="mt-1 text-white/90">
+                後攻チームのみ必要になりますので、先攻であれば入力不要です。<br />
+                ふりがなはルビ表示、機械読み上げに使用されます。
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-white/10">
+              <div className="font-bold text-base text-emerald-300">
+                全て入力したら【保存する】ボタンを押して保存してください。
+              </div>
+              <div className="mt-2 font-bold text-base text-amber-300">
+                【スタメン設定】ボタンを押して出場選手を設定して下さい。
+              </div>
+            </div>
+          </div>
+
+          <div className="px-5 pb-5">
+            <button
+              type="button"
+              onClick={() => setShowHelpModal(false)}
+              className="w-full py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-semibold active:scale-95"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   </div>
 );
 

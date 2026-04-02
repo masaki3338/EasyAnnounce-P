@@ -112,6 +112,7 @@ const createEmptyAssignments = (): Assignments =>
  *  メインコンポーネント
  * ======================================================= */
 const StartingLineup = () => {
+  const [openPosMenuIndex, setOpenPosMenuIndex] = useState<number | null>(null);
   /* -----------------------------
    *  未保存チェック（dirty判定）
    * --------------------------- */
@@ -216,6 +217,8 @@ const StartingLineup = () => {
    * --------------------------- */
   const [showConfirm, setShowConfirm] = useState(false);
   const onClearClick = () => setShowConfirm(true);
+
+  const [showHelp, setShowHelp] = useState(false);
 
   /* =========================================================
    *  共通：DnDのdrop許可
@@ -709,6 +712,128 @@ const fromPos = fromPosRaw
     setAssignments(next);
   };
 
+const changePositionByBattingIndex = (targetIndex: number, nextPos: string) => {
+  const entry = battingOrder[targetIndex];
+  if (!entry) return;
+
+  const playerId = entry.id;
+  const currentPos =
+    Object.entries(assignments).find(([, id]) => id === playerId)?.[0] ?? null;
+
+  if (!currentPos || currentPos === nextPos) {
+    setOpenPosMenuIndex(null);
+    return;
+  }
+
+  const prevAssignments = assignments;
+  const next: Assignments = { ...prevAssignments };
+
+  const currentOccupant = prevAssignments[currentPos] ?? null;
+  const nextOccupant = prevAssignments[nextPos] ?? null;
+
+  // 元の位置を空に
+  next[currentPos] = null;
+
+  // 選択先へ移動
+  next[nextPos] = currentOccupant;
+
+  // 選択先にいた選手は元の位置へ戻す（交換）
+  if (nextOccupant && nextOccupant !== playerId) {
+    next[currentPos] = nextOccupant;
+  }
+
+  // DH重複禁止
+  if (nextPos === DH) {
+    for (const p of positions) {
+      if (p !== currentPos && next[p] === playerId) next[p] = null;
+    }
+  }
+
+  // 通常守備へ移したらDHから外す
+  if (nextPos !== DH && next[DH] === playerId) {
+    next[DH] = null;
+  }
+
+  // ✅ DHに入れた選手が投手と別人なら大谷ルール解除
+  if (nextPos === DH) {
+    const pitcherId = next["投"] ?? null;
+    const dhId = next[DH] ?? null;
+
+    if (pitcherId && dhId && pitcherId !== dhId) {
+      setOhtaniRule(false);
+      prevDhIdRef.current = dhId;
+      void localForage.setItem("ohtaniRule", false);
+    }
+  }
+
+  setAssignments(next);
+
+  // ✅ 打順更新：DHあり/なしの整合を取る
+  setBattingOrder((prev) => {
+    let updated = [...prev];
+
+    const dhId = next[DH] ?? null;
+    const pitcherId = next["投"] ?? null;
+
+    // フィールドのID一覧（投手含む9）
+    const fieldIds = positions
+      .map((pos) => next[pos])
+      .filter((id): id is number => typeof id === "number");
+
+    const fieldSet = new Set(fieldIds);
+
+    if (!dhId) {
+      // DHなし：打順＝フィールド9人（投手含む）
+      updated = updated.filter((e) => fieldSet.has(e.id));
+
+      for (const id of fieldIds) {
+        if (!updated.some((e) => e.id === id)) {
+          updated.push({ id, reason: "スタメン" });
+        }
+      }
+    } else {
+      // DHあり：打順＝（投手を除くフィールド8人）＋DH
+      if (pitcherId) {
+        updated = updated.filter((e) => e.id !== pitcherId);
+      }
+
+      const fieldNoPitcherSet = new Set(fieldIds.filter((id) => id !== pitcherId));
+      updated = updated.filter((e) => fieldNoPitcherSet.has(e.id) || e.id === dhId);
+
+      for (const id of fieldIds) {
+        if (id === pitcherId) continue;
+        if (updated.length >= 9) break;
+        if (!updated.some((e) => e.id === id)) {
+          updated.push({ id, reason: "スタメン" });
+        }
+      }
+
+      // DHを必ず打順に入れる
+      if (!updated.some((e) => e.id === dhId)) {
+        if (updated.length < 9) {
+          updated.push({ id: dhId, reason: "スタメン" });
+        } else {
+          updated[updated.length - 1] = { id: dhId, reason: "スタメン" };
+        }
+      }
+    }
+
+    // 重複除去 & 9人制限
+    const seen = new Set<number>();
+    updated = updated
+      .filter((e) => {
+        if (seen.has(e.id)) return false;
+        seen.add(e.id);
+        return true;
+      })
+      .slice(0, 9);
+
+    return updated;
+  });
+
+  setOpenPosMenuIndex(null);
+};
+
   /**
    * 守備ラベルからドラッグ開始（swapPosモード）
    * - swapTokenで多重処理を抑止（元仕様）
@@ -995,6 +1120,8 @@ const handleDropToBattingOrder = (
   /* =========================================================
    *  useEffect群（副作用は上から「意味順」に整理）
    * ======================================================= */
+
+
 
   // 透明1x1ゴースト画像（初回だけ生成）
   useEffect(() => {
@@ -1336,6 +1463,9 @@ useEffect(() => {
    * ======================================================= */
   const battingSlots = Array.from({ length: 9 }, (_, i) => battingOrder[i]);
 
+
+const selectablePositionKeys = [...positions, DH];
+
   const battingIds = battingOrder
     .map((e) => e?.id)
     .filter((id): id is number => typeof id === "number");
@@ -1372,14 +1502,26 @@ useEffect(() => {
       onSelectStart={(e) => e.preventDefault()}
     >
       <div className="mt-3 text-center select-none mb-2">
-        <h1 className="inline-flex items-center gap-2 text-3xl font-extrabold tracking-wide leading-tight">
-          <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
-            <path d="M3 5h18v2H3V5zm0 6h18v2H3v-2zm0 6h10v2H3v-2z" />
-          </svg>
-          <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-sky-100 to-sky-400 drop-shadow">
-            スタメン設定
-          </span>
-        </h1>
+        <div className="inline-flex items-center gap-2">
+          <h1 className="inline-flex items-center gap-2 text-3xl font-extrabold tracking-wide leading-tight">
+            <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+              <path d="M3 5h18v2H3V5zm0 6h18v2H3v-2zm0 6h10v2H3v-2z" />
+            </svg>
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-sky-100 to-sky-400 drop-shadow">
+              スタメン設定
+            </span>
+          </h1>
+
+          <button
+            type="button"
+            onClick={() => setShowHelp(true)}
+            className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-white/15 border border-white/20 text-white font-extrabold text-lg shadow hover:bg-white/25 active:scale-95"
+            aria-label="使い方を表示"
+            title="使い方"
+          >
+            ？
+          </button>
+        </div>
         <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
         <div className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-red-100 border border-red-300">
           <span className="text-sm font-extrabold text-red-600">
@@ -1772,54 +1914,162 @@ useEffect(() => {
                   <div className="flex items-center gap-2 flex-nowrap">
                     <span className="w-10 font-bold">{i + 1}番</span>
 
-                    <span
-                      data-role="poslabel"
-                      data-player-id={entry?.id ?? ""}
-                      className={`w-28 md:w-24 px-1 rounded select-none text-center whitespace-nowrap shrink-0 touch-none
-                        ${
-                          hoverOrderPlayerId === hoverKey && dragKind === "swapPos"
-                            ? "ring-2 ring-emerald-400 bg-emerald-500/20"
-                            : "bg-white/10 border border-white/10"
-                        }
-                        ${entry && pos ? "cursor-move" : "cursor-default"}`}
-                      title={
-                        entry
-                          ? pos
-                            ? "この守備を他の行と入替"
-                            : "守備なし"
-                          : "未設定"
-                      }
-                      draggable={!!entry && !!pos}
-                      onDragStart={(e) => {
-                        if (!entry || !pos) return;
-                        handlePosDragStart(e, entry.id);
-                      }}
-                      onDragOver={(e) => {
-                        if (!entry) return;
-                        allowDrop(e);
-                        setHoverOrderPlayerId(hoverKey);
-                      }}
-                      onDrop={(e) => {
-                        if (!entry) return;
-                        handleDropToPosSpan(e, entry.id);
-                        setHoverOrderPlayerId(null);
-                      }}
-                      onDragEnter={(e) => {
-                        if (!entry) return;
-                        allowDrop(e);
-                        setHoverOrderPlayerId(hoverKey);
-                      }}
-                      onDragLeave={() =>
-                        setHoverOrderPlayerId((v) => (v === hoverKey ? null : v))
-                      }
-                      onTouchStart={(ev) => {
-                        ev.stopPropagation();
-                        if (!entry || !pos) return;
-                        setTouchDrag({ playerId: entry.id });
-                      }}
-                    >
-                      {entry ? (displayPos ? positionNames[displayPos] : "未設定") : "未設定"}
-                    </span>
+<div className="relative flex items-center shrink-0">
+  <span
+    data-role="poslabel"
+    data-player-id={entry?.id ?? ""}
+    className={`w-24 md:w-24 px-1 rounded-l select-none text-center whitespace-nowrap touch-none
+      ${
+        hoverOrderPlayerId === hoverKey && dragKind === "swapPos"
+          ? "ring-2 ring-emerald-400 bg-emerald-500/20"
+          : "bg-white/10 border border-white/10"
+      }
+      ${entry && pos ? "cursor-move" : "cursor-default"}`}
+    title={
+      entry
+        ? pos
+          ? "この守備を他の行と入替"
+          : "守備なし"
+        : "未設定"
+    }
+    draggable={!!entry && !!pos}
+    onDragStart={(e) => {
+      if (!entry || !pos) return;
+      handlePosDragStart(e, entry.id);
+    }}
+    onDragOver={(e) => {
+      if (!entry) return;
+      allowDrop(e);
+      setHoverOrderPlayerId(hoverKey);
+    }}
+    onDrop={(e) => {
+      if (!entry) return;
+      handleDropToPosSpan(e, entry.id);
+      setHoverOrderPlayerId(null);
+    }}
+    onDragEnter={(e) => {
+      if (!entry) return;
+      allowDrop(e);
+      setHoverOrderPlayerId(hoverKey);
+    }}
+    onDragLeave={() =>
+      setHoverOrderPlayerId((v) => (v === hoverKey ? null : v))
+    }
+    onTouchStart={(ev) => {
+      ev.stopPropagation();
+      if (!entry || !pos) return;
+      setTouchDrag({ playerId: entry.id });
+    }}
+  >
+    {entry ? (displayPos ? positionNames[displayPos] : "未設定") : "未設定"}
+  </span>
+
+  <button
+    type="button"
+    className={`w-8 px-0 rounded-r border border-l-0 text-sm font-bold
+      ${
+        openPosMenuIndex === i
+          ? "bg-emerald-500/20 border-emerald-400 text-emerald-200"
+          : "bg-white/10 border-white/10 text-white"
+      }`}
+    onClick={(e) => {
+      e.stopPropagation();
+      if (!entry) return;
+      setOpenPosMenuIndex((prev) => (prev === i ? null : i));
+    }}
+    title="守備位置を選択"
+  >
+    ▼
+  </button>
+
+{entry && openPosMenuIndex === i && (
+  <>
+    {/* 背景オーバーレイ：下のボタンへのタップ貫通を防ぐ */}
+    <div
+      className="fixed inset-0 z-[80]"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setOpenPosMenuIndex(null);
+      }}
+      onTouchStart={(e) => {
+        e.stopPropagation();
+      }}
+      onTouchEnd={(e) => {
+        e.stopPropagation();
+      }}
+    />
+
+    {/* 守備位置リスト本体 */}
+    <div
+      className="absolute left-0 top-full z-[90] mt-1 w-44 max-h-64 overflow-y-auto rounded-xl border border-white/10 bg-gray-900 shadow-2xl"
+      onClick={(e) => {
+        e.stopPropagation();
+      }}
+      onTouchStart={(e) => {
+        e.stopPropagation();
+      }}
+      onTouchMove={(e) => {
+        e.stopPropagation();
+      }}
+      onTouchEnd={(e) => {
+        e.stopPropagation();
+      }}
+    >
+      {selectablePositionKeys.map((posKey) => (
+        <button
+          key={posKey}
+          type="button"
+          className={`w-full px-3 py-3 text-left text-sm border-b border-white/10 last:border-b-0
+            ${
+              (displayPos ?? "") === posKey
+                ? "bg-emerald-500/20 text-emerald-200 font-bold"
+                : "bg-transparent text-white"
+            }`}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            changePositionByBattingIndex(i, posKey);
+          }}
+          onTouchStart={(e) => {
+            e.stopPropagation();
+            const t = e.changedTouches[0];
+            (e.currentTarget as HTMLButtonElement).dataset.touchStartX = String(t.clientX);
+            (e.currentTarget as HTMLButtonElement).dataset.touchStartY = String(t.clientY);
+            (e.currentTarget as HTMLButtonElement).dataset.touchMoved = "0";
+          }}
+          onTouchMove={(e) => {
+            e.stopPropagation();
+            const btn = e.currentTarget as HTMLButtonElement;
+            const t = e.changedTouches[0];
+            const sx = Number(btn.dataset.touchStartX ?? "0");
+            const sy = Number(btn.dataset.touchStartY ?? "0");
+            const dx = Math.abs(t.clientX - sx);
+            const dy = Math.abs(t.clientY - sy);
+
+            if (dx > 8 || dy > 8) {
+              btn.dataset.touchMoved = "1";
+            }
+          }}
+          onTouchEnd={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const btn = e.currentTarget as HTMLButtonElement;
+            const moved = btn.dataset.touchMoved === "1";
+
+            if (moved) return; // スクロール扱いなら選択しない
+
+            changePositionByBattingIndex(i, posKey);
+          }}
+        >
+          {positionNames[posKey]}
+        </button>
+      ))}
+    </div>
+  </>
+)}
+</div>
 
                     {player ? (
                       <>
@@ -1902,6 +2152,78 @@ useEffect(() => {
                   YES
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 使い方モーダル */}
+      {showHelp && (
+        <div
+          className="fixed inset-0 z-[1050] flex items-center justify-center bg-black/60 px-6"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setShowHelp(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+            role="document"
+          >
+            <div className="bg-blue-600 text-white text-center font-bold py-3">
+              スタメン設定の使い方
+            </div>
+
+            <div className="px-5 py-5 text-[15px] leading-relaxed">
+              <div className="rounded-2xl bg-white border border-gray-200 px-4 py-4 space-y-4">
+                <div className="font-bold text-gray-900 text-[16px]">
+                  設定方法は、2種類あります
+                </div>
+
+                <div className="rounded-2xl bg-sky-100 border-2 border-sky-300 px-4 py-4 shadow-sm">
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="shrink-0 w-8 h-8 rounded-full bg-sky-600 text-white font-extrabold text-base flex items-center justify-center">
+                        ①
+                      </div>
+                      <div className="pt-0.5 font-extrabold text-sky-900 text-[17px] leading-snug">
+                        「フィールド」に選手を長押しして配置する
+                      </div>
+                    </div>
+
+                    <div className="w-full rounded-xl bg-white/80 border border-sky-200 px-3 py-2 text-[13px] text-slate-800 font-semibold leading-relaxed">
+                      フィールドに配置した順番で打順になります
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-sky-100 border-2 border-sky-300 px-4 py-4 shadow-sm">
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="shrink-0 w-8 h-8 rounded-full bg-sky-600 text-white font-extrabold text-base flex items-center justify-center">
+                        ②
+                      </div>
+                      <div className="pt-0.5 font-extrabold text-sky-900 text-[17px] leading-snug">
+                        「打順」に選手を長押しして配置する
+                      </div>
+                    </div>
+
+                    <div className="w-full rounded-xl bg-white/80 border border-sky-200 px-3 py-2 text-[13px] text-slate-800 font-semibold leading-relaxed space-y-1">
+                      <div>打順、守備位置は入れ替え可能です</div>
+                      <div>守備位置の選択も可能です</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 pb-5">
+              <button
+                className="w-full py-3 rounded-full bg-blue-600 text-white font-semibold hover:bg-blue-700 active:bg-blue-800"
+                onClick={() => setShowHelp(false)}
+              >
+                閉じる
+              </button>
             </div>
           </div>
         </div>

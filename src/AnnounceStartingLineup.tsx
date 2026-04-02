@@ -219,6 +219,13 @@ const AnnounceStartingLineup: React.FC<{
   const lineupEntries = battingOrder.slice(0, 9);
   const myBenchSide = benchSide || "1塁側";
 
+  const benchPlayers = teamPlayers.filter(
+    (p) =>
+      !startingIds.includes(p.id) &&
+      !benchOutIds.includes(p.id) &&
+      !(shouldAnnouncePitcher && p.id === pitcherId)
+  );
+
   /* === 画面に見えている文言をそのまま読む（rubyはrtを採用） === */
   const getVisibleAnnounceText = (): string => {
     const root = announceBoxRef.current;
@@ -399,29 +406,22 @@ const AnnounceStartingLineup: React.FC<{
           })()}
 
           {/* 控え */}
-          {!isBoys && (
+          {!isBoys && benchPlayers.length > 0 && (
             <>
               <p className="mt-3 text-white">ベンチ入りの選手をお知らせいたします。</p>
               <div className="mt-1 space-y-1">
-                {teamPlayers
-                  .filter((p) =>
-                    !startingIds.includes(p.id) &&
-                    !benchOutIds.includes(p.id) &&
-                    !(shouldAnnouncePitcher && p.id === pitcherId)
-                  )
-                  .map((p) => {
-                    const num = (p.number ?? "").trim();
-                    return (
-                      <p key={p.id} className="text-white whitespace-pre-wrap leading-relaxed">
-                        {renderFullName(p)}{getHonorific(p)}
-                        {num ? `、背番号${num}、` : "、"}
-                      </p>
-                    );
-                  })}
+                {benchPlayers.map((p) => {
+                  const num = (p.number ?? "").trim();
+                  return (
+                    <p key={p.id} className="text-white whitespace-pre-wrap leading-relaxed">
+                      {renderFullName(p)}{getHonorific(p)}
+                      {num ? `、背番号${num}、` : "、"}
+                    </p>
+                  );
+                })}
               </div>
             </>
           )}
-
 
           {/* 審判（後攻時に続けて告知） */}
           {!isHomeTeamFirstAttack && (
