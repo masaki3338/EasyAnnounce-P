@@ -902,75 +902,202 @@ return (
     
     {/* 使い方モーダル */}
     {showHelpModal && (
+      <div
+        className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/50 px-3 py-3"
+        role="dialog"
+        aria-modal="true"
+        onClick={() => setShowHelpModal(false)}
+      >
         <div
-          className="fixed inset-0 z-[9998] flex items-center justify-center bg-black px-4 py-4"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setShowHelpModal(false)}
-        >
-        <div
-          className="w-full max-w-2xl rounded-2xl bg-gradient-to-b from-gray-900 to-gray-850 text-white shadow-2xl border border-white/10 overflow-hidden"
+          className="w-full max-w-[460px] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
           onClick={(e) => e.stopPropagation()}
           role="document"
         >
-          <div className="px-5 py-4 bg-blue-600 text-white font-bold text-center text-lg">
-            試合情報入力の使い方
-          </div>
-
-          <div className="px-5 py-5 space-y-4 text-sm leading-relaxed">
-            <div>
-              <div className="font-bold text-base text-blue-200">・大会名を入力</div>
-              <div className="mt-1 text-white/90">
-                一度登録されたものは選択できます。<br />
-                登録されたものを編集もできます（数字だけ変更など）。<br />
-                「練習試合」ボタンを押すと「練習試合」と入力されます。
-              </div>
+          {/* ヘッダー */}
+          <div className="flex items-center justify-between bg-sky-600 px-4 py-3 text-white">
+            <div className="flex items-center gap-2">
+              <span className="text-[18px] leading-none">❓</span>
+              <h2 className="text-[18px] font-extrabold leading-tight tracking-[0.01em]">
+                試合情報入力の使い方
+              </h2>
             </div>
 
-            <div>
-              <div className="font-bold text-base text-blue-200">・何試合目、次試合があるかを選択</div>
-            </div>
-
-            <div>
-              <div className="font-bold text-base text-blue-200">・相手チームを入力</div>
-              <div className="mt-1 text-white/90">
-                ふりがなはルビ表示、機械読み上げに使用されます。
-              </div>
-            </div>
-
-            <div>
-              <div className="font-bold text-base text-blue-200">・先攻/後攻、1塁側、3塁側を選択</div>
-              <div className="mt-1 text-white/90">
-                第1試合の1塁側が選択された場合のみ【メンバー交換】ボタンが表示されます。<br />
-                <span className="text-white/70 text-xs">
-                  ※ ボーイズリーグモードでは表示されません。
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <div className="font-bold text-base text-blue-200">・審判の名前を入力</div>
-              <div className="mt-1 text-white/90">
-                後攻チームのみ必要になりますので、先攻であれば入力不要です。<br />
-                ふりがなはルビ表示、機械読み上げに使用されます。
-              </div>
-            </div>
-
-            <div className="pt-2 border-t border-white/10">
-              <div className="font-bold text-base text-emerald-300">
-                全て入力したら【保存する】ボタンを押して保存してください。
-              </div>
-              <div className="mt-2 font-bold text-base text-amber-300">
-                【スタメン設定】ボタンを押して出場選手を設定して下さい。
-              </div>
-            </div>
-          </div>
-
-          <div className="px-5 pb-5">
             <button
               type="button"
               onClick={() => setShowHelpModal(false)}
-              className="w-full py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-semibold active:scale-95"
+              aria-label="閉じる"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-[18px] font-bold text-white transition hover:bg-white/30 active:scale-95"
+            >
+              ×
+            </button>
+          </div>
+
+          {/* 本文 */}
+          <div className="max-h-[72svh] overflow-y-auto bg-white px-3 py-3">
+            <div className="space-y-3">
+              {/* 上部説明 */}
+              <div className="rounded-[16px] border border-sky-200 bg-sky-50 px-3 py-3">
+                <p className="text-[13px] font-semibold leading-5 text-slate-800">
+                  この画面では、試合に必要な情報を入力します。
+                </p>
+
+                <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-center">
+                  <div className="text-[11px] font-semibold tracking-[0.02em] text-slate-500">
+                    使い方はこの順番です
+                  </div>
+                  <div className="mt-1 text-[13px] font-bold leading-5 text-rose-500">
+                    ①試合情報を入力 → ②【保存する】→ ③【スタメン設定】へ進む
+                  </div>
+                </div>
+              </div>
+
+              {/* 1 */}
+              <div className="rounded-[16px] border border-emerald-200 bg-white px-3 py-3 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-[12px] font-bold text-white shadow-sm">
+                    1
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-[15px] font-extrabold leading-tight text-emerald-700">
+                      大会名を入力
+                    </h3>
+                    <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                      大会名を入力します。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      一度登録した大会名は、次回から選んで使えます。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      登録済みの大会名は編集もできます。
+                      <br />
+                      例：数字だけ変更する など
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      <span className="font-bold text-sky-700">【練習試合】</span>
+                      ボタンを押すと、「練習試合」と入力されます。
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2 */}
+              <div className="rounded-[16px] border border-sky-200 bg-white px-3 py-3 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-500 text-[12px] font-bold text-white shadow-sm">
+                    2
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-[15px] font-extrabold leading-tight text-sky-700">
+                      試合順などを選択
+                    </h3>
+                    <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                      何試合目か、次の試合があるかを選びます。
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3 */}
+              <div className="rounded-[16px] border border-violet-200 bg-white px-3 py-3 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-500 text-[12px] font-bold text-white shadow-sm">
+                    3
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-[15px] font-extrabold leading-tight text-violet-700">
+                      相手チームを入力
+                    </h3>
+                    <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                      相手チーム名を入力します。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      ふりがなは、画面のルビ表示と機械読み上げに使われます。
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4 */}
+              <div className="rounded-[16px] border border-amber-200 bg-white px-3 py-3 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500 text-[12px] font-bold text-white shadow-sm">
+                    4
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-[15px] font-extrabold leading-tight text-amber-700">
+                      先攻／後攻・1塁側／3塁側を選択
+                    </h3>
+                    <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                      先攻／後攻と、1塁側／3塁側を選びます。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      第1試合で1塁側を選んだ場合のみ、
+                      <span className="font-bold text-sky-700">【メンバー交換】</span>
+                      ボタンが表示されます。
+                    </p>
+                    <p className="mt-1 text-[12.5px] leading-5 text-slate-600">
+                      ※ ボーイズリーグモードでは表示されません。
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 5 */}
+              <div className="rounded-[16px] border border-rose-200 bg-white px-3 py-3 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-rose-500 text-[12px] font-bold text-white shadow-sm">
+                    5
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-[15px] font-extrabold leading-tight text-rose-700">
+                      審判名を入力
+                    </h3>
+                    <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                      審判の名前を入力します。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      後攻チームのときだけ必要です。
+                      先攻の場合は入力不要です。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      ふりがなは、画面のルビ表示と機械読み上げに使われます。
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 6 */}
+              <div className="rounded-[16px] border border-emerald-200 bg-emerald-50 px-3 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[12px] font-bold text-white">
+                    6
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-[15px] font-extrabold leading-tight text-emerald-700">
+                      入力が終わったら保存
+                    </h3>
+                    <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                      すべて入力したら、
+                      <span className="font-bold text-emerald-700">【保存する】</span>
+                      ボタンを押して保存します。
+                    </p>
+                    <p className="mt-1 text-[13px] font-bold leading-5 text-rose-500">
+                      その後、
+                      <span className="text-emerald-700">【スタメン設定】</span>
+                      ボタンを押して出場選手を設定してください。
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* フッター */}
+          <div className="bg-white px-3 pb-3 pt-1">
+            <button
+              type="button"
+              onClick={() => setShowHelpModal(false)}
+              className="w-full rounded-2xl bg-emerald-600 py-3 text-[15px] font-bold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.98]"
             >
               OK
             </button>
@@ -978,6 +1105,7 @@ return (
         </div>
       </div>
     )}
+    
   </div>
 );
 

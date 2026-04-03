@@ -2160,75 +2160,171 @@ const selectablePositionKeys = [...positions, DH];
       {/* 使い方モーダル */}
       {showHelp && (
         <div
-          className="fixed inset-0 z-[1050] flex items-center justify-center bg-black/60 px-6"
+          className="fixed inset-0 z-[1050] flex items-center justify-center bg-black/50 px-3 py-3"
           role="dialog"
           aria-modal="true"
           onClick={() => setShowHelp(false)}
         >
           <div
-            className="w-full max-w-md rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+            className="w-full max-w-[460px] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
             onClick={(e) => e.stopPropagation()}
             role="document"
           >
-            <div className="bg-blue-600 text-white text-center font-bold py-3">
-              スタメン設定の使い方
+            {/* ヘッダー */}
+            <div className="flex items-center justify-between bg-sky-600 px-4 py-3 text-white">
+              <div className="flex items-center gap-2">
+                <span className="text-[18px] leading-none">❓</span>
+                <h2 className="text-[18px] font-extrabold leading-tight tracking-[0.01em]">
+                  スタメン設定の使い方
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowHelp(false)}
+                aria-label="閉じる"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-[18px] font-bold text-white transition hover:bg-white/30 active:scale-95"
+              >
+                ×
+              </button>
             </div>
 
-            <div className="px-5 py-5 text-[15px] leading-relaxed">
-              <div className="rounded-2xl bg-white border border-gray-200 px-4 py-4 space-y-4">
-                <div className="font-bold text-gray-900 text-[16px]">
-                  設定方法は、2種類あります
-                </div>
+            {/* 本文 */}
+            <div className="max-h-[72svh] overflow-y-auto bg-white px-3 py-3">
+              <div className="space-y-3">
+                {/* 上部説明 */}
+                <div className="rounded-[16px] border border-sky-200 bg-sky-50 px-3 py-3">
+                  <p className="text-[13px] font-semibold leading-5 text-slate-800">
+                    この画面では、選手をスタメン・ベンチ入り・出場しない選手に振り分けて、
+                    スタメンを設定します。
+                  </p>
 
-                <div className="rounded-2xl bg-sky-100 border-2 border-sky-300 px-4 py-4 shadow-sm">
-                  <div className="space-y-3">
-                    <div className="flex items-start gap-3">
-                      <div className="shrink-0 w-8 h-8 rounded-full bg-sky-600 text-white font-extrabold text-base flex items-center justify-center">
-                        ①
-                      </div>
-                      <div className="pt-0.5 font-extrabold text-sky-900 text-[17px] leading-snug">
-                        「フィールド」に選手を長押しして配置する
-                      </div>
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+                    <div className="text-[11px] font-semibold tracking-[0.02em] text-slate-500">
+                      まず確認すること
                     </div>
-
-                    <div className="w-full rounded-xl bg-white/80 border border-sky-200 px-3 py-2 text-[13px] text-slate-800 font-semibold leading-relaxed">
-                      フィールドに配置した順番で打順になります
+                    <div className="mt-1 text-[13px] font-bold leading-5 text-rose-500">
+                      フィールド配置図と打順は連動しています
                     </div>
                   </div>
                 </div>
 
-                <div className="rounded-2xl bg-sky-100 border-2 border-sky-300 px-4 py-4 shadow-sm">
-                  <div className="space-y-3">
-                    <div className="flex items-start gap-3">
-                      <div className="shrink-0 w-8 h-8 rounded-full bg-sky-600 text-white font-extrabold text-base flex items-center justify-center">
-                        ②
-                      </div>
-                      <div className="pt-0.5 font-extrabold text-sky-900 text-[17px] leading-snug">
-                        「打順」に選手を長押しして配置する
-                      </div>
+                {/* 1 */}
+                <div className="rounded-[16px] border border-emerald-200 bg-white px-3 py-3 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-[12px] font-bold text-white shadow-sm">
+                      1
                     </div>
-
-                    <div className="w-full rounded-xl bg-white/80 border border-sky-200 px-3 py-2 text-[13px] text-slate-800 font-semibold leading-relaxed space-y-1">
-                      <div>打順、守備位置は入れ替え可能です</div>
-                      <div>守備位置の選択も可能です</div>
+                    <div className="min-w-0">
+                      <h3 className="text-[15px] font-extrabold leading-tight text-emerald-700">
+                        選手を振り分ける
+                      </h3>
+                      <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                        選手を次の3つに振り分けます。
+                      </p>
+                      <div className="mt-2 space-y-1 text-[13px] leading-5 text-slate-700">
+                        <p>・スタメン選手</p>
+                        <p>・ベンチ入り選手</p>
+                        <p>・出場しない選手（ベンチ入りしない選手）</p>
+                      </div>
                     </div>
                   </div>
+                </div>
+
+                {/* 2 */}
+                <div className="rounded-[16px] border border-sky-200 bg-white px-3 py-3 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-500 text-[12px] font-bold text-white shadow-sm">
+                      2
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-[15px] font-extrabold leading-tight text-sky-700">
+                        スタメンの設定方法は2通り
+                      </h3>
+
+                      <div className="mt-2 space-y-3">
+                        <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-3">
+                          <div className="text-[13px] font-bold leading-5 text-sky-900">
+                            ① 「フィールド配置図」に選手を長押しして守備位置に配置する
+                          </div>
+                          <p className="mt-2 text-[12.5px] leading-5 text-slate-700">
+                            ※ 配置した順番で打順になります。
+                          </p>
+                        </div>
+
+                        <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-3">
+                          <div className="text-[13px] font-bold leading-5 text-sky-900">
+                            ② 「打順」に選手を長押しして配置する
+                          </div>
+                          <p className="mt-2 text-[12.5px] leading-5 text-slate-700">
+                            打順、守備位置は長押しして入れ替えできます。
+                          </p>
+                          <p className="mt-1 text-[12.5px] leading-5 text-slate-700">
+                            守備位置は、守備位置のリストから変更することもできます。
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3 */}
+                <div className="rounded-[16px] border border-violet-200 bg-white px-3 py-3 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-500 text-[12px] font-bold text-white shadow-sm">
+                      3
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-[15px] font-extrabold leading-tight text-violet-700">
+                        ボタンの使い方
+                      </h3>
+
+                      <div className="mt-2 space-y-3 text-[13px] leading-5 text-slate-700">
+                        <div>
+                          <div className="font-bold text-slate-900">【保存する】ボタン</div>
+                          <p className="mt-1">
+                            入力した内容が保存されます。
+                          </p>
+                        </div>
+
+                        <div>
+                          <div className="font-bold text-slate-900">【クリア】ボタン</div>
+                          <p className="mt-1">
+                            クリアしてよいかのメッセージが表示され、
+                            <span className="font-bold text-rose-500">「YES」</span>
+                            を押すとクリアされます。
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 補足 */}
+                <div className="rounded-[16px] border border-amber-200 bg-amber-50 px-3 py-3">
+                  <p className="text-[12.5px] font-semibold leading-5 text-amber-800">
+                    スタメン設定は、
+                    <span className="font-bold">フィールド配置図からでも打順からでも</span>
+                    行えます。使いやすい方法で設定してください。
+                  </p>
                 </div>
               </div>
             </div>
 
-            <div className="px-5 pb-5">
+            {/* フッター */}
+            <div className="bg-white px-3 pb-3 pt-1">
               <button
-                className="w-full py-3 rounded-full bg-blue-600 text-white font-semibold hover:bg-blue-700 active:bg-blue-800"
+                type="button"
                 onClick={() => setShowHelp(false)}
+                className="w-full rounded-2xl bg-emerald-600 py-3 text-[15px] font-bold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.98]"
               >
-                閉じる
+                OK
               </button>
             </div>
           </div>
         </div>
       )}
-
+      
       {/* 未保存確認モーダル */}
       {showLeaveConfirm && (
         <div

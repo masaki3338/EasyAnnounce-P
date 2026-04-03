@@ -430,88 +430,213 @@ const saveTeam = async () => {
   </div>
 </div>
 
-    {/* 使い方モーダル */}          
-    {showHelpModal && (
-      <div
-        className="fixed inset-0 z-[9998] flex items-center justify-center bg-black px-4 py-4"
-        role="dialog"
-        aria-modal="true"
-        onClick={() => setShowHelpModal(false)}
-      >
-        <div
-          className="w-full max-w-2xl rounded-2xl bg-gray-900 text-white shadow-2xl border border-white/15 overflow-hidden"
-          onClick={(e) => e.stopPropagation()}
-          role="document"
-        >
-          <div className="px-5 py-4 bg-sky-600 text-white font-bold text-center text-lg">
+{/* 使い方モーダル */}
+{showHelpModal && (
+  <div
+    className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/50 px-3 py-3"
+    role="dialog"
+    aria-modal="true"
+    onClick={() => setShowHelpModal(false)}
+  >
+    <div
+      className="w-full max-w-[460px] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
+      onClick={(e) => e.stopPropagation()}
+      role="document"
+    >
+      {/* ヘッダー */}
+      <div className="flex items-center justify-between bg-sky-600 px-4 py-3 text-white">
+        <div className="flex items-center gap-2">
+          <span className="text-[18px] leading-none">❓</span>
+          <h2 className="text-[18px] font-extrabold leading-tight tracking-[0.01em]">
             チーム／選手登録の使い方
-          </div>
+          </h2>
+        </div>
 
-          <div className="px-5 py-5 space-y-4 text-sm leading-relaxed bg-gray-950">
-            <div>
-              <div className="font-bold text-base text-sky-200">・チーム名を入力</div>
-              <div className="mt-1 text-white/90">
-                ふりがなはルビ表示、機械読み上げに使用されます。
+        <button
+          type="button"
+          onClick={() => setShowHelpModal(false)}
+          aria-label="閉じる"
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-[18px] font-bold text-white transition hover:bg-white/30 active:scale-95"
+        >
+          ×
+        </button>
+      </div>
+
+      {/* 本文 */}
+      <div className="max-h-[72svh] overflow-y-auto bg-white px-3 py-3">
+        <div className="space-y-3">
+          {/* 上部説明 */}
+          <div className="rounded-[16px] border border-sky-200 bg-sky-50 px-3 py-3">
+            <p className="text-[13px] font-semibold leading-5 text-slate-800">
+              この画面では、チーム名と選手を登録します。
+            </p>
+
+            <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-center">
+              <div className="text-[11px] font-semibold tracking-[0.02em] text-slate-500">
+                使い方はこの順番です
               </div>
-            </div>
-
-            <div>
-              <div className="font-bold text-base text-sky-200">・選手を追加</div>
-              <div className="mt-1 text-white/90">
-                ふりがなはルビ表示、機械読み上げに使用されます。<br />
-                女子選手の場合、女子選手にチェックをしてください。<br />
-                （"くん" から "さん" になります）<br />
-                入力後に【追加】ボタンを押すと登録されます。
-              </div>
-            </div>
-
-            <div>
-              <div className="font-bold text-base text-sky-200">・登録済選手の編集</div>
-              <div className="mt-1 text-white/90">
-                選手名の【編集】ボタンを押すと現在の選手情報が表示されるので、
-                変更したい項目を入力してください。<br />
-                【更新】ボタンを押すと更新されます。
-              </div>
-            </div>
-
-            <div>
-              <div className="font-bold text-base text-sky-200">・登録済選手の削除</div>
-              <div className="mt-1 text-white/90">
-                選手名の【削除】ボタンを押すと「削除していいですか？」のメッセージが表示され、
-                【OK】を押すと削除されます。
-              </div>
-            </div>
-
-            <div>
-              <div className="font-bold text-base text-sky-200">・バックアップ</div>
-              <div className="mt-1 text-white/90">
-                現在、登録されているチーム、選手のバックアップが出来ます。<br />
-                [日付、時間.json] の名前で保存されます。<br />
-                必要に応じて、保存場所、名称を変更してください。
-              </div>
-            </div>
-
-            <div>
-              <div className="font-bold text-base text-sky-200">・復元</div>
-              <div className="mt-1 text-white/90">
-                復元したいファイルを選択することで、
-                バックアップしたファイルを読み込み復元することが出来ます。
+              <div className="mt-1 text-[13px] font-bold leading-5 text-rose-500">
+                ①チーム名を登録 → ②選手を追加 → ③必要に応じて編集・バックアップ
               </div>
             </div>
           </div>
 
-          <div className="px-5 pb-5">
-            <button
-              type="button"
-              onClick={() => setShowHelpModal(false)}
-              className="w-full py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-semibold active:scale-95"
-            >
-              OK
-            </button>
+          {/* 1 */}
+          <div className="rounded-[16px] border border-emerald-200 bg-white px-3 py-3 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-[12px] font-bold text-white shadow-sm">
+                1
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-[15px] font-extrabold leading-tight text-emerald-700">
+                  チーム名を登録
+                </h3>
+                <p className="mt-1.5 text-[13px] font-normal leading-5 text-slate-700">
+                  チーム名を入力します。
+                </p>
+                <p className="mt-1 text-[13px] font-normal leading-5 text-slate-700">
+                  ふりがなは、
+                  <br />
+                  ・画面のルビ表示
+                  <br />
+                  ・アナウンスの読み上げ
+                  <br />
+                  に使われます。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* 2 */}
+          <div className="rounded-[16px] border border-sky-200 bg-white px-3 py-3 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-500 text-[12px] font-bold text-white shadow-sm">
+                2
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-[15px] font-extrabold leading-tight text-sky-700">
+                  選手を追加
+                </h3>
+
+                <div className="mt-2 space-y-1 text-[13px] leading-5 text-slate-700">
+                  <p>① 選手名・ふりがな・背番号を入力</p>
+                  <p>
+                    ②{" "}
+                    <span className="font-bold text-emerald-700">
+                      【追加】
+                    </span>
+                    ボタンを押す
+                  </p>
+                  <p className="font-bold text-rose-500">
+                    → 選手が登録されます
+                  </p>
+                </div>
+
+                <p className="mt-2 text-[12.5px] leading-5 text-slate-600">
+                  ※ ふりがなはルビ表示と読み上げに使用されます。
+                </p>
+                <p className="mt-1 text-[12.5px] leading-5 text-slate-600">
+                  ※ 女子選手にチェックを入れると、呼び方が
+                  「くん」→「さん」になります。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* 3 */}
+          <div className="rounded-[16px] border border-violet-200 bg-white px-3 py-3 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-500 text-[12px] font-bold text-white shadow-sm">
+                3
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-[15px] font-extrabold leading-tight text-violet-700">
+                  登録後にできること
+                </h3>
+
+                <div className="mt-2 space-y-3 text-[13px] leading-5 text-slate-700">
+                  <div>
+                    <div className="font-bold text-slate-900">【編集】</div>
+                    <p className="mt-1">
+                      ①{" "}
+                      <span className="font-bold text-sky-700">【編集】</span>
+                      ボタンを押す
+                      <br />
+                      ② 内容を変更する
+                      <br />
+                      ③{" "}
+                      <span className="font-bold text-sky-700">【更新】</span>
+                      ボタンを押す
+                      <br />
+                      <span className="font-bold text-rose-500">
+                        → 情報が更新されます
+                      </span>
+                    </p>
+                  </div>
+
+                  <div>
+                    <div className="font-bold text-slate-900">【削除】</div>
+                    <p className="mt-1">
+                      ①{" "}
+                      <span className="font-bold text-red-600">【削除】</span>
+                      ボタンを押す
+                      <br />
+                      ② 確認メッセージで【OK】を押す
+                      <br />
+                      <span className="font-bold text-rose-500">
+                        → 選手が削除されます
+                      </span>
+                    </p>
+                  </div>
+
+                  <div>
+                    <div className="font-bold text-slate-900">【バックアップ】</div>
+                    <p className="mt-1">
+                      ① バックアップを実行する
+                      <br />
+                      <span className="font-bold text-rose-500">
+                        → 登録データが保存されます
+                      </span>
+                      <br />
+                      ファイル名：日付・時間.json
+                    </p>
+                  </div>
+
+                  <div>
+                    <div className="font-bold text-slate-900">【復元】</div>
+                    <p className="mt-1">
+                      ① 復元したいファイルを選ぶ
+                      <br />
+                      <span className="font-bold text-rose-500">
+                        → バックアップ内容が復元されます
+                      </span>
+                    </p>
+                  </div>
+                </div>
+
+                <p className="mt-3 text-[12px] font-semibold leading-5 text-emerald-700">
+                  ※ 一度登録すれば、毎回入力する必要はありません。
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    )}
+
+      {/* フッター */}
+      <div className="bg-white px-3 pb-3 pt-1">
+        <button
+          type="button"
+          onClick={() => setShowHelpModal(false)}
+          className="w-full rounded-2xl bg-emerald-600 py-3 text-[15px] font-bold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.98]"
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
     </div>
   );
 };

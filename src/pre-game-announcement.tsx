@@ -294,57 +294,170 @@ const handleStepClick = async (s: typeof steps[number]) => {
       {/* 使い方モーダル */}
       {showHelp && (
         <div
-          className="fixed inset-0 z-[1050] flex items-center justify-center bg-black/60 px-6"
+          className="fixed inset-0 z-[1050] flex items-center justify-center bg-black/50 px-3 py-3"
           role="dialog"
           aria-modal="true"
           onClick={() => setShowHelp(false)}
         >
           <div
-            className="w-full max-w-md rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+            className="w-full max-w-[460px] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
             onClick={(e) => e.stopPropagation()}
             role="document"
           >
-            <div className="bg-blue-600 text-white text-center font-bold py-3">
-              試合前アナウンスの使い方
+            {/* ヘッダー */}
+            <div className="flex items-center justify-between bg-sky-600 px-4 py-3 text-white">
+              <div className="flex items-center gap-2">
+                <span className="text-[18px] leading-none">❓</span>
+                <h2 className="text-[18px] font-extrabold leading-tight tracking-[0.01em]">
+                  試合前アナウンスの使い方
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowHelp(false)}
+                aria-label="閉じる"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-[18px] font-bold text-white transition hover:bg-white/30 active:scale-95"
+              >
+                ×
+              </button>
             </div>
 
-            <div className="px-5 py-5 text-[15px] leading-relaxed">
-              <div className="rounded-2xl bg-white border border-gray-200 px-4 py-4 space-y-4">
-                <div className="rounded-2xl bg-blue-50 border-2 border-blue-300 px-4 py-4">
-                  <div className="font-extrabold text-gray-900 text-[17px] leading-snug">
-                    試合前アナウンスは先攻、後攻で読み上げる項目が違います
-                  </div>
-                </div>
+            {/* 本文 */}
+            <div className="max-h-[72svh] overflow-y-auto bg-white px-3 py-3">
+              <div className="space-y-3">
+                {/* 上部説明 */}
+                <div className="rounded-[16px] border border-sky-200 bg-sky-50 px-3 py-3">
+                  <p className="text-[13px] font-semibold leading-5 text-slate-800">
+                    この画面では、試合前に読み上げる内容を順番に確認してアナウンスします。
+                  </p>
 
-                <div className="rounded-2xl bg-sky-100 border-2 border-sky-300 px-4 py-4 shadow-sm">
-                  <div className="flex items-start gap-2">
-                    <div className="pt-0.5 font-extrabold text-sky-900 text-[16px] leading-snug">
-                      グレー表示されている項目は相手チームの読み上げ項目です
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+                    <div className="text-[11px] font-semibold tracking-[0.02em] text-slate-500">
+                      まず確認すること
+                    </div>
+                    <div className="mt-1 text-[13px] font-bold leading-5 text-rose-500">
+                      項目は、読み上げる順番どおりに番号が振られています
                     </div>
                   </div>
                 </div>
 
-                <div className="rounded-2xl bg-sky-100 border-2 border-sky-300 px-4 py-4 shadow-sm">
-                  <div className="flex items-start gap-2">
-                    <div className="pt-0.5 font-extrabold text-sky-900 text-[16px] leading-snug">
-                      項目は上から読み上げる順番になっています
+                {/* 1 */}
+                <div className="rounded-[16px] border border-emerald-200 bg-white px-3 py-3 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-[12px] font-bold text-white shadow-sm">
+                      1
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-[15px] font-extrabold leading-tight text-emerald-700">
+                        先攻・後攻で項目が異なる
+                      </h3>
+                      <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                        試合前アナウンスは、
+                        <span className="font-bold">先攻と後攻で読み上げる項目が異なります。</span>
+                      </p>
+                      <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                        画面に表示されている項目を確認して、担当する内容を読み上げてください。
+                      </p>
                     </div>
                   </div>
+                </div>
+
+                {/* 2 */}
+                <div className="rounded-[16px] border border-sky-200 bg-white px-3 py-3 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-500 text-[12px] font-bold text-white shadow-sm">
+                      2
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-[15px] font-extrabold leading-tight text-sky-700">
+                        グレーの項目について
+                      </h3>
+                      <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                        グレー表示されている項目は、
+                        <span className="font-bold">相手チームが読み上げる項目</span>
+                        です。
+                      </p>
+                      <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                        ただし、ボタンを押して
+                        <span className="font-bold text-sky-700">
+                          「担当外の確認メッセージ」
+                        </span>
+                        で
+                        <span className="font-bold text-emerald-700">【OK】</span>
+                        を押すと、内容を表示させることができます。
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3 */}
+                <div className="rounded-[16px] border border-violet-200 bg-white px-3 py-3 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-500 text-[12px] font-bold text-white shadow-sm">
+                      3
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-[15px] font-extrabold leading-tight text-violet-700">
+                        表示タイミングに従って読み上げる
+                      </h3>
+                      <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                        各項目は、表示されている
+                        <span className="font-bold">「読み上げタイミング」</span>
+                        に従ってアナウンスしてください。
+                      </p>
+                      <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                        番号順に進めることで、読み上げる順番どおりに確認できます。
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4 */}
+                <div className="rounded-[16px] border border-amber-200 bg-amber-50 px-3 py-3">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500 text-[12px] font-bold text-white">
+                      4
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-[15px] font-extrabold leading-tight text-amber-700">
+                        すべて終わったら
+                      </h3>
+                      <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                        すべての試合前アナウンスが終わったら、
+                        <span className="font-bold">試合開始画面に戻ります。</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 補足 */}
+                <div className="rounded-[16px] border border-slate-200 bg-slate-50 px-3 py-3">
+                  <p className="text-[12.5px] font-semibold leading-5 text-slate-700">
+                    迷ったときは、
+                    <span className="font-bold">番号順</span>
+                    と
+                    <span className="font-bold">読み上げタイミング</span>
+                    を確認すると進めやすくなります。
+                  </p>
                 </div>
               </div>
             </div>
 
-            <div className="px-5 pb-5">
+            {/* フッター */}
+            <div className="bg-white px-3 pb-3 pt-1">
               <button
-                className="w-full py-3 rounded-full bg-blue-600 text-white font-semibold hover:bg-blue-700 active:bg-blue-800"
+                type="button"
                 onClick={() => setShowHelp(false)}
+                className="w-full rounded-2xl bg-emerald-600 py-3 text-[15px] font-bold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.98]"
               >
-                閉じる
+                OK
               </button>
             </div>
           </div>
         </div>
       )}
+
     </div>
   );
 };

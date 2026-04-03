@@ -568,51 +568,151 @@ return (
       </div>
     )}
 
-    {/* ====== 使い方モーダル ====== */}
-    {showHelpModal && (
-      <div
-        className="fixed inset-0 z-[9998] flex items-center justify-center bg-black px-4 py-4"
-        role="dialog"
-        aria-modal="true"
-        onClick={() => setShowHelpModal(false)}
-      >
-        <div
-          className="w-full max-w-xl rounded-2xl bg-gray-900 text-white shadow-2xl border border-white/15 overflow-hidden"
-          onClick={(e) => e.stopPropagation()}
-          role="document"
-        >
-          <div className="px-5 py-4 bg-blue-600 text-white font-bold text-center text-lg">
+{/* ====== 使い方モーダル ====== */}
+{showHelpModal && (
+  <div
+    className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/50 px-3 py-3"
+    role="dialog"
+    aria-modal="true"
+    onClick={() => setShowHelpModal(false)}
+  >
+    <div
+      className="w-full max-w-[460px] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
+      onClick={(e) => e.stopPropagation()}
+      role="document"
+    >
+      {/* ヘッダー */}
+      <div className="flex items-center justify-between bg-sky-600 px-4 py-3 text-white">
+        <div className="flex items-center gap-2">
+          <span className="text-[18px] leading-none">❓</span>
+          <h2 className="text-[18px] font-extrabold leading-tight tracking-[0.01em]">
             試合開始画面の使い方
+          </h2>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowHelpModal(false)}
+          aria-label="閉じる"
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-[18px] font-bold text-white transition hover:bg-white/30 active:scale-95"
+        >
+          ×
+        </button>
+      </div>
+
+      {/* 本文 */}
+      <div className="max-h-[72svh] overflow-y-auto bg-white px-3 py-3">
+        <div className="space-y-3">
+          {/* 上部説明 */}
+          <div className="rounded-[16px] border border-sky-200 bg-sky-50 px-3 py-3">
+            <p className="text-[13px] font-semibold leading-5 text-slate-800">
+              この画面では、試合作成で入力した内容を確認して試合開始へ進みます。
+            </p>
+
+            <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-center">
+              <div className="text-[11px] font-semibold tracking-[0.02em] text-slate-500">
+                使い方はこの順番です
+              </div>
+              <div className="mt-1 text-[13px] font-bold leading-5 text-rose-500">
+                ①内容を確認 → ②【試合前アナウンス】→ ③【試合を開始する】
+              </div>
+            </div>
           </div>
 
-          <div className="px-5 py-5 space-y-4 text-sm leading-relaxed bg-gray-950">
-            <div className="text-white/95">
-              試合作成で入力した内容が表示されるので確認してください。
-            </div>
-
-            <div className="text-white/95 font-bold text-sky-300">
-              問題なければ<br />
-              【試合前アナウンス】ボタンを押してください
-            </div>
-
-            <div className="text-white/95 font-bold text-emerald-300">
-              試合前アナウンスが終了したら<br />
-              【試合を開始する】ボタンを押してください
+          {/* 1 */}
+          <div className="rounded-[16px] border border-emerald-200 bg-white px-3 py-3 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-[12px] font-bold text-white shadow-sm">
+                1
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-[15px] font-extrabold leading-tight text-emerald-700">
+                  試合情報を確認
+                </h3>
+                <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                  試合作成で入力した内容が表示されます。
+                </p>
+                <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                  大会名、相手チーム名、先攻／後攻などに間違いがないか確認してください。
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className="px-5 pb-5">
-            <button
-              type="button"
-              onClick={() => setShowHelpModal(false)}
-              className="w-full py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-semibold active:scale-95"
-            >
-              OK
-            </button>
+          {/* 2 */}
+          <div className="rounded-[16px] border border-sky-200 bg-white px-3 py-3 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-500 text-[12px] font-bold text-white shadow-sm">
+                2
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-[15px] font-extrabold leading-tight text-sky-700">
+                  試合前アナウンスへ進む
+                </h3>
+                <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                  内容に問題がなければ、
+                  <span className="font-bold text-sky-700">
+                    【試合前アナウンス】
+                  </span>
+                  ボタンを押します。
+                </p>
+                <p className="mt-1 text-[13px] font-bold leading-5 text-rose-500">
+                  → 試合前アナウンス画面へ進みます
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* 3 */}
+          <div className="rounded-[16px] border border-violet-200 bg-white px-3 py-3 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-500 text-[12px] font-bold text-white shadow-sm">
+                3
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-[15px] font-extrabold leading-tight text-violet-700">
+                  試合を開始する
+                </h3>
+                <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                  試合前アナウンスが終わったら、
+                  <span className="font-bold text-emerald-700">
+                    【試合を開始する】
+                  </span>
+                  ボタンを押します。
+                </p>
+                <p className="mt-1 text-[13px] font-bold leading-5 text-rose-500">
+                  → 試合が開始されます
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* 補足 */}
+          <div className="rounded-[16px] border border-amber-200 bg-amber-50 px-3 py-3">
+            <p className="text-[12.5px] font-semibold leading-5 text-amber-800">
+              まずは内容を確認し、その後
+              <span className="font-bold">【試合前アナウンス】</span>
+              を行ってから
+              <span className="font-bold">【試合を開始する】</span>
+              を押してください。
+            </p>
           </div>
         </div>
       </div>
-    )}
+
+      {/* フッター */}
+      <div className="bg-white px-3 pb-3 pt-1">
+        <button
+          type="button"
+          onClick={() => setShowHelpModal(false)}
+          className="w-full rounded-2xl bg-emerald-600 py-3 text-[15px] font-bold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.98]"
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
   </div>
 );

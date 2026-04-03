@@ -8122,94 +8122,185 @@ const positionChanged = currentPos !== initialPos;
 {/* 使い方（守備番号交代）モーダル */}
 {showPosNumberHelpModal && (
   <div
-    className="fixed inset-0 z-[1400] flex items-center justify-center bg-black px-3 py-3"
+    className="fixed inset-0 z-[1400] flex items-center justify-center bg-black/50 px-3 py-3"
     role="dialog"
     aria-modal="true"
     onClick={() => setShowPosNumberHelpModal(false)}
   >
     <div
-      className="w-full max-w-xl rounded-xl bg-white text-slate-900 shadow-2xl overflow-hidden"
+      className="w-full max-w-[460px] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
       onClick={(e) => e.stopPropagation()}
       role="document"
     >
-      <div className="px-4 py-3 bg-emerald-600 text-white text-center">
-        <div className="text-base font-extrabold">守備番号交代の使い方</div>
-      </div>
-
-      <div className="px-4 py-4 space-y-3 text-[13px] leading-snug bg-slate-50">
-        <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2">
-          <div className="text-base font-extrabold text-emerald-700">
-            入力は ① → ② → ③ の順です
-          </div>
+      {/* ヘッダー */}
+      <div className="flex items-center justify-between bg-sky-600 px-4 py-3 text-white">
+        <div className="flex items-center gap-2">
+          <span className="text-[18px] leading-none">❓</span>
+          <h2 className="text-[18px] font-extrabold leading-tight tracking-[0.01em]">
+            守備番号交代の使い方
+          </h2>
         </div>
 
-        <div className="rounded-lg bg-white border border-slate-200 px-3 py-2">
-          <div className="font-bold text-slate-900">手書きメモ欄</div>
-          <div className="mt-0.5 text-slate-700">
-            審判に伝えられた内容を書きとめておく自由なエリアです。
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <div className="rounded-lg bg-white border border-sky-200 px-3 py-2">
-            <div className="font-bold text-sky-700">
-              ① [守備番号] を選ぶ
-            </div>
-            <div className="mt-0.5 text-slate-700">
-              交代前の守備番号を選びます。<br />
-              守備位置と選手を確認して選んでください。
-            </div>
-          </div>
-
-          <div className="rounded-lg bg-white border border-amber-200 px-3 py-2">
-            <div className="font-bold text-amber-700">
-              ② [交代] を選ぶ
-            </div>
-            <div className="mt-0.5 text-slate-700">
-              守備位置の入替なら <span className="font-bold">「が」</span>、<br />
-              選手交代なら <span className="font-bold">「に代わりまして」</span> を選びます。<br />
-              <span className="font-bold">「に代わりまして」</span> を選ぶと、
-              <span className="font-bold">[交代内容]</span> の行が追加されるので、<br />
-              <span className="font-bold">[控え選手]</span> と
-              <span className="font-bold">[入る守備]</span> を選んでください。
-            </div>
-          </div>
-
-          <div className="rounded-lg bg-white border border-indigo-200 px-3 py-2">
-            <div className="font-bold text-indigo-700">
-              ③ [入替守備] を選ぶ
-            </div>
-            <div className="mt-0.5 text-slate-700">
-              交代後の守備番号を選びます。<br />
-              守備位置と選手を確認して選んでください。
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-2 pt-1">
-          <div className="rounded-lg bg-white border border-emerald-200 px-3 py-2">
-            <div className="font-bold text-emerald-700">【反映】ボタン</div>
-            <div className="mt-0.5 text-slate-700">
-              入力した内容が反映され、守備交代画面に戻ります。<br />
-              反映後は、フィールド図・打順・交代内容が正しいか確認してください。
-            </div>
-          </div>
-
-          <div className="rounded-lg bg-white border border-rose-200 px-3 py-2">
-            <div className="font-bold text-rose-700">不整合メッセージ</div>
-            <div className="mt-0.5 text-slate-700">
-              守備位置の重複や不足などがある場合はメッセージが表示されます。<br />
-              内容を見直して正しく入力してください。
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="px-4 pb-4">
         <button
           type="button"
           onClick={() => setShowPosNumberHelpModal(false)}
-          className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold active:scale-95"
+          aria-label="閉じる"
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-[18px] font-bold text-white transition hover:bg-white/30 active:scale-95"
+        >
+          ×
+        </button>
+      </div>
+
+      {/* 本文 */}
+      <div className="max-h-[72svh] overflow-y-auto bg-white px-3 py-3">
+        <div className="space-y-3">
+          {/* 上部説明 */}
+          <div className="rounded-[16px] border border-sky-200 bg-sky-50 px-3 py-3">
+            <p className="text-[13px] font-semibold leading-5 text-slate-800">
+              この画面では、審判のコールどおりに守備番号交代を入力します。
+            </p>
+
+            <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+              <div className="text-[11px] font-semibold tracking-[0.02em] text-slate-500">
+                入力の流れ
+              </div>
+              <div className="mt-1 text-[13px] font-bold leading-5 text-rose-500">
+                ①守備番号 → ②交代 → ③入替守備 の順に入力します
+              </div>
+            </div>
+          </div>
+
+          {/* 手書きメモ欄 */}
+          <div className="rounded-[16px] border border-slate-200 bg-white px-3 py-3 shadow-sm">
+            <h3 className="text-[15px] font-extrabold leading-tight text-slate-800">
+              手書きメモ欄
+            </h3>
+            <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+              審判に伝えられた内容を書きとめておく自由なエリアです。
+            </p>
+          </div>
+
+          {/* 入力方法 */}
+          <div className="rounded-[16px] border border-emerald-200 bg-white px-3 py-3 shadow-sm">
+            <h3 className="text-[15px] font-extrabold leading-tight text-emerald-700">
+              入力方法
+            </h3>
+
+            <div className="mt-3 space-y-3">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-[12px] font-bold text-white">
+                    ①
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-bold leading-5 text-emerald-800">
+                      [守備番号] を選ぶ
+                    </div>
+                    <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                      交代前の守備番号を選びます。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      守備位置と選手を確認して選んでください。
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500 text-[12px] font-bold text-white">
+                    ②
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-bold leading-5 text-amber-800">
+                      [交代] を選ぶ
+                    </div>
+                    <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                      守備位置の入替なら
+                      <span className="font-bold">「が」</span>
+                      を選びます。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      選手交代なら
+                      <span className="font-bold">「に代わりまして」</span>
+                      を選びます。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      <span className="font-bold">「に代わりまして」</span>
+                      を選ぶと
+                      <span className="font-bold"> [交代内容] </span>
+                      の行が追加されます。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      その場合は
+                      <span className="font-bold"> [控え選手] </span>
+                      と
+                      <span className="font-bold"> [入る守備] </span>
+                      を選んでください。
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-500 text-[12px] font-bold text-white">
+                    ③
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-bold leading-5 text-sky-800">
+                      [入替守備] を選ぶ
+                    </div>
+                    <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                      交代後の守備番号を選びます。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      守備位置と選手を確認して選んでください。
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ボタン・メッセージ説明 */}
+          <div className="rounded-[16px] border border-violet-200 bg-white px-3 py-3 shadow-sm">
+            <h3 className="text-[15px] font-extrabold leading-tight text-violet-700">
+              ボタン・メッセージの説明
+            </h3>
+
+            <div className="mt-3 space-y-3 text-[13px] leading-5 text-slate-700">
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-3">
+                <div className="font-bold text-slate-900">【反映】ボタン</div>
+                <p className="mt-1">
+                  入力した内容が反映され、守備交代画面に戻ります。
+                </p>
+                <p className="mt-1">
+                  反映後は、フィールド図・打順・交代内容で正しいか確認してください。
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-3">
+                <div className="font-bold text-slate-900">不整合メッセージ</div>
+                <p className="mt-1">
+                  守備位置の重複や不足などがある場合はメッセージが表示されます。
+                </p>
+                <p className="mt-1">
+                  内容を見直して、正しく入力してください。
+                </p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      {/* フッター */}
+      <div className="bg-white px-3 pb-3 pt-1">
+        <button
+          type="button"
+          onClick={() => setShowPosNumberHelpModal(false)}
+          className="w-full rounded-2xl bg-emerald-600 py-3 text-[15px] font-bold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.98]"
         >
           OK
         </button>
@@ -8343,72 +8434,159 @@ const positionChanged = currentPos !== initialPos;
 {/* 使い方モーダル */}
 {showHelpModal && (
   <div
-    className="fixed inset-0 z-[1300] flex items-center justify-center bg-black px-3 py-3"
+    className="fixed inset-0 z-[1300] flex items-center justify-center bg-black/50 px-3 py-3"
     role="dialog"
     aria-modal="true"
     onClick={() => setShowHelpModal(false)}
   >
     <div
-      className="w-full max-w-xl rounded-xl bg-gray-900 text-white shadow-2xl overflow-hidden"
+      className="w-full max-w-[460px] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
       onClick={(e) => e.stopPropagation()}
       role="document"
     >
-      <div className="px-4 py-3 bg-emerald-600 text-white font-bold text-center text-base">
-        守備交代画面の使い方
-      </div>
-
-      <div className="px-4 py-4 space-y-3 text-sm leading-snug bg-gray-950">
-        <div className="rounded-lg bg-emerald-500/10 px-3 py-2">
-          <div className="text-base font-extrabold text-emerald-300">
-            交代のやり方は2つあります
-          </div>
+      {/* ヘッダー */}
+      <div className="flex items-center justify-between bg-sky-600 px-4 py-3 text-white">
+        <div className="flex items-center gap-2">
+          <span className="text-[18px] leading-none">❓</span>
+          <h2 className="text-[18px] font-extrabold leading-tight tracking-[0.01em]">
+            守備交代画面の使い方
+          </h2>
         </div>
 
-        <div className="space-y-2">
-          <div className="rounded-lg bg-white/5 px-3 py-2">
-            <div className="font-bold text-sky-300">① 守備番号で交代する</div>
-            <div className="mt-1 text-white/90">
-              審判が言った通りに入力します。<br />
-              例：5が1、1に代わってサード○○<br />
-              ➥【守備番号で交代】ボタンを押して下さい
-            </div>
-          </div>
-
-          <div className="rounded-lg bg-white/5 px-3 py-2">
-            <div className="font-bold text-amber-300">② フィールドに選手を配置する</div>
-            <div className="mt-1 text-white/90">
-              選手名を長押しして配置します。
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-2 pt-1">
-          <div className="px-3 py-2 rounded-lg bg-white/5">
-            <div className="font-bold text-rose-300">【アナウンス表示】ボタン</div>
-            <div className="text-white/90 mt-0.5">読み上げる内容が表示されます。</div>
-          </div>
-
-          <div className="px-3 py-2 rounded-lg bg-white/5">
-            <div className="font-bold text-emerald-300">【交代確定】ボタン</div>
-            <div className="text-white/90 mt-0.5">変更内容を確定して守備画面に戻ります。</div>
-          </div>
-
-          <div className="px-3 py-2 rounded-lg bg-white/5">
-            <div className="font-bold text-slate-200">【戻る】ボタン</div>
-            <div className="text-white/90 mt-0.5">
-              変更せずに守備画面に戻ります。<br />
-              変更がある場合は確認メッセージが表示され、<br />
-              【YES】で変更せずに戻ります。
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="px-4 pb-4">
         <button
           type="button"
           onClick={() => setShowHelpModal(false)}
-          className="w-full py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white font-semibold active:scale-95"
+          aria-label="閉じる"
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-[18px] font-bold text-white transition hover:bg-white/30 active:scale-95"
+        >
+          ×
+        </button>
+      </div>
+
+      {/* 本文 */}
+      <div className="max-h-[72svh] overflow-y-auto bg-white px-3 py-3">
+        <div className="space-y-3">
+          {/* 上部説明 */}
+          <div className="rounded-[16px] border border-sky-200 bg-sky-50 px-3 py-3">
+            <p className="text-[13px] font-semibold leading-5 text-slate-800">
+              この画面では、守備交代の内容を入力してアナウンス表示や交代確定を行います。
+            </p>
+
+            <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+              <div className="text-[11px] font-semibold tracking-[0.02em] text-slate-500">
+                まず確認すること
+              </div>
+              <div className="mt-1 text-[13px] font-bold leading-5 text-rose-500">
+                守備交代の入力方法は2種類あります
+              </div>
+            </div>
+          </div>
+
+          {/* 交代方法 */}
+          <div className="rounded-[16px] border border-emerald-200 bg-white px-3 py-3 shadow-sm">
+            <h3 className="text-[15px] font-extrabold leading-tight text-emerald-700">
+              交代方法は2種類
+            </h3>
+
+            <div className="mt-3 space-y-3">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-[12px] font-bold text-white">
+                    ①
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-bold leading-5 text-emerald-800">
+                      守備番号で交代する
+                    </div>
+                    <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                      審判が言った通りに入力する方法です。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      例：5が1、1に代わってサード○○
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      この場合は
+                      <span className="font-bold text-sky-700">
+                        【守備番号で交代】
+                      </span>
+                      ボタンを押して入力します。
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-500 text-[12px] font-bold text-white">
+                    ②
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-bold leading-5 text-sky-800">
+                      フィールドに選手を配置する
+                    </div>
+                    <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                      選手名を長押しして、フィールド上の守備位置に配置する方法です。
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ボタン説明 */}
+          <div className="rounded-[16px] border border-violet-200 bg-white px-3 py-3 shadow-sm">
+            <h3 className="text-[15px] font-extrabold leading-tight text-violet-700">
+              ボタンの説明
+            </h3>
+
+            <div className="mt-3 space-y-3 text-[13px] leading-5 text-slate-700">
+              <div className="rounded-xl border border-violet-100 bg-violet-50 px-3 py-3">
+                <div className="font-bold text-slate-900">【アナウンス表示】ボタン</div>
+                <p className="mt-1">
+                  読み上げる内容が表示されます。
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-3">
+                <div className="font-bold text-slate-900">【交代確定】ボタン</div>
+                <p className="mt-1">
+                  変更内容を確定して、守備画面に戻ります。
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-3">
+                <div className="font-bold text-slate-900">【戻る】ボタン</div>
+                <p className="mt-1">
+                  変更せずに守備画面へ戻ります。
+                </p>
+                <p className="mt-1">
+                  変更がある場合は確認メッセージが表示され、
+                  <span className="font-bold text-rose-500">【YES】</span>
+                  を押すと変更せずに戻ります。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* 補足 */}
+          <div className="rounded-[16px] border border-slate-200 bg-slate-50 px-3 py-3">
+            <p className="text-[12.5px] font-semibold leading-5 text-slate-700">
+              審判のコール通りに入力したいときは
+              <span className="font-bold">【守備番号で交代】</span>
+              、フィールドを見ながら操作したいときは
+              <span className="font-bold">選手を長押しして配置</span>
+              がわかりやすいです。
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* フッター */}
+      <div className="bg-white px-3 pb-3 pt-1">
+        <button
+          type="button"
+          onClick={() => setShowHelpModal(false)}
+          className="w-full rounded-2xl bg-emerald-600 py-3 text-[15px] font-bold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.98]"
         >
           OK
         </button>

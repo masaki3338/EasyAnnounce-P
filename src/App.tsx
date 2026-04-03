@@ -1997,134 +1997,237 @@ if (totalMyScore > totalOpponentScore) {
   </div>
 )}
 
-{/* ✅　使い方（攻撃画面）モーダル */}
+{/* ✅ 使い方（攻撃画面）モーダル */}
 {showOffenseHelpModal && (
-  <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="攻撃画面の使い方">
-    {/* 背景 */}
+  <div
+    className="fixed inset-0 z-[1300] flex items-center justify-center bg-black/50 px-3 py-3"
+    role="dialog"
+    aria-modal="true"
+    onClick={() => setShowOffenseHelpModal(false)}
+  >
     <div
-      className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-      onClick={() => setShowOffenseHelpModal(false)}
-    />
-
-    {/* 中央カード */}
-    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
-      <div
-        className="bg-white shadow-2xl rounded-2xl w-full max-w-md max-h-[85vh] overflow-hidden flex flex-col"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-      >
-        {/* ヘッダー */}
-        <div className="sticky top-0 z-10 bg-gradient-to-r from-sky-600 to-cyan-600 text-white">
-          <div className="h-5 flex items-center justify-center">
-            <span className="mt-2 block h-1.5 w-12 rounded-full bg-white/60" />
-          </div>
-          <div className="px-4 py-3 flex items-center justify-between">
-            <h2 className="text-lg font-extrabold tracking-wide flex items-center gap-2">
-              <span className="text-xl">❓</span>
-              <span>攻撃画面の使い方</span>
-            </h2>
-            <button
-              onClick={() => setShowOffenseHelpModal(false)}
-              aria-label="閉じる"
-              className="rounded-full w-9 h-9 flex items-center justify-center bg-white/15 hover:bg-white/25 active:bg-white/30 text-white text-lg"
-            >
-              ×
-            </button>
-          </div>
+      className="w-full max-w-[460px] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
+      onClick={(e) => e.stopPropagation()}
+      role="document"
+    >
+      {/* ヘッダー */}
+      <div className="flex items-center justify-between bg-sky-600 px-4 py-3 text-white">
+        <div className="flex items-center gap-2">
+          <span className="text-[18px] leading-none">❓</span>
+          <h2 className="text-[18px] font-extrabold leading-tight tracking-[0.01em]">
+            攻撃画面の使い方
+          </h2>
         </div>
 
-        {/* 本文 */}
-        <div className="px-4 py-4 space-y-4 overflow-y-auto bg-slate-50">
-          {/* 最初に一番伝えたいこと */}
-          <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 shadow-sm">
-            <p className="text-sky-900 font-bold leading-relaxed">
-              攻撃中は、<span className="text-sky-700">打者の進行・得点・代打・代走</span>を入力しながら、
-              必要なときにアナウンスを行います。
+        <button
+          type="button"
+          onClick={() => setShowOffenseHelpModal(false)}
+          aria-label="閉じる"
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-[18px] font-bold text-white transition hover:bg-white/30 active:scale-95"
+        >
+          ×
+        </button>
+      </div>
+
+      {/* 本文 */}
+      <div className="max-h-[72svh] overflow-y-auto bg-white px-3 py-3">
+        <div className="space-y-3">
+          {/* 上部説明 */}
+          <div className="rounded-[16px] border border-sky-200 bg-sky-50 px-3 py-3">
+            <p className="text-[13px] font-semibold leading-5 text-slate-800">
+              この画面では、攻撃中に
+              <span className="font-bold">打者の進行・得点・代打・代走</span>
+              を入力しながら、必要なときにアナウンスを行います。
             </p>
-          </div>
 
-          {/* 次の打者 */}
-          <div className="rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm">
-            <h3 className="font-extrabold text-emerald-700 mb-2">➡️ 次の打者</h3>
-            <div className="space-y-2 text-slate-800 leading-relaxed font-semibold">
-              <p>【次の打者】ボタンを押して打者を進めます。</p>
-              <p>選手名の左の□にチェックがある選手は、一度アナウンスされた選手です。</p>
-              <p>チェックがある選手は、2度目以降のアナウンス内容になります。</p>
-              <p className="text-sm text-emerald-800">
-                ※ チェックは手動でつけたり外したりできます。
-              </p>
+            <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+              <div className="text-[11px] font-semibold tracking-[0.02em] text-slate-500">
+                主な操作
+              </div>
+              <div className="mt-1 text-[13px] font-bold leading-5 text-rose-500">
+                ①次の打者 → ②得点 → ③イニング終了 → ④代打・代走
+              </div>
             </div>
           </div>
 
-          {/* 先頭打者 */}
-          <div className="rounded-2xl border border-yellow-300 bg-yellow-50 p-4 shadow-sm">
-            <h3 className="font-extrabold text-yellow-800 mb-2">⚠️ 回の先頭打者</h3>
-            <div className="space-y-2 text-slate-800 leading-relaxed font-semibold">
-              <p>回の先頭打者は、先頭打者用のアナウンスになります。</p>
-              <p>選手名をタッチすると、その選手が先頭打者になります。</p>
-              <p>もう一度タッチすると、先頭打者ではなくなります。</p>
+          {/* 主な操作 */}
+          <div className="rounded-[16px] border border-emerald-200 bg-white px-3 py-3 shadow-sm">
+            <h3 className="text-[15px] font-extrabold leading-tight text-emerald-700">
+              主な操作
+            </h3>
+
+            <div className="mt-3 space-y-3">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-[12px] font-bold text-white">
+                    ①
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-bold leading-5 text-emerald-800">
+                      次の打者
+                    </div>
+                    <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                      <span className="font-bold">【次の打者】</span>
+                      ボタンを押して打者を進めます。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      選手名の左の□にチェックがある選手は、
+                      一度アナウンスされた選手です。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      チェックがある選手は、2度目以降のアナウンス内容になります。
+                    </p>
+                    <p className="mt-1 text-[12.5px] leading-5 text-emerald-900">
+                      ※ チェックは手動でつけたり外したりできます。
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500 text-[12px] font-bold text-white">
+                    補足
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-bold leading-5 text-amber-800">
+                      回の先頭打者
+                    </div>
+                    <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                      回の先頭打者は、先頭打者用のアナウンスになります。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      選手名をタッチすると、その選手が先頭打者になります。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      もう一度タッチすると、先頭打者ではなくなります。
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-500 text-[12px] font-bold text-white">
+                    ②
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-bold leading-5 text-sky-800">
+                      得点
+                    </div>
+                    <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                      得点が入ったときは
+                      <span className="font-bold">【得点＋1】</span>
+                      を押します。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      得点板の回の点数を押すと、その回の得点を修正できます。
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-500 text-[12px] font-bold text-white">
+                    ③
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-bold leading-5 text-slate-800">
+                      イニング終了
+                    </div>
+                    <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                      チェンジのときは
+                      <span className="font-bold">【イニング終了】</span>
+                      を押します。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      得点入力画面が表示されたら得点を入力し
+                      <span className="font-bold">【OK】</span>
+                      を押します。
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-orange-500 text-[12px] font-bold text-white">
+                    ④
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-bold leading-5 text-orange-800">
+                      代打・代走
+                    </div>
+                    <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                      <span className="font-bold">【代打】</span>
+                      ボタン … 代打がある場合に押します。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      <span className="font-bold">【代走】</span>
+                      ボタン … 代走がある場合に押します。
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* 得点 */}
-          <div className="rounded-2xl border border-blue-200 bg-white p-4 shadow-sm">
-            <h3 className="font-extrabold text-blue-700 mb-2">🏟 得点</h3>
-            <div className="space-y-2 text-slate-800 leading-relaxed font-semibold">
-              <p>得点が入ったときは【得点＋1】を押します。</p>
-              <p>得点板の回の点数を押すと、その回の得点を修正できます。</p>
+          {/* ボタン説明 */}
+          <div className="rounded-[16px] border border-violet-200 bg-white px-3 py-3 shadow-sm">
+            <h3 className="text-[15px] font-extrabold leading-tight text-violet-700">
+              ボタンの説明
+            </h3>
+
+            <div className="mt-3 space-y-3 text-[13px] leading-5 text-slate-700">
+              <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-3">
+                <div className="font-bold text-slate-900">【↻】ボタン / 【↺】ボタン</div>
+                <p className="mt-1">
+                  <span className="font-bold">【↻】</span>
+                  ボタン … 確定した代打・代走を戻すことができます。
+                </p>
+                <p className="mt-1">
+                  <span className="font-bold">【↺】</span>
+                  ボタン … 【↻】で戻した操作をやめることができます。
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-fuchsia-200 bg-fuchsia-50 px-3 py-3">
+                <div className="font-bold text-slate-900">右上の【その他】ボタン</div>
+                <div className="mt-1 space-y-1">
+                  <p>
+                    <span className="font-bold">【試合終了】</span>
+                    … 勝利チームの場合、読み上げるアナウンスが表示されます。
+                  </p>
+                  <p>
+                    <span className="font-bold">【タイブレーク】【継続試合】【熱中症】</span>
+                    … アナウンスが必要なときに押します。
+                  </p>
+                  <p>
+                    <span className="font-bold">【連盟🎤マニュアル】</span>
+                    … 連盟が発行しているアナウンスマニュアルを表示します。
+                  </p>
+                  <p>
+                    <span className="font-bold">【投球数⚾】</span>
+                    … 試合で投げた投手の投球数を表示します。
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
-
-          {/* イニング終了 */}
-          <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
-            <h3 className="font-extrabold text-slate-800 mb-2">⏱ イニング終了</h3>
-            <div className="space-y-2 text-slate-800 leading-relaxed font-semibold">
-              <p>チェンジのときは【イニング終了】を押します。</p>
-              <p>得点入力画面が表示されたら【OK】を押します。</p>
-            </div>
-          </div>
-
-          {/* 代打・代走 */}
-          <div className="rounded-2xl border border-orange-200 bg-white p-4 shadow-sm">
-            <h3 className="font-extrabold text-orange-700 mb-2">🔀 代打・代走</h3>
-            <div className="space-y-2 text-slate-800 leading-relaxed font-semibold">
-              <p>【代打】ボタン … 代打がある場合に押します。</p>
-              <p>【代走】ボタン … 代走がある場合に押します。</p>
-            </div>
-          </div>
-
-          {/* ↻ ↺ */}
-          <div className="rounded-2xl border border-violet-300 bg-violet-50 p-4 shadow-sm">
-            <h3 className="font-extrabold text-violet-800 mb-2">↻ / ↺ ボタン</h3>
-            <div className="space-y-2 text-slate-800 leading-relaxed font-semibold">
-              <p>【↻】ボタン … 確定した代打・代走を戻すことができます。</p>
-              <p>【↺】ボタン … 【↻】で戻した操作をやめることができます。</p>
-            </div>
-          </div>
-
-          {/* その他 */}
-          <div className="rounded-2xl border border-fuchsia-300 bg-fuchsia-50 p-4 shadow-sm">
-            <h3 className="font-extrabold text-fuchsia-800 mb-2">⋯ 右上の【その他】ボタン</h3>
-            <div className="space-y-2 text-slate-800 leading-relaxed font-semibold">
-              <p>【試合終了】… 勝利チームの場合、読み上げるアナウンスが表示されます。</p>
-              <p>【タイブレーク】【継続試合】【熱中症】… アナウンスが必要なときに押します。</p>
-              <p>【連盟🎤マニュアル】… 連盟が発行しているアナウンスマニュアルを表示します。</p>
-              <p>【投球数⚾】… 試合で投げた投手の投球数を表示します。</p>
-            </div>
-          </div>
-
 
         </div>
+      </div>
 
-        {/* フッター */}
-        <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
-          <button
-            onClick={() => setShowOffenseHelpModal(false)}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
-          >
-            OK
-          </button>
-          <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
-        </div>
+      {/* フッター */}
+      <div className="bg-white px-3 pb-3 pt-1">
+        <button
+          type="button"
+          onClick={() => setShowOffenseHelpModal(false)}
+          className="w-full rounded-2xl bg-emerald-600 py-3 text-[15px] font-bold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.98]"
+        >
+          OK
+        </button>
       </div>
     </div>
   </div>
@@ -2536,120 +2639,216 @@ if (totalMyScore > totalOpponentScore) {
 
 {/* ✅ 使い方（守備画面）モーダル */}
 {showHelpModal && (
-  <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="守備画面の使い方">
-    {/* 背景 */}
+  <div
+    className="fixed inset-0 z-[1300] flex items-center justify-center bg-black/50 px-3 py-3"
+    role="dialog"
+    aria-modal="true"
+    onClick={() => setShowHelpModal(false)}
+  >
     <div
-      className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-      onClick={() => setShowHelpModal(false)}
-    />
-
-    {/* 中央カード */}
-    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
-      <div
-        className="bg-white shadow-2xl rounded-2xl w-full max-w-md max-h-[85vh] overflow-hidden flex flex-col"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-      >
-        {/* ヘッダー */}
-        <div className="sticky top-0 z-10 bg-gradient-to-r from-sky-600 to-cyan-600 text-white">
-          <div className="h-5 flex items-center justify-center">
-            <span className="mt-2 block h-1.5 w-12 rounded-full bg-white/60" />
-          </div>
-          <div className="px-4 py-3 flex items-center justify-between">
-            <h2 className="text-lg font-extrabold tracking-wide flex items-center gap-2">
-              <span className="text-xl">❓</span>
-              <span>守備画面の使い方</span>
-            </h2>
-            <button
-              onClick={() => setShowHelpModal(false)}
-              aria-label="閉じる"
-              className="rounded-full w-9 h-9 flex items-center justify-center bg-white/15 hover:bg-white/25 active:bg-white/30 text-white text-lg"
-            >
-              ×
-            </button>
-          </div>
+      className="w-full max-w-[460px] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
+      onClick={(e) => e.stopPropagation()}
+      role="document"
+    >
+      {/* ヘッダー */}
+      <div className="flex items-center justify-between bg-sky-600 px-4 py-3 text-white">
+        <div className="flex items-center gap-2">
+          <span className="text-[18px] leading-none">❓</span>
+          <h2 className="text-[18px] font-extrabold leading-tight tracking-[0.01em]">
+            守備画面の使い方
+          </h2>
         </div>
 
-        {/* 本文 */}
-        <div className="px-4 py-4 space-y-4 overflow-y-auto bg-slate-50">
-          {/* 最初に一番伝えたいこと */}
-          <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 shadow-sm">
-            <p className="text-sky-900 font-bold leading-relaxed">
-              守備中は、<span className="text-sky-700">投球数・得点・守備交代</span>を入力しながら、
-              必要なときにアナウンスを行います。
+        <button
+          type="button"
+          onClick={() => setShowHelpModal(false)}
+          aria-label="閉じる"
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-[18px] font-bold text-white transition hover:bg-white/30 active:scale-95"
+        >
+          ×
+        </button>
+      </div>
+
+      {/* 本文 */}
+      <div className="max-h-[72svh] overflow-y-auto bg-white px-3 py-3">
+        <div className="space-y-3">
+          {/* 上部説明 */}
+          <div className="rounded-[16px] border border-sky-200 bg-sky-50 px-3 py-3">
+            <p className="text-[13px] font-semibold leading-5 text-slate-800">
+              この画面では、守備中に
+              <span className="font-bold">投球数・得点・守備交代</span>
+              を入力しながら、必要なときにアナウンスを行います。
             </p>
-          </div>
 
-          {/* 投球数 */}
-          <div className="rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm">
-            <h3 className="font-extrabold text-emerald-700 mb-2">⚾ 投球数</h3>
-            <div className="space-y-2 text-slate-800 leading-relaxed font-semibold">
-              <p>【投球数＋1】を押して投球数をカウントします。</p>
-              <p>間違えたときは【投球数－1】を押して減らします。</p>
-              <p>累計投球数を修正したい場合は【累計投球】を押します。</p>
+            <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+              <div className="text-[11px] font-semibold tracking-[0.02em] text-slate-500">
+                主な操作
+              </div>
+              <div className="mt-1 text-[13px] font-bold leading-5 text-rose-500">
+                ①投球数 → ②得点 → ③守備交代 → ④イニング終了
+              </div>
             </div>
           </div>
 
-          {/* 得点 */}
-          <div className="rounded-2xl border border-blue-200 bg-white p-4 shadow-sm">
-            <h3 className="font-extrabold text-blue-700 mb-2">🏟 得点</h3>
-            <div className="space-y-2 text-slate-800 leading-relaxed font-semibold">
-              <p>得点が入ったときは【得点＋1】を押します。</p>
-              <p>間違えたときは【得点－1】を押して減らします。</p>
-              <p>得点板の回の点数を押すと、その回の得点を修正できます。</p>
+          {/* 入力する内容 */}
+          <div className="rounded-[16px] border border-emerald-200 bg-white px-3 py-3 shadow-sm">
+            <h3 className="text-[15px] font-extrabold leading-tight text-emerald-700">
+              入力する内容
+            </h3>
+
+            <div className="mt-3 space-y-3">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-[12px] font-bold text-white">
+                    ①
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-bold leading-5 text-emerald-800">
+                      投球数
+                    </div>
+                    <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                      <span className="font-bold">【投球数＋1】</span>
+                      を押して投球数をカウントします。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      間違えたときは
+                      <span className="font-bold">【投球数－1】</span>
+                      を押して減らします。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      累計投球数を修正したい場合は
+                      <span className="font-bold">【累計投球】</span>
+                      を押します。
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-500 text-[12px] font-bold text-white">
+                    ②
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-bold leading-5 text-sky-800">
+                      得点
+                    </div>
+                    <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                      得点が入ったときは
+                      <span className="font-bold">【得点＋1】</span>
+                      を押します。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      間違えたときは
+                      <span className="font-bold">【得点－1】</span>
+                      を押して減らします。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      得点板の回の点数を押すと、その回の得点を修正できます。
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500 text-[12px] font-bold text-white">
+                    ③
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-bold leading-5 text-amber-800">
+                      守備交代
+                    </div>
+                    <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                      守備の交代がある場合は
+                      <span className="font-bold">【守備交代】</span>
+                      を押します。
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-500 text-[12px] font-bold text-white">
+                    ④
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-bold leading-5 text-slate-800">
+                      イニング終了
+                    </div>
+                    <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                      チェンジのときは
+                      <span className="font-bold">【イニング終了】</span>
+                      を押します。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      得点入力画面が表示されたら得点を入力し
+                      <span className="font-bold">【OK】</span>
+                      を押します。
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* 守備交代 */}
-          <div className="rounded-2xl border border-orange-200 bg-white p-4 shadow-sm">
-            <h3 className="font-extrabold text-orange-700 mb-2">🔀 守備交代</h3>
-            <div className="space-y-2 text-slate-800 leading-relaxed font-semibold">
-              <p>守備の交代がある場合は【守備交代】を押します。</p>
+          {/* ボタン説明 */}
+          <div className="rounded-[16px] border border-violet-200 bg-white px-3 py-3 shadow-sm">
+            <h3 className="text-[15px] font-extrabold leading-tight text-violet-700">
+              ボタンの説明
+            </h3>
+
+            <div className="mt-3 space-y-3 text-[13px] leading-5 text-slate-700">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
+                <div className="font-bold text-slate-900">左上の【戻す】ボタン</div>
+                <p className="mt-1">
+                  「この回の最初に戻します。よろしいですか？」と表示されます。
+                </p>
+                <p className="mt-1">
+                  <span className="font-bold">【OK】</span>
+                  を押すと、その回の最初の状態に戻ります。
+                </p>
+                <p className="mt-1 text-[12.5px] text-amber-900">
+                  ※ 入力した交代・得点・投球数は、その回の分がクリアされます。
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-3">
+                <div className="font-bold text-slate-900">右上の【その他】ボタン</div>
+                <div className="mt-1 space-y-1">
+                  <p>
+                    <span className="font-bold">【試合終了】</span>
+                    … 勝利チームの場合、読み上げるアナウンスが表示されます。
+                  </p>
+                  <p>
+                    <span className="font-bold">【継続試合】【熱中症】</span>
+                    … アナウンスが必要なときに押します。
+                  </p>
+                  <p>
+                    <span className="font-bold">【連盟🎤マニュアル】</span>
+                    … 連盟が発行しているアナウンスマニュアルを表示します。
+                  </p>
+                  <p>
+                    <span className="font-bold">【投球数⚾】</span>
+                    … 試合で投げた投手の投球数が表示されます。
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* イニング終了 */}
-          <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
-            <h3 className="font-extrabold text-slate-800 mb-2">⏱ イニング終了</h3>
-            <div className="space-y-2 text-slate-800 leading-relaxed font-semibold">
-              <p>チェンジのときは【イニング終了】を押します。</p>
-              <p>得点入力画面が表示されたら【OK】を押します。</p>
-            </div>
-          </div>
-
-          {/* 戻す */}
-          <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 shadow-sm">
-            <h3 className="font-extrabold text-amber-800 mb-2">↩ 左上の【戻す】ボタン</h3>
-            <div className="space-y-2 text-slate-800 leading-relaxed font-semibold">
-              <p>「この回の最初に戻します。よろしいですか？」と表示されます。</p>
-              <p>【OK】でイニングの最初の状態に戻ります。</p>
-              <p className="text-sm text-amber-900">
-                ※ 入力した交代・得点・投球数は、その回の分がクリアされます。
-              </p>
-            </div>
-          </div>
-
-          {/* その他 */}
-          <div className="rounded-2xl border border-violet-300 bg-violet-50 p-4 shadow-sm">
-            <h3 className="font-extrabold text-violet-800 mb-2">⋯ 右上の【その他】ボタン</h3>
-            <div className="space-y-2 text-slate-800 leading-relaxed font-semibold">
-              <p>【試合終了】… 勝利チームの場合、読み上げるアナウンスが表示されます。</p>
-              <p>【継続試合】【熱中症】… アナウンスが必要なときに押します。</p>
-              <p>【連盟🎤マニュアル】… 連盟が発行しているアナウンスマニュアルを表示します。</p>
-              <p>【投球数⚾】… 試合で投げた投手の投球数が表示されます。</p>
-            </div>
-          </div>
         </div>
+      </div>
 
-        {/* フッター */}
-        <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
-          <button
-            onClick={() => setShowHelpModal(false)}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
-          >
-            OK
-          </button>
-          <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
-        </div>
+      {/* フッター */}
+      <div className="bg-white px-3 pb-3 pt-1">
+        <button
+          onClick={() => setShowHelpModal(false)}
+          className="w-full rounded-2xl bg-emerald-600 py-3 text-[15px] font-bold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.98]"
+        >
+          OK
+        </button>
       </div>
     </div>
   </div>
