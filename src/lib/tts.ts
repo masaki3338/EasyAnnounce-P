@@ -45,6 +45,24 @@ function normalizeSpeechText(input: string): string {
     return kana ? `${kana}ばん` : m;
   });
 
+  // ✅ 単独の「0」を「ゼロ」に
+  t = t.replace(/(^|[^0-9０-９])0(?![0-9０-９])/g, "$1ゼロ");
+
+  // ✅ 第○試合 の読みを補正
+  t = t.replace(/第1試合/g, "だいいちしあい");
+  t = t.replace(/第2試合/g, "だいにしあい");
+  t = t.replace(/第3試合/g, "だいさんしあい");
+  t = t.replace(/第4試合/g, "だいよんしあい");
+  t = t.replace(/第5試合/g, "だいごしあい");
+
+  // ✅ メンバー表 の読みを補正
+  t = t.replace(/メンバー表/g, "めんばーひょう");
+
+  t = t.replace(/先攻/g, "せんこう");
+  t = t.replace(/後攻/g, "こうこう");
+  t = t.replace(/四氏/g, "よんし");
+  t = t.replace(/行方/g, "ゆくえ");
+
   return t;
 }
 // ---- utilities -------------------------------------------------------------
