@@ -150,7 +150,7 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
     // 表示と同じ文面（読みやすい句切り）で VOICEVOX 読み上げ
     const text =
       [
-        `${inning} 守ります、${teamName}のシートをお知らせします。`,
+        `${inning}、守ります、${teamName}のシートをお知らせします。`,
         ...positionLabels.map(([pos, label]) => {
           const p = positions[pos];
           const ln = p?.lastName || "";
@@ -178,7 +178,7 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
 
 
   const formattedAnnouncement =
-    `${inning}　守ります　${teamName} のシートをお知らせします。\n\n` +
+    `${inning}、守ります　${teamName} のシートをお知らせします。\n\n` +
     positionLabels
       .map(([pos, label]) => {
         const player = positions[pos];

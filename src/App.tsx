@@ -602,6 +602,17 @@ const handleSpeak = async () => {
     );
   };
 
+  const toGameRead = (n: number) => {
+  const map: Record<number, string> = {
+    1: "だいいちしあい",
+    2: "だいにしあい",
+    3: "だいさんしあい",
+    4: "だいよんしあい",
+    5: "だいごしあい",
+  };
+  return map[n] ?? `だい${n}しあい`;
+};
+
   useKeepScreenAwake();
 
 
@@ -940,7 +951,7 @@ const handleSpeak = async () => {
       console.group("[END] その他→試合終了");
       const now = new Date();
       const formatted = `${now.getHours()}時${now.getMinutes()}分`;
-      setEndTime(formatted);
+      //setEndTime(formatted);
 
       const team = (await localForage.getItem("team")) as { name?: string } | null;
       const match = (await localForage.getItem("matchInfo")) as any;
@@ -1285,7 +1296,7 @@ if (totalMyScore > totalOpponentScore) {
             console.group("[END] その他→試合終了");
             const now = new Date();
             const formatted = `${now.getHours()}時${now.getMinutes()}分`;
-            setEndTime(formatted);
+            //setEndTime(formatted);
 
             const team = (await localForage.getItem("team")) as { name?: string } | null;
             const match = (await localForage.getItem("matchInfo")) as any;
@@ -1811,7 +1822,9 @@ if (totalMyScore > totalOpponentScore) {
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button
                 onClick={async () => {
-                  await speak(tiebreakMessage);
+                  await speak(
+                    tiebreakMessage.replace(/入ります。/g, "はいります。")
+                  );
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                            inline-flex items-center justify-center gap-2"

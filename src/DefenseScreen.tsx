@@ -101,7 +101,8 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({
   onGoToSeatIntroduction,
   saveInningStartTrigger,
 }) => {
-const [showModal, setShowModal] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [showHelpModal, setShowHelpModal] = useState(false);
   const [inputScore, setInputScore] = useState("");
   const [editInning, setEditInning] = useState<number | null>(null);
   const [editTopBottom, setEditTopBottom] = useState<"top" | "bottom" | null>(null);
@@ -638,6 +639,7 @@ useEffect(() => {
       setReEntryTarget(null);
     }
 
+    await tryGoSeatIntroAfterDefense();
     // ★ 読込完了後だけ snapshot 保存可能にする
     setSnapshotReady(true);
   };
@@ -1180,6 +1182,37 @@ const restoreDefenseInningStartSnapshot = async () => {
 
 const handleStop = () => { ttsStop(); };
 
+  const tryGoSeatIntroAfterDefense = async () => {
+    const pending =
+      (await localForage.getItem<{ enabled?: boolean }>("postDefenseSeatIntro")) || {};
+
+    if (!pending.enabled) return;
+
+    const order =
+      (await localForage.getItem<Array<{ id: number; reason?: string }>>("battingOrder")) || [];
+
+    const tempRunnerMap =
+      (await localForage.getItem<Record<number, number>>("tempRunnerByOrder")) || {};
+
+    const hasStillPendingDefense =
+      order.some(
+        (e) =>
+          e?.reason === "代打" ||
+          e?.reason === "代走" ||
+          e?.reason === "臨時代走"
+      ) || Object.keys(tempRunnerMap).length > 0;
+
+    // まだ守備確定前なら何もしない
+    if (hasStillPendingDefense) return;
+
+    await localForage.setItem("postDefenseSeatIntro", { enabled: false });
+    await localForage.setItem("seatIntroLock", false);
+
+    const mi = (await localForage.getItem<MatchInfo>("matchInfo")) || {};
+    await localForage.setItem("matchInfo", { ...mi, isDefense: false });
+
+    onGoToSeatIntroduction?.();
+  };
     return (    
       <div
         className="max-w-4xl mx-auto px-2 pt-1 pb-2 select-none"
@@ -2316,5 +2349,7 @@ if (typeof reEntryTarget?.index === "number") {
     </div>
   );
 };
+
+
 
 export default DefenseScreen;

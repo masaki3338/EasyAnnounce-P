@@ -46,6 +46,46 @@ function formatTimeText(value: any) {
   return s;
 }
 
+function hourToSpeak(hour: number) {
+  const map: Record<number, string> = {
+    1: "いちじ",
+    2: "にじ",
+    3: "さんじ",
+    4: "よじ",
+    5: "ごじ",
+    6: "ろくじ",
+    7: "しちじ",
+    8: "はちじ",
+    9: "くじ",
+    10: "じゅうじ",
+    11: "じゅういちじ",
+    12: "じゅうにじ",
+  };
+  return map[hour] ?? `${hour}じ`;
+}
+
+function minuteToSpeak(minute: string) {
+  const map: Record<string, string> = {
+    "00": "",
+    "05": "ごふん",
+    "10": "じゅっぷん",
+    "15": "じゅうごふん",
+    "20": "にじゅっぷん",
+    "25": "にじゅうごふん",
+    "30": "さんじゅっぷん",
+    "35": "さんじゅうごふん",
+    "40": "よんじゅっぷん",
+    "45": "よんじゅうごふん",
+    "50": "ごじゅっぷん",
+  };
+  return map[minute] ?? `${minute}ふん`;
+}
+
+function formatTimeForSpeak(hour: number, minute: string) {
+  const h = hourToSpeak(hour);
+  const m = minuteToSpeak(minute);
+  return m ? `${h}${m}` : h;
+}
 const StartTimeAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
   const hourList = Array.from({ length: 12 }, (_, i) => i + 1);
 
@@ -117,7 +157,10 @@ const message = `お知らせいたします。
 なおシートノックは ${knockHour}時${knockMinute}分 を予定しております。
 今しばらくお待ちください。`;
 
-const messageSpeak = `おしらせいたします。だい${matchNumber}しあいは${startHour}じ${startMinute}ふん、かいしのよていでございます。なお、シートノックは${knockHour}じ${knockMinute}ふんをよていしております。いましばらくおまちください。`;
+const startTimeSpeak = formatTimeForSpeak(startHour, startMinute);
+const knockTimeSpeak = formatTimeForSpeak(knockHour, knockMinute);
+
+const messageSpeak = `おしらせいたします。だい${matchNumber}しあいは${startTimeSpeak}、かいしのよていでございます。なお、シートノックは${knockTimeSpeak}をよていしております。いましばらくおまちください。`;
   const handleSpeak = () => {
     setReading(true);
     void ttsSpeak(messageSpeak, { progressive: true, cache: true }).finally(() =>
