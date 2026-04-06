@@ -7198,21 +7198,20 @@ const canDropHere =
         <div
           draggable
           onDragStart={(e) => handlePositionDragStart(e, pos)}
-          className={`text-base md:text-lg font-bold rounded px-2 py-1 leading-tight text-white ${
-            draggingFrom === pos ? "bg-black/80" : "bg-black/80"
-          } whitespace-nowrap
-
-${isForcedNormal
-  ? "ring-2 ring-inset ring-yellow-400"
-  : (isReentryBlue)
-    ? "ring-2 ring-inset ring-blue-400"
-    : (isSub || isChanged)
-      ? "ring-2 ring-inset ring-yellow-400"
-      : (hoverPos === pos)
-        ? "ring-2 ring-inset ring-emerald-400"
-        : ""}
-`
-          }
+          className={`text-base md:text-lg font-bold rounded px-2 py-1 leading-tight text-white bg-black/80 whitespace-nowrap
+          ${
+            draggingFrom === pos
+              ? "ring-2 ring-inset ring-emerald-400"
+              : isForcedNormal
+                ? "ring-2 ring-inset ring-yellow-400"
+                : isReentryBlue
+                  ? "ring-2 ring-inset ring-blue-400"
+                  : (isSub || isChanged)
+                    ? "ring-2 ring-inset ring-yellow-400"
+                    : hoverPos === pos
+                      ? "ring-2 ring-inset ring-emerald-400"
+                      : ""
+          }`}
           style={{ minWidth: "78px", maxWidth: "38vw", touchAction: "none" }}
           title={`${player.lastName ?? ""}${player.firstName ?? ""} #${player.number ?? ""}`}
         >

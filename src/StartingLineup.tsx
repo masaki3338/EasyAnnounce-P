@@ -121,6 +121,9 @@ const StartingLineup = () => {
   const snapshotRef = React.useRef<string | null>(null);
   const initDoneRef = React.useRef(false);
 
+  const [selectedBenchOutId, setSelectedBenchOutId] = useState<number | null>(null);
+  const benchOutLongPressTimerRef = React.useRef<number | null>(null);
+
   /**
    * 現在の編集中状態をスナップショット化（比較用）
    * ※比較対象は元コードと同じキー
@@ -541,6 +544,23 @@ setAssignments(next);
     setDraggingPlayerId(null);
     setHoverPosKey(null);
   };
+
+  const startBenchOutLongPress = (playerId: number) => {
+  if (benchOutLongPressTimerRef.current) {
+    clearTimeout(benchOutLongPressTimerRef.current);
+  }
+
+  benchOutLongPressTimerRef.current = window.setTimeout(() => {
+    setSelectedBenchOutId(playerId);
+  }, 500);
+};
+
+const cancelBenchOutLongPress = () => {
+  if (benchOutLongPressTimerRef.current) {
+    clearTimeout(benchOutLongPressTimerRef.current);
+    benchOutLongPressTimerRef.current = null;
+  }
+};
 
   /* =========================================================
    *  ドロップ：ベンチ外（出場しない選手）
@@ -1819,25 +1839,35 @@ const selectablePositionKeys = [...positions, DH];
     onDragOver={allowDrop}
     onDrop={handleDropToBenchOut}
   >
-    {benchOutPlayers.length === 0 ? (
-      <div className="min-h-[34px] px-2 py-1 text-[14px] font-bold text-gray-400 flex items-center">
-        出場しない選手はいません
-      </div>
-    ) : (
-      benchOutPlayers.map((p) => (
-        <div
-          key={p.id}
-          draggable
-          onDragStart={(e) => handleDragStart(e, p.id)}
-          onTouchStart={() => setTouchDrag({ playerId: p.id })}
-          style={{ touchAction: "none" }}
-          className="px-2 py-1 text-[14px] font-bold leading-tight bg-white/85 text-gray-900 border border-rose-200 rounded-lg cursor-move select-none shadow-sm"
-        >
-          {p.lastName}
-          {p.firstName} #{p.number}
-        </div>
-      ))
-    )}
+{benchOutPlayers.length === 0 ? (
+  <div className="min-h-[34px] px-2 py-1 text-[14px] font-bold text-gray-400 flex items-center">
+    出場しない選手はいません
+  </div>
+) : (
+  benchOutPlayers.map((p) => (
+    <div
+      key={p.id}
+      draggable
+      onDragStart={(e) => handleDragStart(e, p.id)}
+      onTouchStart={() => {
+        setTouchDrag({ playerId: p.id });
+        setDraggingPlayerId(p.id);
+      }}
+      onTouchEnd={() => {
+        setDraggingPlayerId(null);
+      }}
+      onTouchCancel={() => {
+        setDraggingPlayerId(null);
+      }}
+      style={{ touchAction: "none" }}
+      className={`px-2 py-1 text-[14px] font-bold leading-tight bg-white/85 text-gray-900 border border-rose-200 rounded-lg cursor-move select-none shadow-sm
+        ${draggingPlayerId === p.id ? "ring-4 ring-amber-400 bg-amber-100" : ""}`}
+    >
+      {p.lastName}
+      {p.firstName} #{p.number}
+    </div>
+  ))
+)}
   </div>
 </div>
 

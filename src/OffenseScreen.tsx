@@ -3298,6 +3298,8 @@ onClick={async () => {
       await localForage.setItem("seatIntroLock", false);
       await goSeatIntroFromOffense();
     }
+  } else {
+    onSwitchToDefense();
   }
 }}
 

@@ -132,6 +132,23 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({
     setShowTotalPitchModal(true);
   };
 
+  useEffect(() => {
+    const loadPitchLimit = async () => {
+      const savedSelected = await localForage.getItem<number>("rule.pitchLimit.selected");
+      const legacy = await localForage.getItem<number>("rule.pitchLimit");
+
+      const next =
+        typeof savedSelected === "number"
+          ? savedSelected
+          : typeof legacy === "number"
+          ? legacy
+          : 75;
+
+      setPitchLimitSelected(next);
+    };
+
+    void loadPitchLimit();
+  }, []);
 
 
 const buildDefenseMatchKey = (mi?: Partial<MatchInfo>) => {
@@ -685,8 +702,7 @@ const addPitch = async () => {
 
   const newCurrent = currentPitchCount + 1;
 
-  // ★ まず pitcherTotals（唯一の正）を更新して newTotal を決める
-  let newTotal = totalPitchCount; // fallback
+  let newTotal = totalPitchCount;
   if (typeof pitcherId === "number") {
     const map =
       (await localForage.getItem<Record<number, number>>("pitcherTotals")) || {};
@@ -696,26 +712,25 @@ const addPitch = async () => {
     await localForage.setItem("pitcherTotals", map);
     setPitcherTotals({ ...map });
 
-    newTotal = next;              // ★これが累計の正
-    setTotalPitchCount(newTotal); // ★画面表示もこれに揃える
+    newTotal = next;
+    setTotalPitchCount(newTotal);
   } else {
-    // pitcherId が取れない時は累計をいじらない（または +1 したいなら要件次第）
     setTotalPitchCount(totalPitchCount);
   }
 
-  // この回の投球数
   setCurrentPitchCount(newCurrent);
 
-  // 保存（pitchCounts.total も newTotal に揃える）
   await localForage.setItem("pitchCounts", {
     current: newCurrent,
     total: newTotal,
     pitcherId: pitcherId ?? null,
   });
 
-  // --- アナウンス作成（あなたの既存ロジックは newCurrent/newTotal を使うだけ） ---
   const pitcher = teamPlayers.find((p) => p.id === pitcherId);
-  if (!pitcher) return;
+  if (!pitcher) {
+    console.log("[pitch-limit] pitcher not found", { pitcherId, assignments, teamPlayers });
+    return;
+  }
 
   const newMessages = buildPitchAnnouncementMessages(
     pitcherId,
@@ -724,26 +739,30 @@ const addPitch = async () => {
     teamPlayers
   );
 
-  // ★ 警告判定も newTotal を基準にする（そのまま）
-const warn1 = Math.max(0, pitchLimitSelected - 10);
-const warn2 = pitchLimitSelected;
+  const warn1 = Math.max(0, pitchLimitSelected - 10);
+  const warn2 = pitchLimitSelected;
 
-// ✅ ボーイズリーグでは投球制限数のお知らせを表示しない
-if (!isBoys && (newTotal === warn1 || newTotal === warn2)) {
-  const pitcherParts = getAnnounceNameParts(pitcher);
-  const specialHead = `ピッチャー${pitcherParts.name}${pitcherSuffix}`;
 
-  const specialMsg =
-    newTotal === warn2
-      ? `${specialHead}、ただいまの投球で${newTotal}球に到達しました。`
-      : `${specialHead}、ただいまの投球で${newTotal}球です。`;
+  if (!isBoys && (newTotal === warn1 || newTotal === warn2)) {
+    const pitcherParts = getAnnounceNameParts(pitcher);
+    const pitcherSuffix = pitcher.isFemale ? "さん" : "くん";
+    const specialHead = `ピッチャー${pitcherParts.name}${pitcherSuffix}`;
 
-  setPitchLimitMessages([specialMsg]);
-  setShowPitchLimitModal(true);
-}
+    const specialMsg =
+      newTotal === warn2
+        ? `${specialHead}、ただいまの投球で${newTotal}球に到達しました。`
+        : `${specialHead}、ただいまの投球で${newTotal}球です。`;
+
+
+    setPitchLimitMessages([specialMsg]);
+    setShowPitchLimitModal(true);
+
+    console.log("[pitch-limit-open-requested]");
+  }
 
   setAnnounceMessages(newMessages);
 };
+
   const subtractPitch = async () => {
     const pitcherId = assignments["投"];
 
@@ -833,30 +852,18 @@ if (!isBoys && (newTotal === warn1 || newTotal === warn2)) {
 };
 
 const confirmScore = async () => {
-  const score = parseInt(inputScore || "0", 10);
-  const updatedScores = { ...scores };
+  const score = parseInt(inputScore, 10);
 
-  // ✅ 編集モード
-  if (editInning !== null && editTopBottom !== null) {
-    const index = editInning - 1;
-    if (!updatedScores[index]) {
-      updatedScores[index] = { top: 0, bottom: 0 };
-    }
-    updatedScores[index][editTopBottom] = score;
-
-    await localForage.setItem("scores", updatedScores);
-    setScores(updatedScores);
-    setInputScore("");
-    setEditInning(null);
-    setEditTopBottom(null);
-    setShowModal(false);
+  if (isNaN(score) || score < 0) {
+    alert("0以上の数字を入力してください");
     return;
   }
 
-  // ✅ 通常モード（イニング終了）
   const index = inning - 1;
+  const updatedScores: Scores = { ...scores };
+
   if (!updatedScores[index]) {
-    updatedScores[index] = { top: 0, bottom: 0 };
+    updatedScores[index] = {};
   }
 
   if (isTop) {
@@ -870,32 +877,31 @@ const confirmScore = async () => {
   setInputScore("");
   setShowModal(false);
 
-  // 🟡 次の状態を定義
+  // 次の状態
   const nextIsTop = !isTop;
   const nextInning = isTop ? inning : inning + 1;
 
-  // 🟡 matchInfo 更新
-// 🟡 最新の matchInfo から isHome を堅牢に取得（初回OKで未反映を防ぐ）
-const mi = (await localForage.getItem<MatchInfo>("matchInfo")) || {};
-const home = typeof mi?.isHome === "boolean" ? mi.isHome : isHome;
+  // 最新の matchInfo から isHome を取得
+  const mi = (await localForage.getItem<MatchInfo>("matchInfo")) || {};
+  const home = typeof mi?.isHome === "boolean" ? mi.isHome : isHome;
 
-// 🟡 次が攻撃回か？（先攻=top、後攻=bottom）
-const willSwitchToOffense  = (nextIsTop && !home) || (!nextIsTop && home);
+  // 次が攻撃回かどうか
+  const willSwitchToOffense = (nextIsTop && !home) || (!nextIsTop && home);
 
-// 🟡 マージ保存（ふりがな等の既存フィールドを保持）
-await saveMatchInfo({
-  // opponentTeam は書かなくてもOK（ opponentTeamFurigana も維持される）
-  inning: nextInning,
-  isTop: nextIsTop,
-  isDefense: !willSwitchToOffense , // ← 攻撃に回るタイミングでは false に
-  isHome: home,
-});
-
+  // matchInfo を保存
+  await saveMatchInfo({
+    inning: nextInning,
+    isTop: nextIsTop,
+    isDefense: !willSwitchToOffense,
+    isHome: home,
+  });
 
   setIsTop(nextIsTop);
-  if (!isTop) setInning(nextInning);
+  if (!isTop) {
+    setInning(nextInning);
+  }
 
-   // 🟢 イニング変化時に投球数リセット
+  // イニング変化時に投球数リセット
   const pitcherId = assignments["投"];
   const updatedPitchCounts = {
     current: 0,
@@ -905,10 +911,8 @@ await saveMatchInfo({
   await localForage.setItem("pitchCounts", updatedPitchCounts);
   setCurrentPitchCount(0);
 
-
-  // ✅ 攻撃に切り替わるタイミングで攻撃画面に遷移
-  const isNextOffense = (nextIsTop && !isHome) || (!nextIsTop && isHome);
-  if (isNextOffense) {
+  // 攻撃に切り替わるタイミングで攻撃画面へ遷移
+  if (willSwitchToOffense) {
     onSwitchToOffense();
   }
 };

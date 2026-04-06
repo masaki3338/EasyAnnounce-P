@@ -316,7 +316,7 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
 
   const oneMinuteMessage = `${selfTeamLabel}、ノック時間、あと1分です。`;
 
-  const endMessage = `${opponentTeamLabel}、ノックを終了してください。`;
+  const endMessage = `${selfTeamLabel}、ノックを終了してください。`;
 
   const hasTimingHint = isHome === "先攻";
   const stepNum = (n: number) => n + (hasTimingHint ? 1 : 0);
