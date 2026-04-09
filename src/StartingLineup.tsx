@@ -222,6 +222,9 @@ const StartingLineup = () => {
   const onClearClick = () => setShowConfirm(true);
 
   const [showHelp, setShowHelp] = useState(false);
+  const [showSaveComplete, setShowSaveComplete] = useState(false);
+  const [showClearComplete, setShowClearComplete] = useState(false);
+  const [showLineupError, setShowLineupError] = useState(false);
 
   /* =========================================================
    *  共通：DnDのdrop許可
@@ -247,7 +250,8 @@ const StartingLineup = () => {
     // ✅ 先頭に “打順が9人いるか” をチェック
     const uniqueIds = Array.from(new Set(battingOrder.map((e) => e?.id).filter(Boolean)));
     if (uniqueIds.length < 9) {
-      alert("スタメン9人を設定して下さい");
+      //alert("スタメン9人を設定して下さい");
+      setShowLineupError(true);
       return;
     }
 
@@ -271,7 +275,8 @@ const StartingLineup = () => {
     snapshotRef.current = buildSnapshot();
     setIsDirty(false);
 
-    alert("スタメンを保存しました！");
+    //alert("スタメンを保存しました！");
+    setShowSaveComplete(true);
   };
 
   /**
@@ -300,7 +305,17 @@ const StartingLineup = () => {
     await localForage.setItem("lineupAssignments", emptyAssignments);
     await localForage.setItem("battingOrder", []);
 
-    alert("スタメンをクリアし、全員を出場しない選手にしました！");
+    //alert("スタメンをクリアし、全員を出場しない選手にしました！");
+    snapshotRef.current = JSON.stringify({
+      assignments: emptyAssignments,
+      battingOrder: [],
+      benchOutIds: allIds,
+      ohtaniRule,
+    });
+    setIsDirty(false);
+
+    setShowClearComplete(true);
+
   };
 
   /**
@@ -2397,6 +2412,113 @@ const selectablePositionKeys = [...positions, DH];
           </div>
         </div>
       )}
+
+      {/* 保存完了モーダル */}
+      {showSaveComplete && (
+        <div
+          className="fixed inset-0 z-[1080] flex items-center justify-center bg-black/60 px-6"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setShowSaveComplete(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+            role="document"
+          >
+            <div className="bg-blue-600 text-white text-center font-bold py-3">
+              保存完了
+            </div>
+
+            <div className="px-6 py-6 text-center">
+              <p className="text-[16px] font-bold text-gray-800 leading-relaxed">
+                スタメン設定を保存しました！
+              </p>
+            </div>
+
+            <div className="px-5 pb-5">
+              <button
+                className="w-full py-3 rounded-full bg-blue-600 text-white font-semibold hover:bg-blue-700 active:bg-blue-800"
+                onClick={() => setShowSaveComplete(false)}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* クリア完了モーダル */}
+      {showClearComplete && (
+        <div
+          className="fixed inset-0 z-[1085] flex items-center justify-center bg-black/60 px-6"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setShowClearComplete(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+            role="document"
+          >
+            <div className="bg-red-600 text-white text-center font-bold py-3">
+              クリア完了
+            </div>
+
+            <div className="px-6 py-6 text-center">
+              <p className="text-[15px] font-bold text-gray-800 leading-relaxed whitespace-pre-line">
+                スタメンをクリアし、{"\n"}
+                全員を出場しない選手にしました！
+              </p>
+            </div>
+
+            <div className="px-5 pb-5">
+              <button
+                className="w-full py-3 rounded-full bg-red-600 text-white font-semibold hover:bg-red-700 active:bg-red-800"
+                onClick={() => setShowClearComplete(false)}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* スタメン不足モーダル */}
+      {showLineupError && (
+        <div
+          className="fixed inset-0 z-[1082] flex items-center justify-center bg-black/60 px-6"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setShowLineupError(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+            role="document"
+          >
+            <div className="bg-red-600 text-white text-center font-bold py-3">
+              確認
+            </div>
+
+            <div className="px-6 py-6 text-center">
+              <p className="text-[15px] font-bold text-gray-800 leading-relaxed">
+                スタメン9人を設定して下さい
+              </p>
+            </div>
+
+            <div className="px-5 pb-5">
+              <button
+                className="w-full py-3 rounded-full bg-red-600 text-white font-semibold hover:bg-red-700 active:bg-red-800"
+                onClick={() => setShowLineupError(false)}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

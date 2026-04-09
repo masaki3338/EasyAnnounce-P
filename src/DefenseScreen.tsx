@@ -177,29 +177,47 @@ const getDefenseSnapshotKey = (matchKey: string) =>
       ? `${ruby}投手`
       : `ピッチャー${ruby}${suffix}`;
 
- const handleStartGame = () => {
-      const now = new Date();
-      const timeString = now.toLocaleTimeString("ja-JP", { hour: '2-digit', minute: '2-digit' });
-      setGameStartTime(timeString);
-      localForage.setItem("startTime", timeString);
-      setGameStartTime(timeString);
-      alert(`試合開始時間を記録しました: ${timeString}`);
-    };
+  const handleStartGame = async () => {
+    const now = new Date();
+    const timeString = now.toLocaleTimeString("ja-JP", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    setGameStartTime(timeString);
+    await localForage.setItem("startTime", timeString);
+    setShowStartGameComplete(true);
+  };
+
     const handleGameStart = () => {
       const now = new Date();
       const formatted = `${now.getHours()}時${now.getMinutes()}分`;
       setGameStartTime(formatted);
-      localForage.setItem("gameStartTime", formatted);
+      localForage.setItem("startTime", formatted);
     };
     const hasShownStartTimePopup = useRef(false);
 
-    const [gameStartTime, setGameStartTime] = useState<string | null>(null);
-    const [showStartTimePopup, setShowStartTimePopup] = useState(false);
-  const [isDefense, setIsDefense] = useState(true);
-  const [isHome, setIsHome] = useState(false); // 自チームが後攻かどうか
+const [gameStartTime, setGameStartTime] = useState<string | null>(null);
+const [showStartTimePopup, setShowStartTimePopup] = useState(false);
+const [showStartGameComplete, setShowStartGameComplete] = useState(false);
+const [isDefense, setIsDefense] = useState(true);
+const [isHome, setIsHome] = useState(false); // 自チームが後攻かどうか
+
+useEffect(() => {
+  const loadStartTime = async () => {
+    const savedStartTime = await localForage.getItem<string>("startTime");
+    setGameStartTime(savedStartTime || null);
+  };
+
+  void loadStartTime();
+}, []);
+
   const [announceMessages, setAnnounceMessages] = useState<string[]>([]);
-   const [pitchLimitMessages, setPitchLimitMessages] = useState<string[]>([]);
+  const [pitchLimitMessages, setPitchLimitMessages] = useState<string[]>([]);
   const [showPitchLimitModal, setShowPitchLimitModal] = useState(false);
+  const [showRestoreConfirmModal, setShowRestoreConfirmModal] = useState(false);
+  const [showRestoreCompleteModal, setShowRestoreCompleteModal] = useState(false);
+
   const synthRef = useRef(window.speechSynthesis);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -421,7 +439,7 @@ const buildPitchAnnouncementMessages = (
     msgs.push(
       isBoys
         ? `合計投球数は${total}球です`
-        : `トータル${total}球です`
+        : `トータル ${total}球です`
     );
   }
 
@@ -570,27 +588,29 @@ useEffect(() => {
     // ★ snapshot は毎回消さない
     // await localForage.removeItem("defenseInningStartSnapshot");
 
-    const [
-      savedScores,
-      savedMatchInfo,
-      savedAssignments,
-      savedPitchCounts,
-      savedPitcherTotals,
-      savedBattingOrder,
-      savedStartingOrder,
-      savedTempRunnerByOrder,
-      teamData,
-    ] = await Promise.all([
-      localForage.getItem<Scores>("scores"),
-      localForage.getItem<MatchInfo>("matchInfo"),
-      localForage.getItem<{ [pos: string]: number | null }>("lineupAssignments"),
-      localForage.getItem<{ current: number; total: number; pitcherId?: number | null }>("pitchCounts"),
-      localForage.getItem<Record<number, number>>("pitcherTotals"),
-      localForage.getItem<{ id: number; reason?: string }[]>("battingOrder"),
-      localForage.getItem<{ id: number; reason?: string }[]>("startingBattingOrder"),
-      localForage.getItem<Record<number, number>>("tempRunnerByOrder"),
-      localForage.getItem<{ name?: string; players?: Player[] }>("team"),
-    ]);
+  const [
+    savedScores,
+    savedMatchInfo,
+    savedAssignments,
+    savedPitchCounts,
+    savedPitcherTotals,
+    savedBattingOrder,
+    savedStartingOrder,
+    savedTempRunnerByOrder,
+    teamData,
+    savedStartTime,
+  ] = await Promise.all([
+    localForage.getItem<Scores>("scores"),
+    localForage.getItem<MatchInfo>("matchInfo"),
+    localForage.getItem<{ [pos: string]: number | null }>("lineupAssignments"),
+    localForage.getItem<{ current: number; total: number; pitcherId?: number | null }>("pitchCounts"),
+    localForage.getItem<Record<number, number>>("pitcherTotals"),
+    localForage.getItem<{ id: number; reason?: string }[]>("battingOrder"),
+    localForage.getItem<{ id: number; reason?: string }[]>("startingBattingOrder"),
+    localForage.getItem<Record<number, number>>("tempRunnerByOrder"),
+    localForage.getItem<{ name?: string; players?: Player[] }>("team"),
+    localForage.getItem<string>("startTime"),
+  ]);
 
     setScores(savedScores || {});
     setAssignments(savedAssignments || {});
@@ -610,6 +630,9 @@ useEffect(() => {
     setMyTeamName(String(teamData?.name || ""));
     setOpponentTeamName(String(savedMatchInfo?.opponentTeam || ""));
     setTeamPlayers(Array.isArray(teamData?.players) ? teamData!.players! : []);
+    setGameStartTime(savedStartTime || null);
+
+    console.log("savedStartTime =", savedStartTime);
 
     // ★ 守備画面を開いた時点で投球数アナウンスを表示
     const restoredPlayers = Array.isArray(teamData?.players) ? teamData.players : [];
@@ -671,12 +694,9 @@ useEffect(() => {
  useEffect(() => () => { ttsStop(); }, []);
   
 
-
 useEffect(() => {
   const handler = async () => {
-    const ok = window.confirm("この回の最初に戻します。よろしいですか？");
-    if (!ok) return;
-    await restoreDefenseInningStartSnapshot();
+    setShowRestoreConfirmModal(true);
   };
 
   window.addEventListener(DEFENSE_RESTORE_EVENT, handler as EventListener);
@@ -696,6 +716,7 @@ useEffect(() => {
   isTop,
   isHome,
 ]);
+
 
 const addPitch = async () => {
   const pitcherId = assignments["投"];
@@ -855,7 +876,8 @@ const confirmScore = async () => {
   const score = parseInt(inputScore, 10);
 
   if (isNaN(score) || score < 0) {
-    alert("0以上の数字を入力してください");
+    //alert("0以上の数字を入力してください");
+    score = 0;
     return;
   }
 
@@ -1181,11 +1203,13 @@ const restoreDefenseInningStartSnapshot = async () => {
   ttsStop();
 
   console.log("[DEFENSE SNAPSHOT] restored", { storageKey, snapshot });
-  alert("この回の最初に戻しました。");
+  setShowRestoreCompleteModal(true);
+
 };
 
 const handleStop = () => { ttsStop(); };
 
+  const displayStartTime = gameStartTime;
   const tryGoSeatIntroAfterDefense = async () => {
     const pending =
       (await localForage.getItem<{ enabled?: boolean }>("postDefenseSeatIntro")) || {};
@@ -1263,52 +1287,52 @@ const handleStop = () => { ttsStop(); };
 
 
 
-      <div className="mb-1">
-        <div className="flex items-center gap-1 flex-nowrap overflow-x-auto">
-          {/* 左：状態（縮む・折り返さない） */}
-          <div className="flex items-center gap-1 min-w-0 flex-1">
-            <select
-              value={inning}
-              onChange={async (e) => {
-                const nextInning = Number(e.target.value);
+<div className="mb-1">
+  <div className="flex items-center gap-1 flex-nowrap overflow-x-auto">
+    {/* 左：回＋開始時間 */}
+    <div className="flex items-center gap-2 min-w-0 flex-1">
+      <select
+        value={inning}
+        onChange={async (e) => {
+          const nextInning = Number(e.target.value);
 
-                // 戻した時だけ、以降イニングをクリア
-                if (nextInning < inning) {
-                  const trimmed = trimScoresAfterInning(scores, nextInning);
-                  setScores(trimmed);
-                  await localForage.setItem("scores", trimmed);
-                }
+          if (nextInning < inning) {
+            const trimmed = trimScoresAfterInning(scores, nextInning);
+            setScores(trimmed);
+            await localForage.setItem("scores", trimmed);
+          }
 
-                setInning(nextInning);
+          setInning(nextInning);
+          await saveMatchInfo({ inning: nextInning });
+        }}
+      >
+        {[...Array(9)].map((_, i) => (
+          <option key={i} value={i + 1}>{i + 1}</option>
+        ))}
+      </select>
 
-                // matchInfoも合わせておく（任意だがおすすめ）
-                await saveMatchInfo({ inning: nextInning });
-              }}
-            >
+      <span className="whitespace-nowrap">回 {isTop ? "表" : "裏"}</span>
 
-              {[...Array(9)].map((_, i) => (
-                <option key={i} value={i + 1}>{i + 1}</option>
-              ))}
-            </select>
-            <span className="whitespace-nowrap">回 {isTop ? "表" : "裏"}</span>
+      {displayStartTime && (
+        <span className="whitespace-nowrap text-xs sm:text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-1">
+          開始：{displayStartTime}
+        </span>
+      )}
+    </div>
 
-          </div>
-
-          {/* 右：ボタン群（縮ませない・折り返さない） */}
-          <div className="flex items-center gap-2 shrink-0">
-            {inning === 1 && isTop && isHome && (
-              <button
-                onClick={handleStartGame}
-                className="inline-flex items-center justify-center h-8 sm:h-10 px-3 sm:px-4 bg-green-500 text-white font-bold rounded hover:bg-green-600 text-xs sm:text-sm whitespace-nowrap"
-              >
-                試合開始
-              </button>
-            )}
-
-          </div>
-        </div>
-      </div>
-
+    {/* 右：試合開始ボタンだけ */}
+    <div className="flex items-center gap-2 shrink-0">
+      {inning === 1 && isTop && isHome && (
+        <button
+          onClick={handleStartGame}
+          className="inline-flex items-center justify-center h-8 sm:h-10 px-3 sm:px-4 bg-green-500 text-white font-bold rounded hover:bg-green-600 text-xs sm:text-sm whitespace-nowrap"
+        >
+          試合開始
+        </button>
+      )}
+    </div>
+  </div>
+</div>
 
         <table className="w-full border border-gray-400 text-center text-sm">
           <colgroup>
@@ -2172,7 +2196,10 @@ if (typeof reEntryTarget?.index === "number") {
               OK
             </button>
             <button
-              onClick={() => setInputScore("")}
+              onClick={() => {
+                setInputScore("0");
+                setScoreOverwrite(true);
+              }}
               className="h-12 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold shadow-md"
             >
               クリア
@@ -2332,7 +2359,7 @@ if (typeof reEntryTarget?.index === "number") {
 
               const msgs: string[] = [];
               msgs.push(`${pitcherCall(pitcherRuby, suffix)}、この回の投球数は${currentPitchCount}球です`);
-              msgs.push(`トータル${safe}球です`);
+              msgs.push(`トータル ${safe}球です`);
 
               setAnnounceMessages(msgs);
             }
@@ -2348,7 +2375,173 @@ if (typeof reEntryTarget?.index === "number") {
   </div>
 )}
 
+{/* ✅ 試合開始記録完了モーダル */}
+{showStartGameComplete && (
+  <div className="fixed inset-0 z-50">
+    <div
+      className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+      onClick={() => setShowStartGameComplete(false)}
+    />
 
+    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+      <div
+        className="
+          bg-white shadow-2xl
+          rounded-2xl
+          w-full max-w-sm
+          overflow-hidden
+          flex flex-col
+        "
+        onClick={(e) => e.stopPropagation()}
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="試合開始時間記録完了"
+      >
+        <div className="px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
+          <h2 className="text-lg font-extrabold tracking-wide text-center">
+            記録完了
+          </h2>
+        </div>
+
+        <div className="px-6 py-6 text-center">
+          <p className="text-[15px] font-bold text-gray-800 leading-relaxed">
+            試合開始時間を記録しました
+          </p>
+
+          {gameStartTime && (
+            <p className="mt-3 text-sm font-semibold text-emerald-700">
+              開始時刻：{gameStartTime}
+            </p>
+          )}
+        </div>
+
+        <div className="px-5 pb-5">
+          <button
+            className="w-full py-3 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 active:bg-emerald-800"
+            onClick={() => setShowStartGameComplete(false)}
+          >
+            OK
+          </button>
+        </div>
+
+        <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
+      </div>
+    </div>
+  </div>
+)}
+
+{/* ✅ 戻す確認モーダル */}
+{showRestoreConfirmModal && (
+  <div className="fixed inset-0 z-50">
+    <div
+      className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+      onClick={() => setShowRestoreConfirmModal(false)}
+    />
+
+    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+      <div
+        className="
+          bg-white shadow-2xl
+          rounded-2xl
+          w-full max-w-sm
+          overflow-hidden
+          flex flex-col
+        "
+        onClick={(e) => e.stopPropagation()}
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="戻す確認"
+      >
+        <div className="px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
+          <h2 className="text-lg font-extrabold tracking-wide text-center">
+            確認
+          </h2>
+        </div>
+
+        <div className="px-6 py-6 text-center">
+          <p className="text-[15px] font-bold text-gray-800 leading-relaxed whitespace-pre-line">
+            この回の最初に戻します。{"\n"}
+            よろしいですか？
+          </p>
+        </div>
+
+        <div className="px-5 pb-5">
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              className="w-full py-3 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700 active:bg-red-800"
+              onClick={() => setShowRestoreConfirmModal(false)}
+            >
+              NO
+            </button>
+            <button
+              className="w-full py-3 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 active:bg-emerald-800"
+              onClick={async () => {
+                setShowRestoreConfirmModal(false);
+                await restoreDefenseInningStartSnapshot();
+              }}
+            >
+              YES
+            </button>
+          </div>
+        </div>
+
+        <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
+      </div>
+    </div>
+  </div>
+)}
+
+{/* ✅ 戻す完了モーダル */}
+{showRestoreCompleteModal && (
+  <div className="fixed inset-0 z-50">
+    <div
+      className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+      onClick={() => setShowRestoreCompleteModal(false)}
+    />
+
+    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+      <div
+        className="
+          bg-white shadow-2xl
+          rounded-2xl
+          w-full max-w-sm
+          overflow-hidden
+          flex flex-col
+        "
+        onClick={(e) => e.stopPropagation()}
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="戻す完了"
+      >
+        <div className="px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
+          <h2 className="text-lg font-extrabold tracking-wide text-center">
+            完了
+          </h2>
+        </div>
+
+        <div className="px-6 py-6 text-center">
+          <p className="text-[15px] font-bold text-gray-800 leading-relaxed">
+            この回の最初に戻しました。
+          </p>
+        </div>
+
+        <div className="px-5 pb-5">
+          <button
+            className="w-full py-3 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 active:bg-emerald-800"
+            onClick={() => setShowRestoreCompleteModal(false)}
+          >
+            OK
+          </button>
+        </div>
+
+        <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
+      </div>
+    </div>
+  </div>
+)}
 
     </div>
   );

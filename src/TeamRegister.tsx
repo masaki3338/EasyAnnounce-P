@@ -32,7 +32,18 @@ const TeamRegister = () => {
 
   const [restoreMessage, setRestoreMessage] = useState("");
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showSaveComplete, setShowSaveComplete] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Player | null>(null);
   const [formError, setFormError] = useState("");
+  const [showBackupComplete, setShowBackupComplete] = useState(false);
+  const [backupFileName, setBackupFileName] = useState("");
+  const [showFormErrorModal, setShowFormErrorModal] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [allowLeave, setAllowLeave] = useState(false);
+  const snapshotRef = useRef<string | null>(null);
+  const initDoneRef = useRef(false);
+
   // 必須入力欄
   const firstNameInputRef = useRef<HTMLInputElement>(null);
   const lastNameInputRef = useRef<HTMLInputElement>(null);
@@ -57,6 +68,12 @@ const TeamRegister = () => {
     { id: 'firstNameKana', label: 'ふりがな（名）', placeholder: 'たろう' },
     { id: 'number',        label: '背番号',         placeholder: '10' },
   ];
+
+  const buildSnapshot = () =>
+  JSON.stringify({
+    team,
+    editingPlayer,
+  });
 
   // 既存の handleBackup を置き換え
 const handleBackup = async () => {
@@ -86,12 +103,19 @@ const handleBackup = async () => {
       await writable.write(blob);
       await writable.close();
 
-      alert(`✅ 保存しました：${handle.name}`);
+      //alert(`✅ 保存しました：${handle.name}`);
+      setBackupFileName(handle.name);
+      setShowBackupComplete(true);
       return;
-    } catch (err) {
-      // ユーザーがキャンセルした等。フォールバックへ続行
-      console.warn("save picker canceled or failed:", err);
-    }
+      } catch (err: any) {
+        // キャンセル時は何もしない
+        if (err?.name === "AbortError") {
+          return;
+        }
+
+        // それ以外のエラーだけフォールバックへ
+        console.warn("save picker failed:", err);
+      }
   }
 
   // ▼ フォールバック（従来どおりの自動ダウンロード）
@@ -103,6 +127,9 @@ const handleBackup = async () => {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+
+  setBackupFileName("team_backup.json");
+  setShowBackupComplete(true);
 };
 
 
@@ -113,7 +140,7 @@ const handleBackup = async () => {
       const text = await file.text();
       const data = JSON.parse(text);
       setTeam(data);
-      setRestoreMessage("✅ バックアップを読み込みました。必要なら保存ボタンを押してください。");
+      setRestoreMessage("✅ バックアップを読み込みました。必要なら保存するボタンを押してください。");
     } catch (error) {
       setRestoreMessage("❌ 読み込みに失敗しました。ファイル形式を確認してください。");
     }
@@ -131,11 +158,57 @@ useEffect(() => {
   }
 }, [editingPlayer.id]);
 
-  useEffect(() => {
-    localForage.getItem<Team>("team").then((data) => {
-      if (data) setTeam(data);
-    });
-  }, []);
+useEffect(() => {
+  localForage.getItem<Team>("team").then((data) => {
+    if (data) {
+      setTeam(data);
+      snapshotRef.current = JSON.stringify({
+        team: data,
+        editingPlayer: {},
+      });
+    } else {
+      snapshotRef.current = JSON.stringify({
+        team: {
+          name: "",
+          furigana: "",
+          players: [],
+        },
+        editingPlayer: {},
+      });
+    }
+
+    setIsDirty(false);
+    initDoneRef.current = true;
+  });
+}, []);
+
+useEffect(() => {
+  if (!initDoneRef.current) return;
+  setIsDirty(buildSnapshot() !== snapshotRef.current);
+}, [team, editingPlayer]);
+
+useEffect(() => {
+  const appBackBtn = document.getElementById(
+    "team-register-back-button"
+  ) as HTMLButtonElement | null;
+
+  if (!appBackBtn) return;
+
+  const handleClick = (e: Event) => {
+    if (allowLeave) return;
+    if (!isDirty) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    setShowLeaveConfirm(true);
+  };
+
+  appBackBtn.addEventListener("click", handleClick, true);
+
+  return () => {
+    appBackBtn.removeEventListener("click", handleClick, true);
+  };
+}, [isDirty, allowLeave]);
 
 const handleTeamChange = (e: React.ChangeEvent<HTMLInputElement>) => {
   const { name, value } = e.target;
@@ -179,7 +252,7 @@ const addOrUpdatePlayer = () => {
   if (missing.length > 0) {
     const labels = missing.map(m => m.label).join("・");
     setFormError(`未入力の項目があります：${labels}`);
-    alert(`未入力の項目があります：${labels}`);
+    setShowFormErrorModal(true);
 
     // 最初の未入力欄へスクロール＆フォーカス
     setTimeout(() => {
@@ -223,32 +296,42 @@ const addOrUpdatePlayer = () => {
 
   const editPlayer = (player: Player) => setEditingPlayer(player);
 
-const deletePlayer = (player: Player) => {
-  const name = `${player.lastName ?? ""} ${player.firstName ?? ""}`.trim();
-  const msg  = `背番号 ${player.number}：${name} を削除してよいですか？`;
-  if (!window.confirm(msg)) return;
+  const deletePlayer = (player: Player) => {
+    setDeleteTarget(player);
+  };
+  const confirmDeletePlayer = () => {
+    if (!deleteTarget) return;
 
-  setTeam((prev) => ({
-    ...prev,
-    players: prev.players.filter((p) => p.id !== player.id),
-  }));
+    setTeam((prev) => ({
+      ...prev,
+      players: prev.players.filter((p) => p.id !== deleteTarget.id),
+    }));
 
-  // 編集中の選手を消した場合はフォームをクリア（任意）
-  if (editingPlayer.id === player.id) {
-    setEditingPlayer({});
-  }
-};
+    if (editingPlayer.id === deleteTarget.id) {
+      setEditingPlayer({});
+    }
 
+    setDeleteTarget(null);
+  };
 
 const saveTeam = async () => {
   const updatedTeam = {
     ...team,
-    // ✅ 入力されたふりがなをそのまま保存（上書きしない）
     furigana: (team.furigana ?? "").trim(),
     players: [...team.players].sort((a, b) => Number(a.number) - Number(b.number)),
   };
+
   await localForage.setItem("team", updatedTeam);
-  alert("✅ チーム情報を保存しました");
+  setTeam(updatedTeam);
+
+  snapshotRef.current = JSON.stringify({
+    team: updatedTeam,
+    editingPlayer: {},
+  });
+  setIsDirty(false);
+  setAllowLeave(false);
+
+  setShowSaveComplete(true);
 };
 
 
@@ -629,6 +712,207 @@ const saveTeam = async () => {
           type="button"
           onClick={() => setShowHelpModal(false)}
           className="w-full rounded-2xl bg-emerald-600 py-3 text-[15px] font-bold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.98]"
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* 選手削除確認モーダル */}
+{deleteTarget && (
+  <div
+    className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 px-6"
+    role="dialog"
+    aria-modal="true"
+    onClick={() => setDeleteTarget(null)}
+  >
+    <div
+      className="w-full max-w-sm rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+      onClick={(e) => e.stopPropagation()}
+      role="document"
+    >
+      <div className="bg-red-600 text-white text-center font-bold py-3">
+        確認
+      </div>
+
+      <div className="px-6 py-5 text-center">
+        <p className="whitespace-pre-line text-[15px] font-bold text-gray-800 leading-relaxed">
+          {`背番号 ${deleteTarget.number}：${deleteTarget.lastName ?? ""} ${deleteTarget.firstName ?? ""} を削除してよいですか？`}
+        </p>
+      </div>
+
+      <div className="px-5 pb-5">
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            className="w-full py-3 rounded-full bg-gray-500 text-white font-semibold hover:bg-gray-600 active:bg-gray-700"
+            onClick={() => setDeleteTarget(null)}
+          >
+            いいえ
+          </button>
+          <button
+            className="w-full py-3 rounded-full bg-red-600 text-white font-semibold hover:bg-red-700 active:bg-red-800"
+            onClick={confirmDeletePlayer}
+          >
+            削除
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* 保存完了モーダル */}
+{showSaveComplete && (
+  <div
+    className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 px-6"
+    role="dialog"
+    aria-modal="true"
+    onClick={() => setShowSaveComplete(false)}
+  >
+    <div
+      className="w-full max-w-sm rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+      onClick={(e) => e.stopPropagation()}
+      role="document"
+    >
+      <div className="bg-blue-600 text-white text-center font-bold py-3">
+        保存完了
+      </div>
+
+      <div className="px-6 py-5 text-center">
+        <p className="text-[15px] font-bold text-gray-800 leading-relaxed">
+          チーム情報を保存しました！
+        </p>
+      </div>
+
+      <div className="px-5 pb-5">
+        <button
+          className="w-full py-3 rounded-full bg-blue-600 text-white font-semibold hover:bg-blue-700 active:bg-blue-800"
+          onClick={() => setShowSaveComplete(false)}
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* 未保存確認モーダル */}
+{showLeaveConfirm && (
+  <div
+    className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 px-6"
+    role="dialog"
+    aria-modal="true"
+    onClick={() => setShowLeaveConfirm(false)}
+  >
+    <div
+      className="w-full max-w-sm rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+      onClick={(e) => e.stopPropagation()}
+      role="document"
+    >
+      <div className="bg-green-600 text-white text-center font-bold py-3">
+        確認
+      </div>
+
+      <div className="px-6 py-5 text-center">
+        <p className="whitespace-pre-line text-[15px] font-bold text-gray-800 leading-relaxed">
+          追加、変更、削除した内容を保存していません。{"\n"}
+          よろしいですか？
+        </p>
+      </div>
+
+      <div className="px-5 pb-5">
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            className="w-full py-3 rounded-full bg-red-600 text-white font-semibold hover:bg-red-700 active:bg-red-800"
+            onClick={() => setShowLeaveConfirm(false)}
+          >
+            NO
+          </button>
+          <button
+            className="w-full py-3 rounded-full bg-green-600 text-white font-semibold hover:bg-green-700 active:bg-green-800"
+            onClick={() => {
+              setShowLeaveConfirm(false);
+              setAllowLeave(true);
+
+              setTimeout(() => {
+                const appBackBtn = document.getElementById("team-register-back-button");
+                appBackBtn?.click();
+              }, 0);
+            }}
+          >
+            YES
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* 入力不足モーダル */}
+{showFormErrorModal && (
+  <div
+    className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 px-6"
+    role="dialog"
+    aria-modal="true"
+    onClick={() => setShowFormErrorModal(false)}
+  >
+    <div
+      className="w-full max-w-sm rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+      onClick={(e) => e.stopPropagation()}
+      role="document"
+    >
+      <div className="bg-red-600 text-white text-center font-bold py-3">
+        確認
+      </div>
+
+      <div className="px-6 py-5 text-center">
+        <p className="whitespace-pre-line text-[15px] font-bold text-gray-800 leading-relaxed">
+          {formError}
+        </p>
+      </div>
+
+      <div className="px-5 pb-5">
+        <button
+          className="w-full py-3 rounded-full bg-red-600 text-white font-semibold hover:bg-red-700 active:bg-red-800"
+          onClick={() => setShowFormErrorModal(false)}
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* バックアップ完了モーダル */}
+{showBackupComplete && (
+  <div
+    className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 px-6"
+    role="dialog"
+    aria-modal="true"
+    onClick={() => setShowBackupComplete(false)}
+  >
+    <div
+      className="w-full max-w-sm rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+      onClick={(e) => e.stopPropagation()}
+      role="document"
+    >
+      <div className="bg-blue-600 text-white text-center font-bold py-3">
+        バックアップ完了
+      </div>
+
+      <div className="px-6 py-5 text-center">
+        <p className="whitespace-pre-line text-[15px] font-bold text-gray-800 leading-relaxed">
+          バックアップを保存しました。{"\n"}
+          {backupFileName}
+        </p>
+      </div>
+
+      <div className="px-5 pb-5">
+        <button
+          className="w-full py-3 rounded-full bg-blue-600 text-white font-semibold hover:bg-blue-700 active:bg-blue-800"
+          onClick={() => setShowBackupComplete(false)}
         >
           OK
         </button>

@@ -71,6 +71,12 @@ function toReadable(root: HTMLElement): string {
   // ✅ 「○○くんに代わりまして●●くん」を区切る
   text = text.replace(/(さん|くん)に代わりまして\s*/g, "$1に代わりまして、");
 
+  // ✅ 「○○くんが入り ピッチャーへ」→「○○くんが入り、ピッチャーへ」
+text = text.replace(
+  /(さん|くん)が\s*入り\s*(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)(へ|に)?/g,
+  "$1が入り、$2$3"
+);
+
   // ✅ 「○○くん背番号〇」→「○○くん、背番号〇」
   text = text.replace(/(さん|くん)\s*背番号\s*/g, "$1、背番号 ");
 
@@ -3556,13 +3562,14 @@ const unlockScroll = () => {
 };
 
 const speakVisibleAnnouncement = () => {
-  const root = modalTextRef.current;
-  if (!root) return;
+  const html = announcementText?.speakText || "";
+  if (!html) return;
 
-  // 追加した toReadable をここで呼び出す
-  let text = toReadable(root);
+  const temp = document.createElement("div");
+  temp.innerHTML = html;
 
-  // 正規化処理（既存の置換ルール）
+  let text = toReadable(temp);
+
   text = text
     .replace(/に入ります/g, "にはいります")
     .replace(/へ入ります/g, "へはいります")
@@ -3597,12 +3604,14 @@ const speakVisibleAnnouncement = () => {
   const stopSpeaking  = () => ttsStop();
 // ---- ここまで ----
 
-  const [teamName, setTeamName] = useState("自チーム");
+  const [teamName, setTeamName] = useState("自チーム");       // 表示用
+  const [teamReading, setTeamReading] = useState("自チーム"); // 読み上げ用
 
   useEffect(() => {
-    localForage.getItem("team").then((data) => {
-      if (data && typeof data === "object" && "name" in data) {
-        setTeamName(data.name as string);
+    localForage.getItem("team").then((data: any) => {
+      if (data && typeof data === "object") {
+        setTeamName(data.name || "自チーム");
+        setTeamReading(data.furigana || data.kana || data.reading || data.name || "自チーム");
       }
     });
   }, []);
@@ -4704,18 +4713,31 @@ if (replacement) {
 // ▼ ここは既存の changes 構築（battingOrder を走査して replace/mixed/shift を埋める）をそのまま維持
 
 // 既存：通常のアナウンス文
-const normalText = generateAnnouncementText(
-  changes, 
-  teamName, 
-  battingOrder,    
-  assignments, 
-  teamPlayers, 
-  initialAssignments, 
-  usedPlayerInfo, 
-  ohtaniRule, 
-  reentryPreviewIds, 
-  reentryFixedIds);
+const displayText = generateAnnouncementText(
+  changes,
+  teamName,
+  battingOrder,
+  assignments,
+  teamPlayers,
+  initialAssignments,
+  usedPlayerInfo,
+  ohtaniRule,
+  reentryPreviewIds,
+  reentryFixedIds
+);
 
+const speakText = generateAnnouncementText(
+  changes,
+  teamReading,
+  battingOrder,
+  assignments,
+  teamPlayers,
+  initialAssignments,
+  usedPlayerInfo,
+  ohtaniRule,
+  reentryPreviewIds,
+  reentryFixedIds
+);
 
 // ▼▼▼ ここから追加（generateAnnouncementText の先頭で宣言）▼▼▼
 const isDup = (p: Player | undefined) =>
@@ -4773,8 +4795,10 @@ const addDhDisabledHeader = (txt: string) =>
 
 // 既存と合体（リエントリーなしなら通常だけ返す）
 if (reentryLines.length === 0) {
-  return injectDhDisabledAfterHeader(normalText);
-
+  return {
+    displayText: injectDhDisabledAfterHeader(displayText),
+    speakText: injectDhDisabledAfterHeader(speakText),
+  };
 }
 
 // 1) 通常側のヘッダーは削除（リエントリー行ですでに案内済み）
@@ -4782,7 +4806,11 @@ const headerRegex = new RegExp(
   `^${teamName}、(?:選手の交代並びにシートの変更|選手の交代|シートの変更)をお知らせいたします。$`
 );
 
-let normalLines = normalText
+let displayLines = displayText
+  .split("\n")
+  .filter((ln) => ln.trim().length > 0 && !headerRegex.test(ln.trim()));
+
+let speakLines = speakText
   .split("\n")
   .filter((ln) => ln.trim().length > 0 && !headerRegex.test(ln.trim()));
 
@@ -4791,7 +4819,13 @@ let normalLines = normalText
 for (const { A, B, posJP } of reentryPairs) {
   const keyA = nameWithHonor(A).replace(/\s+/g, "");
   const keyB = fullNameWithHonor(B).replace(/\s+/g, "");
-  normalLines = normalLines.filter((ln) => {
+  displayLines = displayLines.filter((ln) => {
+    const t = ln.replace(/\s+/g, "");
+    const dup = t.includes(keyA) && t.includes(keyB) && t.includes(posJP);
+    return !dup;
+  });
+
+  speakLines = speakLines.filter((ln) => {
     const t = ln.replace(/\s+/g, "");
     const dup = t.includes(keyA) && t.includes(keyB) && t.includes(posJP);
     return !dup;
@@ -4800,17 +4834,28 @@ for (const { A, B, posJP } of reentryPairs) {
 
 // ▼ リエントリー対象（B）の“打順行だけ”を 苗字＋敬称／番号なし に統一
 if (reentryPairs.length > 0 && normalLines.length > 0) {
-  normalLines = normalLines.map((ln) => {
+  displayLines = displayLines.map((ln) => {
     for (const { B } of reentryPairs) {
-      const full = fullNameWithHonor(B);      // 例: <ruby>米山<rt>よねやま</rt></ruby><ruby>碧人<rt>あおと</rt></ruby>くん
-      const last = nameWithHonor(B);      // 例: <ruby>米山<rt>よねやま</rt></ruby>くん
+      const full = fullNameWithHonor(B);
+      const last = nameWithHonor(B);
       if (ln.includes(full)) {
-        // フルネーム→苗字＋敬称 に置換
         ln = ln.replace(full, last);
-        // 背番号を削除（もし付いていれば）
         ln = ln.replace(/\s*背番号\s*\d+/, "");
       } else if (ln.includes(last)) {
-        // すでに苗字表記だが背番号だけ付いているケースを掃除
+        ln = ln.replace(/\s*背番号\s*\d+/, "");
+      }
+    }
+    return ln;
+  });
+
+  speakLines = speakLines.map((ln) => {
+    for (const { B } of reentryPairs) {
+      const full = fullNameWithHonor(B);
+      const last = nameWithHonor(B);
+      if (ln.includes(full)) {
+        ln = ln.replace(full, last);
+        ln = ln.replace(/\s*背番号\s*\d+/, "");
+      } else if (ln.includes(last)) {
         ln = ln.replace(/\s*背番号\s*\d+/, "");
       }
     }
@@ -7755,7 +7800,7 @@ const positionChanged = currentPos !== initialPos;
               <div
                 ref={modalTextRef}
                 className="text-rose-600 text-lg font-bold whitespace-pre-wrap"
-                dangerouslySetInnerHTML={{ __html: announcementText }}
+                dangerouslySetInnerHTML={{ __html: announcementText.displayText }}
               />
 
               {/* 🔴 ボタンを赤枠内に配置 */}

@@ -116,6 +116,7 @@ const [loaded, setLoaded] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showSaveComplete, setShowSaveComplete] = useState(false);
   const snapshotRef = React.useRef<string | null>(null);
 
   // 現在の値をスナップショット化
@@ -328,7 +329,8 @@ const handleSave = async () => {
   snapshotRef.current = buildSnapshot();
   setIsDirty(false);
 
-  alert("✅ 試合情報を保存しました");
+  //alert("✅ 試合情報を保存しました");
+  setShowSaveComplete(true);
 };
 
 return (
@@ -1105,7 +1107,41 @@ return (
         </div>
       </div>
     )}
-    
+
+    {/* 保存完了モーダル */}
+    {showSaveComplete && (
+      <div
+        className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60 px-6"
+        role="dialog"
+        aria-modal="true"
+        onClick={() => setShowSaveComplete(false)}
+      >
+        <div
+          className="w-full max-w-sm rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+          role="document"
+        >
+          <div className="bg-green-600 text-white text-center font-bold py-3">
+            保存完了
+          </div>
+
+          <div className="px-6 py-5 text-center">
+            <p className="text-[15px] font-bold text-gray-800 leading-relaxed">
+              試合情報を保存しました！
+            </p>
+          </div>
+
+          <div className="px-5 pb-5">
+            <button
+              className="w-full py-3 rounded-full bg-green-600 text-white font-semibold hover:bg-green-700 active:bg-green-800"
+              onClick={() => setShowSaveComplete(false)}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   </div>
 );
 

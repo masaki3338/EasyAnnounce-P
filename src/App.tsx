@@ -198,7 +198,9 @@ const App = () => {
   const lastOffenseRef = useRef(false);
   const [showEndGamePopup, setShowEndGamePopup] = useState(false);
   const [showMenuHelpModal, setShowMenuHelpModal] = useState(false);
-  const [endGameAnnouncement, setEndGameAnnouncement] = useState("");
+  const [endGameAnnouncement, setEndGameAnnouncement] = useState("");       // 表示用
+  const [endGameAnnouncementSpeak, setEndGameAnnouncementSpeak] = useState(""); // 読み上げ用
+  const [showEndGameSimpleModal, setShowEndGameSimpleModal] = useState(false);
   const [showHeatPopup, setShowHeatPopup] = useState(false);
   // 🔒 熱中症アナウンス 連打ロック
   const [heatSpeaking, setHeatSpeaking] = useState(false);
@@ -659,6 +661,7 @@ const handleSpeak = async () => {
       {screen === "teamRegister" && (
         <>
           <button
+            id="team-register-back-button"
             className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
             onClick={() => setScreen("menu")}
           >
@@ -953,7 +956,12 @@ const handleSpeak = async () => {
       const formatted = `${now.getHours()}時${now.getMinutes()}分`;
       //setEndTime(formatted);
 
-      const team = (await localForage.getItem("team")) as { name?: string } | null;
+      const team = (await localForage.getItem("team")) as {
+        name?: string;
+        furigana?: string;
+        kana?: string;
+        reading?: string;
+      } | null;
       const match = (await localForage.getItem("matchInfo")) as any;
       const noNextGame = Boolean(match?.noNextGame);
       console.log("matchInfo (RAW) =", match);
@@ -984,6 +992,8 @@ const handleSpeak = async () => {
       }, 0);
 
       const myTeam = team?.name ?? "自チーム";
+      const myTeamReading =
+        team?.furigana || team?.kana || team?.reading || team?.name || "自チーム";
 
       let rawMatchNumber = match?.matchNumber;
       if (rawMatchNumber == null) {
@@ -999,51 +1009,65 @@ const handleSpeak = async () => {
       const currentGame = Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
       const nextGame = currentGame + 1;
 
-if (totalMyScore > totalOpponentScore) {
+      if (totalMyScore > totalOpponentScore) {
+        const currentLeagueMode = getLeagueMode();
 
-  let announcement = "";
-  const currentLeagueMode = getLeagueMode();
+        let displayAnnouncement = "";
+        let speakAnnouncement = "";
 
-  if (currentLeagueMode === "boys") {
-    // ボーイズ用
-    const endGamePitcherInfo = (await localForage.getItem("endGamePitcherInfo")) as
-      | { pitcherId?: number; pitcherName?: string; totalPitchCount?: number }
-      | null;
+        if (currentLeagueMode === "boys") {
+          const endGamePitcherInfo = (await localForage.getItem("endGamePitcherInfo")) as
+            | { pitcherId?: number; pitcherName?: string; totalPitchCount?: number }
+            | null;
 
-    const pitcherName = endGamePitcherInfo?.pitcherName || "";
-    const pitcherTotal = Number(endGamePitcherInfo?.totalPitchCount ?? 0);
+          const pitcherName = endGamePitcherInfo?.pitcherName || "";
+          const pitcherTotal = Number(endGamePitcherInfo?.totalPitchCount ?? 0);
 
-    announcement =
-      `ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
-      `${pitcherName}投手の合計投球数は${pitcherTotal}球です。\n` +
-      `なおこの試合の終了時刻は${formatted}です。`;
+          displayAnnouncement =
+            `ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
+            `${pitcherName}投手の合計投球数は${pitcherTotal}球です。\n` +
+            `なおこの試合の終了時刻は${formatted}です。`;
 
-  } else {
+          speakAnnouncement =
+            `ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeamReading}が勝ちました。\n` +
+            `${pitcherName}投手の合計投球数は${pitcherTotal}球です。\n` +
+            `なおこの試合の終了時刻は${formatted}です。`;
+        } else {
+          displayAnnouncement =
+            `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
+            `審判員の皆様、ありがとうございました。\n` +
+            `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
+            `尚、この試合の終了時刻は ${formatted}です。\n` +
+            `これより、ピッチングレコードの確認を行います。\n` +
+            `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
+            `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;
 
-    // ポニー用
-    announcement =
-      `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
-      `審判員の皆様、ありがとうございました。\n` +
-      `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
-      `尚、この試合の終了時刻は ${formatted}です。\n` +
-      `これより、ピッチングレコードの確認を行います。\n` +
-      `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
-      `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;
+          speakAnnouncement =
+            `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeamReading}が勝ちました。\n` +
+            `審判員の皆様、ありがとうございました。\n` +
+            `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
+            `尚、この試合の終了時刻は ${formatted}です。\n` +
+            `これより、ピッチングレコードの確認を行います。\n` +
+            `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
+            `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;
 
-    if (!noNextGame) {
-      announcement +=
-        `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
-        `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`;
-    }
+          if (!noNextGame) {
+            displayAnnouncement +=
+              `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
+              `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`;
 
-  }
+            speakAnnouncement +=
+              `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
+              `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`;
+          }
+        }
 
-  setEndGameAnnouncement(announcement);
-  setShowEndGamePopup(true);
-
-} else {
-  alert("試合終了しました");
-}
+        setEndGameAnnouncement(displayAnnouncement);
+        setEndGameAnnouncementSpeak(speakAnnouncement);
+        setShowEndGamePopup(true);
+      } else {
+        setShowEndGameSimpleModal(true);
+      }
 
       console.groupEnd();
 
@@ -1298,7 +1322,12 @@ if (totalMyScore > totalOpponentScore) {
             const formatted = `${now.getHours()}時${now.getMinutes()}分`;
             //setEndTime(formatted);
 
-            const team = (await localForage.getItem("team")) as { name?: string } | null;
+            const team = (await localForage.getItem("team")) as {
+              name?: string;
+              furigana?: string;
+              kana?: string;
+              reading?: string;
+            } | null;
             const match = (await localForage.getItem("matchInfo")) as any;
             const noNextGame = Boolean(match?.noNextGame);
             console.log("matchInfo (RAW) =", match);
@@ -1329,6 +1358,8 @@ if (totalMyScore > totalOpponentScore) {
             }, 0);
 
             const myTeam = team?.name ?? "自チーム";
+            const myTeamReading =
+              team?.furigana || team?.kana || team?.reading || team?.name || "自チーム";
 
             let rawMatchNumber = match?.matchNumber;
             if (rawMatchNumber == null) {
@@ -1345,11 +1376,12 @@ if (totalMyScore > totalOpponentScore) {
             const nextGame = currentGame + 1;
 
             if (totalMyScore > totalOpponentScore) {
-              let announcement = "";
               const currentLeagueMode = getLeagueMode();
 
+              let displayAnnouncement = "";
+              let speakAnnouncement = "";
+
               if (currentLeagueMode === "boys") {
-                // ボーイズ用
                 const endGamePitcherInfo = (await localForage.getItem("endGamePitcherInfo")) as
                   | { pitcherId?: number; pitcherName?: string; totalPitchCount?: number }
                   | null;
@@ -1357,14 +1389,17 @@ if (totalMyScore > totalOpponentScore) {
                 const pitcherName = endGamePitcherInfo?.pitcherName || "";
                 const pitcherTotal = Number(endGamePitcherInfo?.totalPitchCount ?? 0);
 
-                announcement =
+                displayAnnouncement =
                   `ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
                   `${pitcherName}投手の合計投球数は${pitcherTotal}球です。\n` +
                   `なおこの試合の終了時刻は${formatted}です。`;
 
+                speakAnnouncement =
+                  `ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeamReading}が勝ちました。\n` +
+                  `${pitcherName}投手の合計投球数は${pitcherTotal}球です。\n` +
+                  `なおこの試合の終了時刻は${formatted}です。`;
               } else {
-                // ポニー用
-                announcement =
+                displayAnnouncement =
                   `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
                   `審判員の皆様、ありがとうございました。\n` +
                   `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
@@ -1373,18 +1408,31 @@ if (totalMyScore > totalOpponentScore) {
                   `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
                   `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;
 
+                speakAnnouncement =
+                  `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeamReading}が勝ちました。\n` +
+                  `審判員の皆様、ありがとうございました。\n` +
+                  `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
+                  `尚、この試合の終了時刻は ${formatted}です。\n` +
+                  `これより、ピッチングレコードの確認を行います。\n` +
+                  `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
+                  `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;
+
                 if (!noNextGame) {
-                  announcement +=
+                  displayAnnouncement +=
+                    `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
+                    `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`;
+
+                  speakAnnouncement +=
                     `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
                     `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`;
                 }
               }
 
-              setEndGameAnnouncement(announcement);
+              setEndGameAnnouncement(displayAnnouncement);
+              setEndGameAnnouncementSpeak(speakAnnouncement);
               setShowEndGamePopup(true);
-
             } else {
-              alert("試合終了しました");
+              setShowEndGameSimpleModal(true);
             }
 
             console.groupEnd();
@@ -1644,7 +1692,7 @@ if (totalMyScore > totalOpponentScore) {
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button
                 onClick={async () => {
-                  await speak(endGameAnnouncement);
+                  await speak(endGameAnnouncementSpeak || endGameAnnouncement);
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                            inline-flex items-center justify-center gap-2"
@@ -1678,7 +1726,56 @@ if (totalMyScore > totalOpponentScore) {
   </div>
 )}
 
+{/* 試合終了シンプルモーダル（敗者チーム用） */}
+{showEndGameSimpleModal && (
+  <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="試合終了">
+    <div
+      className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+      onClick={() => setShowEndGameSimpleModal(false)}
+    />
 
+    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+      <div
+        className="bg-white shadow-2xl rounded-2xl w-full max-w-sm overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {/* ヘッダー */}
+        <div className="sticky top-0 z-10 bg-gradient-to-r from-rose-600 to-pink-600 text-white">
+          <div className="h-5 flex items-center justify-center">
+            <span className="mt-2 block h-1.5 w-12 rounded-full bg-white/60" />
+          </div>
+          <div className="px-4 py-3 flex items-center justify-between">
+            <h2 className="text-lg font-extrabold tracking-wide flex items-center gap-2">
+              <img src="/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
+              <span>試合終了</span>
+            </h2>
+            <div className="w-9 h-9" />
+          </div>
+        </div>
+
+        {/* 本文 */}
+        <div className="px-6 py-6 text-center">
+          <p className="text-[15px] font-bold text-gray-800 leading-relaxed">
+            試合終了しました。<br></br>
+            試合終了のアナウンスは勝利チームが行います。
+          </p>
+        </div>
+
+        {/* フッター */}
+        <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
+          <button
+            onClick={() => setShowEndGameSimpleModal(false)}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
+          >
+            OK
+          </button>
+          <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
  {/* 熱中症画面*/}
 {showHeatPopup && (

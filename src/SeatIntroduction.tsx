@@ -62,7 +62,8 @@ const resolveBackTarget = async (): Promise<ScreenType> => {
 };
 
 const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
-  const [teamName, setTeamName] = useState("");
+  const [teamName, setTeamName] = useState("");       // 表示用
+  const [teamReading, setTeamReading] = useState(""); // 読み上げ用
   const [positions, setPositions] = useState<{ [key: string]: PositionInfo }>({});
   const [isHome, setIsHome] = useState(true); // true → 後攻
   const [speaking, setSpeaking] = useState(false);
@@ -104,7 +105,10 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
 
       console.log("SeatIntro lastScreen=", last, " isDefense=", matchInfo?.isDefense);
 
-      if (team) setTeamName(team.name || "");
+      if (team) {
+        setTeamName(team.name || "");
+        setTeamReading(team.furigana || team.kana || team.reading || team.name || "");
+      }
       if (matchInfo) setIsHome(matchInfo.isHome ?? true);
 
       // 戻り先の判定（大小無視の部分一致＋保険）
@@ -150,7 +154,7 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
     // 表示と同じ文面（読みやすい句切り）で VOICEVOX 読み上げ
     const text =
       [
-        `${inning}、守ります、${teamName}のシートをお知らせします。`,
+        `${inning}、守ります、${teamReading}のシートをお知らせします。`,
         ...positionLabels.map(([pos, label]) => {
           const p = positions[pos];
           const ln = p?.lastName || "";

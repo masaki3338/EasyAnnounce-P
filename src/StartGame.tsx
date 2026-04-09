@@ -210,6 +210,8 @@ const proceedStart = async () => {
   await localForage.removeItem("nextBatterIndex");
   await localForage.removeItem("usedBatterIds");
   await localForage.removeItem("benchReactivatedIds");
+  await localForage.removeItem("startTime");
+  await localForage.removeItem("gameStartTime");
 
   // 打順チェックボックスをクリア
   await localForage.removeItem("checkedIds");

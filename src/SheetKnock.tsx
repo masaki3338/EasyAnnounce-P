@@ -105,13 +105,14 @@ const StepCard: React.FC<{
 
 /* ====== 読み上げ用のメッセージカード ====== */
 const MessageBlock: React.FC<{
-  text: string;
+  displayText: string;
+  speakText: string;
   keyName: string;
   readingKey: string | null;
   onSpeak: (t: string, k: string) => void;
   onStop: () => void;
   label?: string;
-}> = ({ text, keyName, readingKey, onSpeak, onStop, label }) => (
+}> = ({ displayText, speakText, keyName, readingKey, onSpeak, onStop, label }) => (
 // 置き換え：MessageBlock の返却JSX内（最外の <div> の className）
 <div className="
   rounded-2xl p-4
@@ -126,7 +127,7 @@ const MessageBlock: React.FC<{
       {label && <div className="text-[11px] text-rose-50/90 mb-1">{label}</div>}
       {/* ← 文言は白文字で視認性UP */}
       <p className="text-white whitespace-pre-wrap font-semibold leading-relaxed drop-shadow">
-        {text}
+        {displayText}
       </p>
     </div>
   </div>
@@ -134,7 +135,7 @@ const MessageBlock: React.FC<{
   <button
     className={`w-full px-4 py-2 text-white rounded-lg shadow 
       ${readingKey === keyName ? "bg-green-600" : "bg-blue-600 hover:bg-blue-700"} active:scale-95 flex items-center justify-center gap-2`}
-    onClick={() => onSpeak(text, keyName)}
+    onClick={() => onSpeak(speakText, keyName)}
   >
     <IconMic className="w-5 h-5" />
     <span>読み上げ</span>
@@ -155,7 +156,8 @@ const MessageBlock: React.FC<{
 );
 
 const SheetKnock: React.FC<Props> = ({ onBack }) => {
-  const [teamName, setTeamName] = useState("");
+  const [teamName, setTeamName] = useState("");       // 表示用
+  const [teamReading, setTeamReading] = useState(""); // 読み上げ用
   const [opponentTeamName, setOpponentTeamName] = useState("");
   const [isHome, setIsHome] = useState<"先攻" | "後攻">("先攻");
   const [timeLeft, setTimeLeft] = useState(0);
@@ -216,7 +218,9 @@ const playBeeps = async (
       const matchInfo = await localForage.getItem("matchInfo");
 
       if (team && typeof team === "object") {
-        setTeamName((team as any).name || "");
+        const t = team as any;
+        setTeamName(t.name || "");
+        setTeamReading(t.furigana || t.kana || t.reading || t.name || "");
       }
 
       if (matchInfo && typeof matchInfo === "object") {
@@ -301,13 +305,22 @@ const handleStop = () => {
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
-  const prepMessage =
-    isHome === "後攻" ? ` ${teamName}はシートノックの準備に入って下さい。` : null;
+const prepDisplayMessage =
+  isHome === "後攻" ? ` ${teamName}はシートノックの準備に入って下さい。` : null;
 
-  const mainMessage =
-    isHome === "後攻"
-      ? ` ${teamName}はシートノックに入って下さい。\nノック時間は7分以内です。`
-      : ` ${teamName}はシートノックに入って下さい。\nノック時間は同じく7分以内です。`;
+const prepSpeakMessage =
+  isHome === "後攻" ? ` ${teamReading}はシートノックの準備に入って下さい。` : null;
+
+const mainDisplayMessage =
+  isHome === "後攻"
+    ? ` ${teamName}はシートノックに入って下さい。\nノック時間は7分以内です。`
+    : ` ${teamName}はシートノックに入って下さい。\nノック時間は同じく7分以内です。`;
+
+const mainSpeakMessage =
+  isHome === "後攻"
+    ? ` ${teamReading}はシートノックに入って下さい。\nノック時間は7分以内です。`
+    : ` ${teamReading}はシートノックに入って下さい。\nノック時間は同じく7分以内です。`;
+
 
   const hasTimingHint = isHome === "先攻";
   const stepNum = (n: number) => n + (hasTimingHint ? 1 : 0);
@@ -360,10 +373,11 @@ const handleStop = () => {
   )}
 
   {/* 1 準備案内（後攻のときのみ） */}
-  {prepMessage && (
+  {prepDisplayMessage && prepSpeakMessage && (
     <StepCard step={stepNum(1)} icon={<IconGym />} title="準備の案内" accent="blue">
       <MessageBlock
-        text={prepMessage}
+        displayText={prepDisplayMessage}
+        speakText={prepSpeakMessage}
         keyName="prep"
         readingKey={readingKey}
         onSpeak={handleSpeak}
@@ -375,13 +389,14 @@ const handleStop = () => {
 
 {/* 2 本アナウンス（順番入れ替え後） */}
 <StepCard
-  step={stepNum(prepMessage ? 2 : 1)}
+  step={stepNum(prepDisplayMessage ? 2 : 1)}
   icon={<IconMic2 />}
   title="本アナウンス"
   accent="blue"
 >
   <MessageBlock
-    text={mainMessage}
+    displayText={mainDisplayMessage}
+    speakText={mainSpeakMessage}
     keyName="main"
     readingKey={readingKey}
     onSpeak={handleSpeak}
@@ -391,7 +406,7 @@ const handleStop = () => {
 
 {/* ③ 注意＋7分タイマー（統合） */}
 <StepCard
-  step={stepNum(prepMessage ? 3 : 2)}
+  step={stepNum(prepDisplayMessage  ? 3 : 2)}
   icon={<IconAlert />}
   title="スタートの注意 と 7分タイマー"
   accent="amber"
@@ -447,7 +462,7 @@ const handleStop = () => {
 
   {/* 4 残り2分アナウンス */}
   <StepCard
-    step={stepNum(prepMessage ? 4 : 3)}
+    step={stepNum(prepDisplayMessage  ? 4 : 3)}
     icon={<IconMic2 />}
     title="残り2分の案内"
     accent="blue"
@@ -463,7 +478,7 @@ const handleStop = () => {
 
   {/* 5 終了アナウンス */}
   <StepCard
-    step={stepNum(prepMessage ? 5 : 4)}
+    step={stepNum(prepDisplayMessage  ? 5 : 4)}
     icon={<IconMic2 />}
     title="終了案内"
     accent="blue"
