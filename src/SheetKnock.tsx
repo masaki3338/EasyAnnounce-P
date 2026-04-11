@@ -467,13 +467,14 @@ const mainSpeakMessage =
     title="残り2分の案内"
     accent="blue"
   >
-    <MessageBlock
-      text={"ノック時間、残り2分です。"}
-      keyName="2min"
-      readingKey={readingKey}
-      onSpeak={handleSpeak}
-      onStop={handleStop}
-    />
+  <MessageBlock
+    displayText={"ノック時間残り２分です"}
+    speakText={"ノック時間残り２分です"}
+    keyName="2min"
+    readingKey={readingKey}
+    onSpeak={handleSpeak}
+    onStop={handleStop}
+  />
   </StepCard>
 
   {/* 5 終了アナウンス */}
@@ -483,13 +484,14 @@ const mainSpeakMessage =
     title="終了案内"
     accent="blue"
   >
-    <MessageBlock
-      text={"ノックを終了してください。"}
-      keyName="end"
-      readingKey={readingKey}
-      onSpeak={handleSpeak}
-      onStop={handleStop}
-    />
+  <MessageBlock
+    displayText={"ノックを終了してください。"}
+    speakText={"ノックを終了してください。"}
+    keyName="end"
+    readingKey={readingKey}
+    onSpeak={handleSpeak}
+    onStop={handleStop}
+  />
   </StepCard>
 
   {/* ▼ ⑥のカードの下：横幅いっぱいの「戻る」ボタン */}
