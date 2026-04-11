@@ -468,8 +468,8 @@ const mainSpeakMessage =
     accent="blue"
   >
   <MessageBlock
-    displayText={"ノック時間残り２分です"}
-    speakText={"ノック時間残り２分です"}
+    displayText={"ノック時間、残り２分です"}
+    speakText={"ノック時間、残り２分です"}
     keyName="2min"
     readingKey={readingKey}
     onSpeak={handleSpeak}
