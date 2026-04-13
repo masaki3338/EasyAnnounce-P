@@ -1675,7 +1675,7 @@ const handleSpeak = async () => {
           {/* 注意表示 */}
           <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 text-sm font-semibold flex items-center gap-2">
             <span className="text-2xl">⚠️</span>
-            勝利チームがアナウンス
+            試合終了挨拶後、勝利チームがアナウンス
           </div>
 
           {/* 🔴 アナウンス文言エリア（ここに読み上げ／停止ボタンを内包） */}
