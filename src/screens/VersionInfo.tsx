@@ -72,7 +72,7 @@ const historyData: HistoryItem[] = [
     details: ["使い方ボタン追加 他"],
   },
   {
-    date: "2026.04.013",
+    date: "2026.04.13",
     version: "Vesion 2.06 β",
     details: ["不具合修正"],
   },
