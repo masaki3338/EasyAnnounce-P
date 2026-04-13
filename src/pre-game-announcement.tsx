@@ -168,6 +168,11 @@ const PreGameAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
   // 先攻/後攻を文字で統一
   const [attackLabel, setAttackLabel] = useState<"先攻" | "後攻">("先攻");
   const [showHelp, setShowHelp] = useState(false);
+  const [showOutOfChargeModal, setShowOutOfChargeModal] = useState(false);
+  const [pendingStep, setPendingStep] = useState<{
+    key: ScreenType;
+    title: string;
+  } | null>(null);
   
     useEffect(() => {
     const load = async () => {
@@ -225,17 +230,34 @@ const PreGameAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
     },
   ];
 
-  // 担当外でも遷移OK（確認付き）
-const handleStepClick = async (s: typeof steps[number]) => {
-  if (!s.enabled) {
-    const ok = window.confirm(`${s.title} は現在の担当外です。開きますか？`);
-    if (!ok) return;
-  }
-  // 📝 シート紹介に入る前だけ「どこから来たか」を保存
+const goToStep = async (s: { key: ScreenType; title: string }) => {
   if (s.key === "seatIntroduction") {
     await localForage.setItem("lastScreen", "announcement");
   }
   onNavigate(s.key);
+};
+
+const handleStepClick = async (s: typeof steps[number]) => {
+  if (!s.enabled) {
+    setPendingStep({ key: s.key, title: s.title });
+    setShowOutOfChargeModal(true);
+    return;
+  }
+
+  await goToStep({ key: s.key, title: s.title });
+};
+
+const handleConfirmOutOfCharge = async () => {
+  if (!pendingStep) return;
+
+  setShowOutOfChargeModal(false);
+  await goToStep(pendingStep);
+  setPendingStep(null);
+};
+
+const handleCloseOutOfChargeModal = () => {
+  setShowOutOfChargeModal(false);
+  setPendingStep(null);
 };
 
   return (
@@ -293,6 +315,54 @@ const handleStepClick = async (s: typeof steps[number]) => {
           ← 試合開始画面に戻る
         </button>
       </main>
+
+      {/* 担当外モーダル */}
+      {showOutOfChargeModal && (
+        <div
+          className="fixed inset-0 z-[1040] flex items-center justify-center bg-black/50 px-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={handleCloseOutOfChargeModal}
+        >
+          <div
+            className="w-full max-w-sm overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
+            onClick={(e) => e.stopPropagation()}
+            role="document"
+          >
+            <div className="bg-slate-700 px-4 py-3 text-white">
+              <h2 className="text-[17px] font-extrabold leading-tight">
+                担当外の確認
+              </h2>
+            </div>
+
+            <div className="px-4 py-5 bg-white">
+              <p className="text-[15px] leading-6 text-slate-800">
+                <span className="font-bold text-sky-700">{pendingStep?.title}</span>
+                は現在の担当外です。
+                <br />
+                開きますか？
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 px-4 pb-4">
+              <button
+                type="button"
+                onClick={handleCloseOutOfChargeModal}
+                className="w-full rounded-2xl bg-gray-200 py-3 text-[15px] font-bold text-gray-800 shadow-sm transition hover:bg-gray-300 active:scale-[0.98]"
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmOutOfCharge}
+                className="w-full rounded-2xl bg-emerald-600 py-3 text-[15px] font-bold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.98]"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 使い方モーダル */}
       {showHelp && (
