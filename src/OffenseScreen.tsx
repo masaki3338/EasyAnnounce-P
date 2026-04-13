@@ -817,6 +817,7 @@ const hasPendingDefenseSetup = async () => {
     setStartTime(timeString);
     setGameStartTime(timeString);
 
+    await localForage.removeItem("startTimePopupShown");
     await localForage.setItem("startTime", timeString);
 
     const saved = await localForage.getItem<string>("startTime");
@@ -1905,7 +1906,7 @@ const announce = async (text: string | string[]) => {
   await speak(plain);
 };
 
-const handleNext = () => {  
+const handleNext = async () => {
   setTiebreakAnno(null);
   setAnnouncementOverride(null);
 
@@ -1915,13 +1916,16 @@ const handleNext = () => {
   if (
     leagueMode === "pony" &&
     next === 1 &&
-    gameStartTime &&
-    !hasShownStartTimePopup.current
+    gameStartTime
   ) {
-    setShowStartTimePopup(true);
-    hasShownStartTimePopup.current = true;
-  }
+    const alreadyShown = await localForage.getItem<boolean>("startTimePopupShown");
 
+    if (!alreadyShown) {
+      setShowStartTimePopup(true);
+      hasShownStartTimePopup.current = true;
+      await localForage.setItem("startTimePopupShown", true);
+    }
+  }
   const currentEntry = battingOrder[currentBatterIndex];
   if (currentEntry && !checkedIds.includes(currentEntry.id)) {
     toggleChecked(currentEntry.id);

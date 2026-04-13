@@ -873,7 +873,7 @@ const addPitch = async () => {
 };
 
 const confirmScore = async () => {
-  const score = parseInt(inputScore, 10);
+  let  score = parseInt(inputScore, 10);
 
   if (isNaN(score) || score < 0) {
     //alert("0以上の数字を入力してください");
