@@ -95,8 +95,7 @@ const StepRow: React.FC<{
   // ✅ 担当外は文字を“少しだけ濃く”（見やすく）＆背景をやや明るく
   const disabledCard =
     "relative w-full text-left rounded-2xl p-4 shadow-lg transition " +
-    "bg-gray-200/90 border border-gray-300 text-gray-600 hover:bg-gray-200/90";
-
+    "bg-gray-500/95 border border-gray-600 text-gray-700 hover:bg-gray-500/95";
   return (
     <div className="grid grid-cols-[28px,1fr] gap-3 items-start">
       {/* 左：番号バッジ＋縦ライン */}
@@ -132,18 +131,29 @@ const StepRow: React.FC<{
               "w-11 h-11 rounded-xl flex items-center justify-center " +
               (enabled
                 ? "bg-sky-400/25 border border-sky-300/70 text-sky-50"
-                : "bg-white/70 text-gray-600 border border-white/60")
+                : "bg-gray-300 text-gray-700 border border-gray-500")
             }
           >
             {icon}
           </div>
           <div className="min-w-0">
-            <div className={"font-semibold " + (enabled ? "" : "text-gray-700")}>{title}</div>
-            {note && (
-              <div className={"text-xs mt-0.5 " + (enabled ? "text-sky-50/80" : "text-gray-600/90")}>
-                {note}
-              </div>
-            )}
+<div className="min-w-0">
+  <div className={"font-semibold " + (enabled ? "" : "text-gray-800")}>{title}</div>
+
+  {note && (
+    <div className="mt-0.5 flex items-center gap-2 flex-wrap">
+      <div className={"text-xs " + (enabled ? "text-sky-50/80" : "text-gray-700/80")}>
+        {note}
+      </div>
+
+      {!enabled && (
+        <div className="rounded-full bg-gray-700/90 border border-gray-800 px-2.5 py-0.5 text-xs font-bold tracking-wide text-gray-200">
+          担当外
+        </div>
+      )}
+    </div>
+  )}
+</div>
           </div>
         </div>
       </button>
@@ -201,16 +211,9 @@ const PreGameAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
     },
     {
       key: "gather" as const,
-      title: "集合",
+      title: "集合/試合開始挨拶",
       note: "先攻チーム 🎤",
       icon: <IconUsers />,
-      enabled: isFirst,
-    },
-    {
-      key: "startGreeting" as const,
-      title: "試合開始挨拶",
-      note: "先攻チーム 🎤",
-      icon: <Greeting />,
       enabled: isFirst,
     },
     {
@@ -284,7 +287,7 @@ const handleStepClick = async (s: typeof steps[number]) => {
 
         {/* 戻る */}
         <button
-          className="w-full mt-4 bg-white/10 hover:bg-white/15 text-white px-4 py-3 rounded-2xl text-base border border-white/10"
+          className="w-full py-4 rounded-2xl bg-white/90 hover:bg-white text-gray-900 font-semibold text-lg shadow-lg active:scale-95"
           onClick={onBack}
         >
           ← 試合開始画面に戻る
