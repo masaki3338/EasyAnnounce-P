@@ -240,13 +240,22 @@ const AnnounceStartingLineup: React.FC<{
     const root = announceBoxRef.current;
     if (!root) return "";
     const clone = root.cloneNode(true) as HTMLElement;
-    clone.querySelectorAll("ruby").forEach((rb) => {
-      const rt = rb.querySelector("rt");
-      const kana = (rt?.textContent ?? "").trim();
-      const fallback = (rb.textContent ?? "").trim();
-      const textNode = document.createTextNode(kana || fallback);
-      rb.replaceWith(textNode);
-    });
+clone.querySelectorAll("ruby").forEach((rb) => {
+  const rt = rb.querySelector("rt");
+  const kana = (rt?.textContent ?? "").trim();
+  const fallback = (rb.textContent ?? "").trim();
+
+  const next = rb.nextElementSibling;
+  const nextIsRuby = next?.tagName?.toLowerCase() === "ruby";
+
+  // 次も ruby なら「苗字 + 名前」の可能性が高いので、
+  // 読み上げ用にだけ少し区切る
+  const textNode = document.createTextNode(
+    (kana || fallback) + (nextIsRuby ? "　" : "　")
+  );
+
+  rb.replaceWith(textNode);
+});
     const lines: string[] = [];
     clone.querySelectorAll("p").forEach((p) => {
       const t = (p.textContent ?? "").replace(/\s+/g, " ").trim();
@@ -277,6 +286,12 @@ const handleSpeak = () => {
       "$1、"
     )
     
+    // 「先攻 チーム名」「後攻 チーム名」を少し空けて読む
+    .replace(/(先攻|後攻)\s+/g, "$1、")
+
+    // 「苗字くん 背番号1」→「苗字くん、背番号1」
+    .replace(/(さん|くん)\s*背番号/g, "$1、背番号")
+
     // 単独の 0 は「れい」ではなく「ゼロ」
     .replace(/(^|[^0-9])0(?![0-9])/g, "$1ゼロ")
 

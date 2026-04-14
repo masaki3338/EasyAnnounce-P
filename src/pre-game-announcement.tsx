@@ -87,22 +87,21 @@ const StepRow: React.FC<{
   onClick?: () => void;
 }> = ({ index, title, note, enabled, icon, isLast, onClick }) => {
   // 担当（enabled）の“明るいスカイ”テーマ（前回のまま）
-  const enabledCard =
-    "relative w-full text-left rounded-2xl p-4 shadow-lg transition active:scale-95 " +
-    "bg-gradient-to-br from-sky-400/35 via-sky-400/20 to-sky-300/10 " +
-    "border border-sky-300/70 ring-1 ring-inset ring-sky-300/40 text-white";
+const enabledCard =
+  "relative w-full text-left rounded-2xl p-4 sm:p-5 lg:p-6 shadow-lg transition active:scale-95 min-h-[92px] lg:min-h-[108px] " +
+  "bg-gradient-to-br from-sky-400/35 via-sky-400/20 to-sky-300/10 " +
+  "border border-sky-300/70 ring-1 ring-inset ring-sky-300/40 text-white";
 
-  // ✅ 担当外は文字を“少しだけ濃く”（見やすく）＆背景をやや明るく
-  const disabledCard =
-    "relative w-full text-left rounded-2xl p-4 shadow-lg transition " +
-    "bg-gray-500/95 border border-gray-600 text-gray-700 hover:bg-gray-500/95";
+const disabledCard =
+  "relative w-full text-left rounded-2xl p-4 sm:p-5 lg:p-6 shadow-lg transition min-h-[92px] lg:min-h-[108px] " +
+  "bg-gray-500/95 border border-gray-600 text-gray-700 hover:bg-gray-500/95";
   return (
-    <div className="grid grid-cols-[28px,1fr] gap-3 items-start">
+    <div className="grid grid-cols-[32px,1fr] sm:grid-cols-[36px,1fr] gap-3 sm:gap-4 items-start">
       {/* 左：番号バッジ＋縦ライン */}
       <div className="flex flex-col items-center">
         <div
           className={
-            "w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center " +
+            "w-8 h-8 sm:w-9 sm:h-9 rounded-full text-xs sm:text-sm font-bold flex items-center justify-center " +
             (enabled
               ? "bg-gradient-to-br from-sky-400 to-sky-500 text-white shadow-[0_0_0_3px_rgba(56,189,248,0.25)]"
               : "bg-gray-300 text-gray-700")
@@ -128,7 +127,7 @@ const StepRow: React.FC<{
         <div className="flex items-center gap-3">
           <div
             className={
-              "w-11 h-11 rounded-xl flex items-center justify-center " +
+              "w-11 h-11 sm:w-12 sm:h-12 lg:w-14 lg:h-14 rounded-xl flex items-center justify-center " +
               (enabled
                 ? "bg-sky-400/25 border border-sky-300/70 text-sky-50"
                 : "bg-gray-300 text-gray-700 border border-gray-500")
@@ -138,11 +137,13 @@ const StepRow: React.FC<{
           </div>
           <div className="min-w-0">
 <div className="min-w-0">
-  <div className={"font-semibold " + (enabled ? "" : "text-gray-800")}>{title}</div>
+  <div className={"font-semibold text-[15px] sm:text-base lg:text-lg " + (enabled ? "" : "text-gray-800")}>
+    {title}
+  </div>
 
   {note && (
     <div className="mt-0.5 flex items-center gap-2 flex-wrap">
-      <div className={"text-xs " + (enabled ? "text-sky-50/80" : "text-gray-700/80")}>
+      <div className={"text-xs sm:text-sm " + (enabled ? "text-sky-50/80" : "text-gray-700/80")}>
         {note}
       </div>
 
@@ -262,7 +263,7 @@ const handleCloseOutOfChargeModal = () => {
 
   return (
       <div
-        className="min-h-[100dvh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
+        className="min-h-[100dvh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-4 sm:px-6 lg:px-8"        
         style={{
           paddingTop: "max(16px, env(safe-area-inset-top))",
           paddingBottom: "max(16px, env(safe-area-inset-bottom))",
@@ -273,8 +274,8 @@ const handleCloseOutOfChargeModal = () => {
       >
 
       {/* ヘッダー */}
-      <header className="relative w-full max-w-md md:max-w-none text-center select-none mt-1">
-        <h1 className="flex items-center justify-center gap-2 text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-wide leading-tight pr-12">
+      <header className="relative w-full max-w-[1200px] text-center select-none mt-1">
+        <h1 className="flex items-center justify-center gap-2 text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-extrabold tracking-wide leading-tight pr-12">
           <span className="text-xl sm:text-2xl md:text-3xl">🎤</span>
           <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-blue-100 to-blue-400 drop-shadow">
             試合前アナウンス
@@ -293,27 +294,30 @@ const handleCloseOutOfChargeModal = () => {
       </header>
 
       {/* 縦ステッパー本体 */}
-      <main className="w-full max-w-md md:max-w-none mt-6 space-y-4">
-        {steps.map((s, i) => (
-          <StepRow
-            key={s.key}
-            index={i + 1}
-            title={s.title}
-            note={s.note}
-            icon={s.icon}
-            enabled={s.enabled}
-            isLast={i === steps.length - 1}
-             onClick={() => handleStepClick(s)}
-          />
-        ))}
+      <main className="w-full max-w-[1200px] mt-5 lg:mt-6">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 lg:gap-5">
+          {steps.map((s, i) => (
+            <StepRow
+              key={s.key}
+              index={i + 1}
+              title={s.title}
+              note={s.note}
+              icon={s.icon}
+              enabled={s.enabled}
+              isLast={i === steps.length - 1}
+              onClick={() => handleStepClick(s)}
+            />
+          ))}
+        </div>
 
-        {/* 戻る */}
-        <button
-          className="w-full py-4 rounded-2xl bg-white/90 hover:bg-white text-gray-900 font-semibold text-lg shadow-lg active:scale-95"
-          onClick={onBack}
-        >
-          ← 試合開始画面に戻る
-        </button>
+        <div className="mt-5">
+          <button
+            className="w-full py-4 lg:py-5 rounded-2xl bg-white/90 hover:bg-white text-gray-900 font-semibold text-lg lg:text-xl shadow-lg active:scale-95"
+            onClick={onBack}
+          >
+            ← 試合開始画面に戻る
+          </button>
+        </div>
       </main>
 
       {/* 担当外モーダル */}

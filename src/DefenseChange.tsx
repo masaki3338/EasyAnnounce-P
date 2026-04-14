@@ -72,13 +72,15 @@ function toReadable(root: HTMLElement): string {
   text = text.replace(/(さん|くん)に代わりまして\s*/g, "$1に代わりまして、");
 
   // ✅ 「○○くんが入り ピッチャーへ」→「○○くんが入り、ピッチャーへ」
-text = text.replace(
-  /(さん|くん)が\s*入り\s*(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)(へ|に)?/g,
-  "$1が入り、$2$3"
-);
+  text = text.replace(
+    /(そのまま)?\s*入り\s*(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)(へ|に)?/g,
+    (_m, sonoMama, pos, suffix) => `${sonoMama ?? ""}入り、${pos}${suffix ?? ""}`
+  );
 
   // ✅ 「○○くん背番号〇」→「○○くん、背番号〇」
   text = text.replace(/(さん|くん)\s*背番号\s*/g, "$1、背番号 ");
+
+
 
   return text;
 }

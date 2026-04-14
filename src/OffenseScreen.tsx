@@ -486,6 +486,7 @@ useEffect(() => {
   const [reEntryTargetPlayer, setReEntryTargetPlayer] = useState<any|null>(null); // Bくん（戻す元スタメン）
   const [reEntryOrder1, setReEntryOrder1] = useState<number|null>(null); // 1始まりの打順
   const [noReEntryMessage, setNoReEntryMessage] = useState<string>("");
+  const [showNoReEntryModal, setShowNoReEntryModal] = useState(false);
 
   // 🔸 ルビ整形
 // 苗字と名前の間に全角スペースを追加（読み上げ時も区切りやすくする）
@@ -2219,7 +2220,7 @@ const openReEntryModal = async () => {
 
   if (!B) {
     setNoReEntryMessage("この打順にリエントリー可能な選手はいません。");
-    alert("この打順にリエントリー可能な選手はいません。");
+    setShowNoReEntryModal(true);
     return;
   }
 
@@ -2239,7 +2240,8 @@ const handleRunnerReentryClick = async () => {
   const { B } = await findReentryCandidateForRunner();
 
   if (!B) {
-    alert("この打順にリエントリー可能な選手はいません。");
+    setNoReEntryMessage("この選手にリエントリー可能な選手はいません。");
+    setShowNoReEntryModal(true);
     return;
   }
 
@@ -3794,17 +3796,15 @@ useEffect(() => {
                         const honorBef = replaced.isFemale ? "さん" : "くん";
                         const honorSub = sub.isFemale ? "さん" : "くん";
 
-                        const fromKana = dupLastNames.has(String(replaced.lastName ?? "").trim())
-                          ? `${replaced.lastNameKana ?? replaced.lastName ?? ""} ${replaced.firstNameKana ?? replaced.firstName ?? ""}`
-                          : `${replaced.lastNameKana ?? replaced.lastName ?? ""}`;
+const fromKana = dupLastNames.has(String(replaced.lastName ?? "").trim())
+  ? `${replaced.lastNameKana ?? replaced.lastName ?? ""}、${replaced.firstNameKana ?? replaced.firstName ?? ""}`
+  : `${replaced.lastNameKana ?? replaced.lastName ?? ""}`;
 
-                        const toKanaFull = dupLastNames.has(String(sub.lastName ?? "").trim())
-                          ? `${sub.lastNameKana ?? sub.lastName ?? ""} ${sub.firstNameKana ?? sub.firstName ?? ""}`
-                          : `${sub.lastNameKana ?? sub.lastName ?? ""} ${sub.firstNameKana ?? sub.firstName ?? ""}`;
+const toKanaFull = `${sub.lastNameKana ?? sub.lastName ?? ""}、${sub.firstNameKana ?? sub.firstName ?? ""}`;
 
-                        const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
-                          ? `${sub.lastNameKana ?? sub.lastName ?? ""} ${sub.firstNameKana ?? sub.firstName ?? ""}`
-                          : `${sub.lastNameKana ?? sub.lastName ?? ""}`;
+const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
+  ? `${sub.lastNameKana ?? sub.lastName ?? ""}、${sub.firstNameKana ?? sub.firstName ?? ""}`
+  : `${sub.lastNameKana ?? sub.lastName ?? ""}`;
 
                         const num = (sub.number ?? "").trim();
 
@@ -4079,6 +4079,43 @@ useEffect(() => {
           </div>
         )}
 
+
+{showNoReEntryModal && (
+  <div
+    className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 px-4"
+    role="dialog"
+    aria-modal="true"
+    onClick={() => setShowNoReEntryModal(false)}
+  >
+    <div
+      className="w-full max-w-sm overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
+      onClick={(e) => e.stopPropagation()}
+      role="document"
+    >
+      <div className="bg-slate-700 px-4 py-3 text-white">
+        <h2 className="text-[17px] font-extrabold leading-tight">
+          リエントリー
+        </h2>
+      </div>
+
+      <div className="px-4 py-5 bg-white">
+        <p className="text-[15px] leading-6 text-slate-800">
+          {noReEntryMessage}
+        </p>
+      </div>
+
+      <div className="px-4 pb-4">
+        <button
+          type="button"
+          onClick={() => setShowNoReEntryModal(false)}
+          className="w-full rounded-2xl bg-emerald-600 py-3 text-[15px] font-bold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.98]"
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+)}
         {/* ✅ 出場済み選手を代打で使う確認モーダル（YES / NO） */}
         {showUsedPlayerSubConfirm && (
           <div className="fixed inset-0 z-[60]" role="dialog" aria-modal="true">
@@ -4507,7 +4544,8 @@ useEffect(() => {
                 );
 
                 if (retired.length === 0) {
-                  window.alert("リエントリー対象の選手がいません。");
+                  setNoReEntryMessage("この選手にリエントリー可能な選手はいません。");
+                  setShowNoReEntryModal(true);
                   return;
                 }
 
