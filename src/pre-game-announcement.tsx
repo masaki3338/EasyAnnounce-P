@@ -204,7 +204,7 @@ const PreGameAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
     {
       key: "sheetKnock" as const,
       title: "シートノック",
-      note: "両チーム",
+      note: "両チーム 🎤",
       icon: <IconKnock />,
       enabled: true,
     },
@@ -275,12 +275,25 @@ const handleCloseOutOfChargeModal = () => {
 
       {/* ヘッダー */}
       <header className="relative w-full max-w-[1200px] text-center select-none mt-1">
-        <h1 className="flex items-center justify-center gap-2 text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-extrabold tracking-wide leading-tight pr-12">
+        <h1 className="flex items-center justify-center gap-2 text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-extrabold tracking-wide leading-tight pr-12">
           <span className="text-xl sm:text-2xl md:text-3xl">🎤</span>
           <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-blue-100 to-blue-400 drop-shadow">
             試合前アナウンス
           </span>
         </h1>
+
+        <div className="mt-2 flex justify-center">
+          <div className="inline-flex flex-wrap items-center justify-center gap-2 rounded-full border border-sky-300/50 bg-sky-500/15 px-4 py-2 text-xs sm:text-sm lg:text-base font-bold text-sky-50 shadow-sm backdrop-blur-sm">
+            <span>上から順番に実施</span>
+            <span className="text-sky-200/80">|</span>
+            <span>
+              担当は
+              <span className="ml-1 rounded-full bg-sky-400/30 px-2.5 py-0.5 text-white">
+                {attackLabel}
+              </span>
+            </span>
+          </div>
+        </div>
 
         <button
           type="button"

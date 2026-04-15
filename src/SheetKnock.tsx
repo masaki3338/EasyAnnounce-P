@@ -85,18 +85,20 @@ const StepCard: React.FC<{
 
 
   return (
-    <section className={`relative rounded-2xl p-4 shadow-lg text-left
+    <section className={`relative rounded-2xl p-3 shadow-lg text-left
       bg-gradient-to-br ${accents[accent]}
       border ring-1 ring-inset`}>
       {/* 左の番号バッジ */}
       <div className="absolute -left-3 -top-3 w-8 h-8 rounded-full bg-white/90 text-gray-800 text-sm font-bold shadow flex items-center justify-center">
         {step}
       </div>
-      <div className="flex items-center gap-3 mb-2">
-        <div className="w-11 h-11 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center text-white">
+      <div className="flex items-center gap-2 mb-1.5">
+        <div className="w-10 h-10 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center text-white shrink-0">
           {icon}
         </div>
-        <h2 className="font-semibold text-white">{title}</h2>
+        <h2 className="flex-1 min-w-0 font-semibold text-white text-[15px] leading-tight">
+          {title}
+        </h2>
       </div>
       <div>{children}</div>
     </section>
@@ -115,22 +117,38 @@ const MessageBlock: React.FC<{
 }> = ({ displayText, speakText, keyName, readingKey, onSpeak, onStop, label }) => (
 // 置き換え：MessageBlock の返却JSX内（最外の <div> の className）
 <div className="
-  rounded-2xl p-4
+  rounded-2xl p-3
   border border-rose-500/80
   bg-gradient-to-br from-rose-600/40 via-rose-500/35 to-rose-400/30
   ring-1 ring-inset ring-rose-500/50
   shadow-lg
 ">
-  <div className="flex items-start gap-2 mb-2">
 
-    <div className="flex-1">
-      {label && <div className="text-[11px] text-rose-50/90 mb-1">{label}</div>}
-      {/* ← 文言は白文字で視認性UP */}
-      <p className="text-white whitespace-pre-wrap font-semibold leading-relaxed drop-shadow">
-        {displayText}
-      </p>
+<div className="mt-1.5">
+  <div className="w-full">
+{label && (
+  <div className="mb-2 rounded-lg border border-amber-300/60 bg-amber-500/15 px-3 py-2">
+    <div className="text-amber-50 text-sm font-bold leading-snug">
+      <span className="inline-block mr-2 rounded bg-amber-300/25 px-2 py-0.5 text-[11px] font-extrabold">
+        注意
+      </span>
+      {label}
     </div>
   </div>
+)}
+    <div className="text-white font-semibold leading-relaxed drop-shadow">
+      {displayText.split("\n").map((line, i) => (
+        <div
+          key={i}
+          className="whitespace-normal break-words"
+        >
+          {line}
+        </div>
+      ))}
+    </div>
+  </div>
+</div>
+
 <div className="grid grid-cols-2 gap-2 mt-2">
   <button
     className={`w-full px-4 py-2 text-white rounded-lg shadow 
@@ -362,7 +380,7 @@ const mainSpeakMessage =
       {/* 本体：カード群（縦にステップ表示） */}
 {/* 本体：カード群（縦にステップ表示） */}
 
-<main className="w-full max-w-md md:max-w-none mt-6 space-y-5">
+<main className="w-full max-w-md md:max-w-none mt-4 space-y-3">
   {/* ★ 先攻時だけ：一番最初に読み上げタイミングを表示 */}
   {hasTimingHint && (
     <StepCard step={1} icon={<IconAlert />} title="読み上げタイミング" accent="amber">
@@ -382,7 +400,7 @@ const mainSpeakMessage =
         readingKey={readingKey}
         onSpeak={handleSpeak}
         onStop={handleStop}
-        label="（ノックの準備が出来ていない場合のみ）"
+        label="ノックの準備が出来ていない場合のみ"
       />
     </StepCard>
   )}
@@ -406,55 +424,57 @@ const mainSpeakMessage =
 
 {/* ③ 注意＋7分タイマー（統合） */}
 <StepCard
-  step={stepNum(prepDisplayMessage  ? 3 : 2)}
+  step={stepNum(prepDisplayMessage ? 3 : 2)}
   icon={<IconAlert />}
   title="スタートの注意 と 7分タイマー"
   accent="amber"
 >
-  {/* 注意メッセージ */}
-  <div className="text-amber-50/90 text-sm leading-relaxed">
-    最初のボールがノッカーの手から離れた時、<br />
-    もしくはボール回しから始まる場合はキャッチャーの手からボールが離れてからスタート
-  </div>
-
-  {/* 仕切り線 */}
-  <div className="my-3 h-px bg-white/10" />
-
-  {/* 7分タイマー（元のUIをそのまま移植） */}
-  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-    <div className="text-4xl font-black tracking-widest tabular-nums">
-      ⌛{timeLeft === 0 && !timerActive ? "7:00" : formatTime(timeLeft)}
+  <div className="space-y-2">
+    <div className="text-amber-50/90 text-sm leading-snug">
+      最初のボールがノッカーの手から離れた時、
+      もしくはボール回しから始まる場合はキャッチャーの手から
+      ボールが離れてからスタート
     </div>
-    <div className="flex items-center gap-2">
-      {timeLeft === 0 && !timerActive ? (
-        <button className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl font-semibold active:scale-95">
-          <span onClick={startTimer}>開始</span>
-        </button>
-      ) : (
-        <>
-          {timerActive ? (
-            <button
-              className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-xl font-semibold active:scale-95"
-              onClick={stopTimer}
-            >
-              STOP
-            </button>
-          ) : (
-            <button
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl font-semibold active:scale-95"
-              onClick={startTimer}
-            >
-              START
-            </button>
-          )}
+
+    <div className="flex items-center gap-2 flex-wrap">
+      <div className="text-3xl font-black tracking-widest tabular-nums whitespace-nowrap">
+        ⌛{timeLeft === 0 && !timerActive ? "7:00" : formatTime(timeLeft)}
+      </div>
+
+      <div className="flex items-center gap-2">
+        {timeLeft === 0 && !timerActive ? (
           <button
-            className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-xl font-semibold active:scale-95"
-            onClick={resetTimer}
+            className="bg-green-600 hover:bg-green-700 text-white px-7 py-2 rounded-xl font-bold text-base active:scale-95 whitespace-nowrap min-w-[110px]"
+            onClick={startTimer}
           >
-            RESET
+            開始
           </button>
-        </>
-      )}
+        ) : (
+          <>
+            {timerActive ? (
+              <button
+                className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-xl font-semibold active:scale-95 whitespace-nowrap"
+                onClick={stopTimer}
+              >
+                STOP
+              </button>
+            ) : (
+              <button
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl font-semibold active:scale-95 whitespace-nowrap"
+                onClick={startTimer}
+              >
+                START
+              </button>
+            )}
+            <button
+              className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-xl font-semibold active:scale-95 whitespace-nowrap"
+              onClick={resetTimer}
+            >
+              RESET
+            </button>
+          </>
+        )}
+      </div>
     </div>
   </div>
 </StepCard>
