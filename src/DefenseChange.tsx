@@ -3802,8 +3802,8 @@ const numberToPosSymbol: Record<number, string> = {
 
   // --- 守備番号で交代（●が●）モーダル ---
 type PositionNumberChangeRow = {
-  from: string;            // 1〜9
-  mode: "swap" | "replace"; // "swap"=●が●, "replace"=●に代わって
+  from: string;            // 1〜10
+  mode: "swap" | "replace" | "swapPair"; // "swap"=●が●, "replace"=●に代わって
   to: string;              // swapのときは 1〜9
   benchPlayerId: string;   // replaceのときに控え選手ID
 };
@@ -3813,7 +3813,12 @@ const [showPosNumberHelpModal, setShowPosNumberHelpModal] = useState(false);
 const [posNumberMemoDataUrl, setPosNumberMemoDataUrl] = useState<string>("");
 const [dirty, setDirty] = useState(false);
 const [posNumberRows, setPosNumberRows] = useState<PositionNumberChangeRow[]>(
-  Array.from({ length: 9 }, () => ({ from: "", mode: "swap", to: "", benchPlayerId: "" }))
+  Array.from({ length: 9 }, () => ({
+    from: "",
+    mode: "swap",
+    to: "",
+    benchPlayerId: "",
+  }))
 );
 const [posNumberError, setPosNumberError] = useState<string | null>(null);
 
@@ -6518,320 +6523,383 @@ const checkReentryForBenchToField = ({
 
 // --- 守備番号で交代（●が● / ●に代わって）を反映する ---
 const applyPosNumberChanges = () => {
-  setDirty(true); 
+  setDirty(true);
   setPosNumberError(null);
 
-  const rows = posNumberRows
-    .map((r) => ({
-      from: r.from.trim(),
-      mode: r.mode,
-      to: (r.to ?? "").trim(),
+const rawRows = posNumberRows
+  .map((r) => {
+    const from = r.from.trim();
+    const to = (r.to ?? "").trim();
+
+    const fromNum = Number(from);
+    const toNum = Number(to);
+
+    const isDhInvolved = fromNum === 10 || toNum === 10;
+
+    return {
+      from,
+      // 指名打者が絡む「と」は「が」と同じ扱いにする
+      mode:
+        r.mode === "swapPair" && isDhInvolved
+          ? ("swap" as const)
+          : r.mode,
+      to,
       benchPlayerId: (r.benchPlayerId ?? "").trim(),
-    }))
-    .filter((r) => r.from && (r.mode === "swap" ? r.to : r.benchPlayerId));
+    };
+  })
+  .filter((r) => {
+    if (!r.from) return false;
+    if (r.mode === "replace") return !!r.benchPlayerId;
+    return !!r.to;
+  });
 
-  const swapRows = rows.filter((r) => r.mode === "swap");
-  const replaceRows = rows.filter((r) => r.mode === "replace");
+  const invalidPairRow = rawRows.find(
+    (r) => r.mode === "swapPair" && r.from && r.to && r.from === r.to
+  );
 
-  if (rows.length === 0) {
+  if (invalidPairRow) {
+    setPosNumberError("「〇と〇を交代」は同じ守備番号どうしでは指定できません。");
+    return;
+  }
+
+  const expandedRows = rawRows.flatMap((r) => {
+    if (r.mode !== "swapPair") return [r];
+
+    return [
+      { from: r.from, mode: "swap" as const, to: r.to, benchPlayerId: "" },
+      { from: r.to, mode: "swap" as const, to: r.from, benchPlayerId: "" },
+    ];
+  });
+
+  const swapRows = expandedRows.filter((r) => r.mode === "swap");
+  const replaceRows = expandedRows.filter((r) => r.mode === "replace");
+
+  if (rawRows.length === 0) {
     setPosNumberError("1行以上入力してください。");
     return;
   }
 
-// ✅ 1〜10チェック用（10 = 指名打者）
-const isValidNum = (n: number) => Number.isInteger(n) && n >= 1 && n <= 10;
-const hasDup = (arr: number[]) => new Set(arr).size !== arr.length;
+  const isValidNum = (n: number) => Number.isInteger(n) && n >= 1 && n <= 10;
+  const hasDup = (arr: number[]) => new Set(arr).size !== arr.length;
 
-// ✅ 全体の「出ていく集合」と「入る集合」を作る
-//  - swap: from -> to
-//  - replace: out(from) -> in(toがあればto、なければfrom)
-const allFromNums: number[] = [];
-const allToNums: number[] = [];
+  // -----------------------------
+  // DH解除特例:
+  // 10(DH) → 1〜9 は通常の左右一致チェックから外す
+  // -----------------------------
+  const dhBreakRows = swapRows.filter(
+    (r) => Number(r.from) === 10 && Number(r.to) >= 1 && Number(r.to) <= 9
+  );
 
-// swap分
-swapRows.forEach((r) => {
-  allFromNums.push(Number(r.from));
-  allToNums.push(Number(r.to));
-});
+  const normalSwapRows = swapRows.filter(
+    (r) => !(Number(r.from) === 10 && Number(r.to) >= 1 && Number(r.to) <= 9)
+  );
 
-// replace分
-replaceRows.forEach((r) => {
-  const outNum = Number(r.from);
-  const inNum = r.to && String(r.to).trim() ? Number(r.to) : outNum; // 未選択＝同じ守備
-  allFromNums.push(outNum);
-  allToNums.push(inNum);
-});
+  const swapFromNums = normalSwapRows.map((r) => Number(r.from));
+  const swapToNums = normalSwapRows.map((r) => Number(r.to));
+  const replaceFromNums = replaceRows.map((r) => Number(r.from));
+  const replaceToNums = replaceRows.map((r) => Number(r.to));
 
-// ✅ 全体として矛盾する重複はNG（同じ守備を2回いじらない）
-if (hasDup(allFromNums) || hasDup(allToNums)) {
-  setPosNumberError("左側（守備番号）/右側（入る守備）それぞれで同じ番号は重複できません。");
-  return;
-}
+  const allFromNums = [...swapFromNums, ...replaceFromNums];
+  const allToNums = [...swapToNums, ...replaceToNums];
 
-// ✅ 守備番号モーダルでも、出場済み選手の「控え→守備」は
-//    フィールド図ドロップと同じリエントリー判定を通す
-for (const r of replaceRows) {
-  const fromNum = Number(r.from);
-  const toNum = r.to && String(r.to).trim() ? Number(r.to) : fromNum;
-
-  const toPos = numberToPosSymbol[toNum];
-  const incomingId = Number(r.benchPlayerId);
-  const replacedId = assignments?.[toPos];
-
-  if (
-    typeof incomingId === "number" &&
-    !Number.isNaN(incomingId) &&
-    typeof replacedId === "number"
-  ) {
-    const ok = checkReentryForBenchToField({
-      toPos,
-      toId: incomingId,
-      fromId: Number(replacedId),
+  const countNums = (nums: number[]) => {
+    const map = new Map<number, number>();
+    nums.forEach((n) => {
+      map.set(n, (map.get(n) ?? 0) + 1);
     });
+    return map;
+  };
 
-    if (!ok) {
-      // 非リエントリー確認モーダルを出したので、ここで中断
+  const fromCountMap = countNums(allFromNums);
+  const toCountMap = countNums(allToNums);
+  const allTouchedNums = new Set<number>([
+    ...allFromNums,
+    ...allToNums,
+    ...dhBreakRows.map((r) => Number(r.from)),
+    ...dhBreakRows.map((r) => Number(r.to)),
+  ]);
+
+  for (const n of new Set<number>([...allFromNums, ...allToNums])) {
+    const fromCount = fromCountMap.get(n) ?? 0;
+    const toCount = toCountMap.get(n) ?? 0;
+
+    if (fromCount !== toCount) {
+      setPosNumberError(
+        "交代の指定は、左側と右側で同じ番号の組み合わせになるように入力してください。"
+      );
       return;
     }
   }
-}
 
-// ✅ swap+replace 全体で「出る番号集合」と「入る番号集合」が一致しているならOK
-// これにより「別守備に入る交代 + 他行の守備位置変更」の組み合わせでもエラーを出さない
-const fromSet = new Set(allFromNums);
-const toSet = new Set(allToNums);
-const sameSetAll = fromSet.size === toSet.size && [...fromSet].every((n) => toSet.has(n));
-
-if (!sameSetAll) {
-  setPosNumberError(
-    "交代の指定は、左側と右側で同じ番号の組み合わせになるように入力してください。\n" +
-      "（例：1が9、9が5、5が1 / 1に代わり控えが5、5が1 など）"
-  );
-  return;
-}
-
-  // ✅ replace側の最低限チェック
-  if (replaceRows.some((r) => !r.benchPlayerId)) {
-    setPosNumberError("「に代わって」を選んだ行は、控え選手を選択してください。");
+  if (
+    [...swapFromNums, ...swapToNums, ...replaceFromNums, ...replaceToNums].some(
+      (n) => !isValidNum(n)
+    ) ||
+    dhBreakRows.some((r) => !isValidNum(Number(r.from)) || !isValidNum(Number(r.to)))
+  ) {
+    setPosNumberError("守備番号は1〜10で入力してください。");
     return;
   }
 
-  const DEF_KEYS = ["投", "捕", "一", "二", "三", "遊", "左", "中", "右"] as const;
-  type DefKey = (typeof DEF_KEYS)[number];
+  if (hasDup(swapFromNums) || hasDup(replaceFromNums) || hasDup(replaceToNums)) {
+    setPosNumberError("同じ守備番号を重複して指定できません。");
+    return;
+  }
 
-  const benchAll = [...benchNeverPlayed, ...benchPlayedOut];
+  const numToSym = (n: number) => numberToPosSymbol[n] ?? null;
 
-  // ✅ 先に「打順の差し替え」を確定させる（setAssignments内でpushしない）
-  // outgoingId（交代される側） -> incomingId（入る側）
-  const orderReplaceMap = new Map<number, number>();
+  // 現在の守備配置（元データ）
+  const currentByNum = new Map<number, number | null>();
+  for (let n = 1; n <= 10; n++) {
+    const sym = numToSym(n);
+    if (!sym) continue;
+    const v = assignments[sym];
+    currentByNum.set(n, typeof v === "number" ? v : null);
+  }
 
-  replaceRows.forEach(({ from, benchPlayerId }) => {
-    const pos = numberToPosSymbol[Number(from)] as DefKey | undefined;
-    if (!pos) return;
+  // 最終的に各守備番号に入る選手を決める
+  const finalByNum = new Map<number, number | null>(currentByNum);
 
-    const incoming = benchAll.find((p) => String(p.id) === String(benchPlayerId));
-    if (!incoming) return;
-
-    const outgoingId = getDisplayedIdForPositionNumberModal(pos);
-    if (typeof outgoingId === "number") {
-      orderReplaceMap.set(outgoingId, incoming.id);
-    }
-
+  allTouchedNums.forEach((n) => {
+    finalByNum.set(n, null);
   });
 
-    // ✅ 守備番号モーダル経由でも、リエントリー成立なら保持する
-  {
-    const originalOrderSource =
-      startingOrderRef.current?.length === 9
-        ? startingOrderRef.current
-        : battingOrder;
+  // 打順差し替え用
+  const nextBattingReplacements = { ...battingReplacements };
+  const nextBattingOrderDraft =
+    battingOrderDraft?.length === 9 ? [...battingOrderDraft] : [...battingOrder];
 
-    const currentOrderSource =
-      battingOrderDraft?.length === 9
-        ? battingOrderDraft
-        : battingOrder;
+  let didBreakDh = false;
 
-    replaceRows.forEach(({ from, benchPlayerId }) => {
-      const outPos = numberToPosSymbol[Number(from)] as DefKey | undefined;
-      if (!outPos) return;
+  // ------------------------------------
+  // ① 通常の守備移動
+  // ------------------------------------
+  normalSwapRows.forEach(({ from, to }) => {
+    const fromNum = Number(from);
+    const toNum = Number(to);
+    const movingId = currentByNum.get(fromNum) ?? null;
+    finalByNum.set(toNum, movingId);
+  });
 
-      const incoming = benchAll.find((p) => String(p.id) === String(benchPlayerId));
-      if (!incoming) return;
+  // ------------------------------------
+  // ② 控え交代
+  // ------------------------------------
+  replaceRows.forEach(({ to, benchPlayerId }) => {
+    const toNum = Number(to);
+    finalByNum.set(toNum, Number(benchPlayerId));
+  });
 
-      const outgoingId = getDisplayedIdForPositionNumberModal(outPos);
-      if (typeof outgoingId !== "number") return;
+  // ------------------------------------
+  // ③ DH解除特別処理
+  // 10(DH) → 野手守備
+  //   - DH選手がその守備へ
+  //   - 指(10)は空にする
+  //   - その守備にいた選手の打順へ投手が入る
+  // ------------------------------------
+  dhBreakRows.forEach(({ to }) => {
+    const toNum = Number(to);
+    const toSym = numToSym(toNum);
 
-      const origIdForTo = resolveOriginalStarterId(
-        incoming.id,
-        usedPlayerInfo as any,
-        initialAssignments as any
-      );
-      const wasStarter = origIdForTo !== null;
+    const dhId = currentByNum.get(10) ?? null;
+    const pitcherId = currentByNum.get(1) ?? null;
+    const outgoingFielderId = currentByNum.get(toNum) ?? null;
 
-      const isUsedAlready =
-        (wasStarter && !!(usedPlayerInfo as any)?.[Number(origIdForTo)]) ||
-        (!!(usedPlayerInfo as any)?.[Number(incoming.id)]);
+    if (!toSym) return;
+    if (typeof dhId !== "number") return;
+    if (typeof pitcherId !== "number") return;
 
-      if (!isUsedAlready) return;
+    didBreakDh = true;
 
-      const isOffField = !Object.values(assignments || {}).includes(Number(incoming.id));
+    // 守備: DH選手が移動先守備へ
+    finalByNum.set(toNum, dhId);
 
-      const originalOrderIndex =
-        wasStarter && origIdForTo != null
-          ? originalOrderSource.findIndex(
-              (e) => Number(e.id) === Number(origIdForTo)
-            )
-          : -1;
+    // DH枠は解除
+    finalByNum.set(10, null);
 
-      const currentOrderIndexOfFrom =
-        currentOrderSource.findIndex(
-          (e) => Number(e.id) === Number(outgoingId)
+    // 打順: その守備にいた選手の打順へ投手を入れる
+    if (typeof outgoingFielderId === "number") {
+      let orderIdx = battingOrder.findIndex((entry, idx) => {
+        const displayId = battingReplacements[idx]?.id ?? entry.id;
+        return Number(displayId) === Number(outgoingFielderId);
+      });
+
+      if (orderIdx < 0) {
+        orderIdx = startingOrderRef.current.findIndex(
+          (e) => Number(e?.id) === Number(outgoingFielderId)
+        );
+      }
+
+      if (orderIdx >= 0) {
+        const pitcherPlayer = teamPlayers.find(
+          (p) => Number(p.id) === Number(pitcherId)
         );
 
-      const isReentryNow =
-        wasStarter &&
-        isOffField &&
-        originalOrderIndex >= 0 &&
-        currentOrderIndexOfFrom >= 0 &&
-        originalOrderIndex === currentOrderIndexOfFrom;
+        if (pitcherPlayer) {
+          nextBattingReplacements[orderIdx] = pitcherPlayer;
+        }
 
-      if (isReentryNow) {
-        markReentryBlue(Number(incoming.id));
+        if (nextBattingOrderDraft[orderIdx]) {
+          nextBattingOrderDraft[orderIdx] = {
+            ...nextBattingOrderDraft[orderIdx],
+            id: pitcherId,
+          };
+        }
       }
+    }
+
+    updateLog("指", dhId, toSym, outgoingFielderId);
+  });
+
+  // ------------------------------------
+  // ④ 控え交代の打順差し替え
+  // 「from にいた選手」の打順へ控え選手を入れる
+  // ------------------------------------
+  replaceRows.forEach(({ from, benchPlayerId }) => {
+    const fromNum = Number(from);
+    const incomingId = Number(benchPlayerId);
+    const outgoingId = currentByNum.get(fromNum);
+
+    if (typeof outgoingId !== "number") return;
+
+    const incomingPlayer = teamPlayers.find((p) => Number(p.id) === incomingId);
+    if (!incomingPlayer) return;
+
+    let orderIdx = battingOrder.findIndex((entry, idx) => {
+      const displayId = battingReplacements[idx]?.id ?? entry.id;
+      return Number(displayId) === Number(outgoingId);
     });
-  }
-  
-  // ✅ 1) 守備（assignments）を更新（守備9枠だけ）
-setAssignments((prev) => {
-  const baseDef: Partial<Record<DefKey, number | null>> = {};
-  DEF_KEYS.forEach((k) => {
-    baseDef[k] = getDisplayedIdForPositionNumberModal(k) ?? null;
-  });
 
-  const nextDef: Partial<Record<DefKey, number | null>> = { ...baseDef };
+    if (orderIdx < 0) {
+      const fromSym = numToSym(fromNum);
+      const starterIdAtPos = fromSym ? initialAssignments?.[fromSym] : null;
 
-  // ★この更新で「埋まる守備」を先に集計（outを空ける判定で使う）
-  const filled = new Set<DefKey>();
+      if (typeof starterIdAtPos === "number") {
+        orderIdx = startingOrderRef.current.findIndex(
+          (e) => Number(e?.id) === Number(starterIdAtPos)
+        );
+      }
+    }
 
-  // --- swap（守備位置入替）: baseDef を元に同時反映 ---
-  swapRows.forEach(({ from, to }) => {
-    const fromPos = numberToPosSymbol[Number(from)] as DefKey | undefined;
-    const toPos = numberToPosSymbol[Number(to)] as DefKey | undefined;
-    if (!fromPos || !toPos) return;
+    if (orderIdx >= 0) {
+      nextBattingReplacements[orderIdx] = incomingPlayer;
 
-    const movingId = baseDef[fromPos] ?? null;
-    if (movingId == null) return;
-
-    nextDef[toPos] = movingId;
-    filled.add(toPos);
-  });
-
-  // --- replace（選手交代）: out(from) -> in(to or from) ---
-  replaceRows.forEach(({ from, to, benchPlayerId }) => {
-    const outPos = numberToPosSymbol[Number(from)] as DefKey | undefined;
-    // ★入る守備：to が空なら同じ守備に入る（従来互換）
-    const inNum = to && String(to).trim() ? Number(to) : Number(from);
-    const inPos = numberToPosSymbol[inNum] as DefKey | undefined;
-
-    if (!outPos || !inPos) return;
-
-    const incoming = benchAll.find((p) => String(p.id) === String(benchPlayerId));
-    if (!incoming) return;
-
-    // ★入る守備に控えを配置
-    nextDef[inPos] = incoming.id;
-    filled.add(inPos);
-
-    // ★別守備に入るなら、交代元(outPos)は「誰も埋めない場合だけ」空ける
-    //   （今回の例：5が1 で outPos=投 は埋まるので空けない）
-    if (inPos !== outPos) {
-      const willBeFilled =
-        filled.has(outPos) ||
-        // swapのtoで埋まるケース（filledに入るはずだが保険）
-        swapRows.some((r) => numberToPosSymbol[Number(r.to)] === outPos) ||
-        // replaceのinで埋まるケース
-        replaceRows.some((r) => {
-          const n = r.to && String(r.to).trim() ? Number(r.to) : Number(r.from);
-          return numberToPosSymbol[n] === outPos;
-        });
-
-      if (!willBeFilled) {
-        nextDef[outPos] = null;
+      if (nextBattingOrderDraft[orderIdx]) {
+        nextBattingOrderDraft[orderIdx] = {
+          ...nextBattingOrderDraft[orderIdx],
+          id: incomingId,
+        };
       }
     }
   });
 
-  // DHなど他キーは prev を保持
-  return { ...(prev as any), ...nextDef };
-});
+  // assignments 化
+  let nextAssignments: Record<string, number | null> = { ...assignments };
+  for (let n = 1; n <= 10; n++) {
+    const sym = numToSym(n);
+    if (!sym) continue;
+    if (!allTouchedNums.has(n)) continue;
+    nextAssignments[sym] = finalByNum.get(n) ?? null;
+  }
 
-  // ✅ 2) 打順（battingReplacements）を更新（表示がこれを見ている）
-if (orderReplaceMap.size > 0) {
-  setBattingReplacements((prev: any) => {
-    // ✅ prev が配列じゃない（undefined/null/オブジェクト）でも落ちないようにする
-    const baseArr = Array.isArray(prev) ? prev : [];
+  // 大谷ルール時の 投/指 重複だけ許可
+  const allowPitcherDhDuplicate =
+    typeof nextAssignments["投"] === "number" &&
+    typeof nextAssignments["指"] === "number" &&
+    typeof initialAssignments?.["投"] === "number" &&
+    typeof initialAssignments?.["指"] === "number" &&
+    Number(initialAssignments["投"]) === Number(initialAssignments["指"]) &&
+    Number(nextAssignments["投"]) === Number(nextAssignments["指"]);
 
-    // 9枠ぶん確保（prevが短い/空でもOK）
-    const next = Array.from({ length: battingOrder.length }, (_, i) => baseArr[i]);
+  nextAssignments = normalizeFieldAssignments(nextAssignments, {
+    allowPitcherDhDuplicate,
+  });
 
-    orderReplaceMap.forEach((incomingId, outgoingId) => {
-      const idx = battingOrder.findIndex((e) => e.id === outgoingId);
-      if (idx < 0) return;
+  // ベンチ更新
+  let nextBenchPlayers = [...benchPlayers];
 
-      const incomingPlayer = teamPlayers.find((p) => p.id === incomingId);
-      if (!incomingPlayer) return;
+  // 入る控えはベンチから外す
+  replaceRows.forEach(({ benchPlayerId }) => {
+    const incomingId = Number(benchPlayerId);
+    nextBenchPlayers = nextBenchPlayers.filter((p) => Number(p.id) !== incomingId);
+  });
 
-      next[idx] = incomingPlayer;
+  // replace の from 側で退く選手だけベンチへ戻す
+  replaceRows.forEach(({ from }) => {
+    const outgoingId = currentByNum.get(Number(from));
+    if (typeof outgoingId !== "number") return;
+
+    const outgoingPlayer = teamPlayers.find((p) => Number(p.id) === Number(outgoingId));
+    if (!outgoingPlayer) return;
+
+    const stillOnField = Object.values(nextAssignments).some(
+      (id) => Number(id) === Number(outgoingId)
+    );
+
+    if (
+      !stillOnField &&
+      !nextBenchPlayers.some((p) => Number(p.id) === Number(outgoingPlayer.id))
+    ) {
+      nextBenchPlayers = [...nextBenchPlayers, outgoingPlayer];
+    }
+  });
+
+  // touched 守備を記録
+  setTouchedFieldPos((prev) => {
+    const next = new Set(prev);
+    allTouchedNums.forEach((n) => {
+      const sym = numToSym(n);
+      if (sym) next.add(sym);
     });
-
     return next;
   });
-}
 
-const touched = new Set<string>();
+  // ログ
+  replaceRows.forEach(({ from, to, benchPlayerId }) => {
+    const fromNum = Number(from);
+    const toNum = Number(to);
+    const fromSym = numToSym(fromNum);
+    const toSym = numToSym(toNum);
+    const outgoingId = currentByNum.get(fromNum) ?? null;
 
-swapRows.forEach(({ from, to }) => {
-  const fromPos = numberToPosSymbol[Number(from)];
-  const toPos = numberToPosSymbol[Number(to)];
-  if (fromPos) touched.add(fromPos);
-  if (toPos) touched.add(toPos);
-});
-
-replaceRows.forEach(({ from, to }) => {
-  const outPos = numberToPosSymbol[Number(from)];
-  const inNum = to && String(to).trim() ? Number(to) : Number(from);
-  const inPos = numberToPosSymbol[inNum];
-
-  if (outPos) touched.add(outPos);
-  if (inPos) touched.add(inPos);
-});
-
-setTouchedFieldPos((prev) => {
-  const next = new Set(prev);
-  touched.forEach((p) => next.add(p));
-  return next;
-});
-
-  setShowPosNumberModal(false);
-
-  setPosNumberRows(
-    Array.from({ length: 9 }, () => ({ from: "", mode: "swap", to: "", benchPlayerId: "" }))
-  );
-
-  setBattingOrderDraft((prevDraft) => {
-    const base =
-      prevDraft?.length ? [...prevDraft] : [...battingOrder];
-
-    orderReplaceMap.forEach((incomingId, outgoingId) => {
-      const idx = base.findIndex((e) => Number(e?.id) === Number(outgoingId));
-      if (idx >= 0) {
-        base[idx] = { ...base[idx], id: incomingId };
-      }
-    });
-
-    return base;
+    if (fromSym && toSym) {
+      updateLog(fromSym, outgoingId, toSym, Number(benchPlayerId));
+    }
   });
 
+  normalSwapRows.forEach(({ from, to }) => {
+    const fromNum = Number(from);
+    const toNum = Number(to);
+    const fromSym = numToSym(fromNum);
+    const toSym = numToSym(toNum);
+    const movingId = currentByNum.get(fromNum) ?? null;
+    const replacedId = currentByNum.get(toNum) ?? null;
+
+    if (fromSym && toSym) {
+      updateLog(fromSym, movingId, toSym, replacedId);
+    }
+  });
+
+  setBattingReplacements(nextBattingReplacements);
+  setBattingOrderDraft(nextBattingOrderDraft);
+  setBenchPlayers(nextBenchPlayers);
+  setAssignments(nextAssignments);
+
+  if (didBreakDh) {
+    setOhtaniRule(false);
+    setDhEnabledAtStart(false);
+    setDhDisableDirty(true);
+    setPendingDisableDH(false);
+  }
+
+  setShowPosNumberModal(false);
+  setPosNumberRows(
+    Array.from({ length: 9 }, () => ({
+      from: "",
+      mode: "swap",
+      to: "",
+      benchPlayerId: "",
+    }))
+  );
 };
 
 // 右側（swap用）守備番号リスト：番号＋守備位置名（※選手名なし）
@@ -7953,7 +8021,11 @@ const positionChanged = currentPos !== initialPos;
             {i + 1}
           </span>
           <span className="text-xs font-semibold text-slate-600">
-            {row.mode === "swap" ? "守備位置変更" : "選手交代"}
+            {row.mode === "swap"
+              ? "守備位置変更"
+              : row.mode === "swapPair"
+              ? "守備位置入れ替え"
+              : "選手交代"}
           </span>
         </div>
 
@@ -7976,76 +8048,141 @@ const positionChanged = currentPos !== initialPos;
       {/* ▼ swap：1行で完結（ラベルも1行） */}
       {row.mode === "swap" ? (
         <>
-      {/* ラベル行（1行） */}
-      <div className="grid grid-cols-[1fr_auto_1fr] gap-3 text-[11px] text-slate-500 font-semibold mb-2">
-        <div className="text-left">（守備番号）</div>
-        <div className="text-center">（交代）</div>
-        <div className="text-left">（入替守備）</div>
-      </div>
+          {/* ラベル行（1行） */}
+          <div className="grid grid-cols-[1fr_auto_1fr] gap-3 text-[11px] text-slate-500 font-semibold mb-2">
+            <div className="text-left">（守備番号）</div>
+            <div className="text-center">（交代）</div>
+            <div className="text-left">（入替守備）</div>
+          </div>
 
-      {/* 入力行（1行） */}
-      <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
-        {/* 守備番号 */}
-        <select
-          value={row.from}
-          onChange={(e) => {
-            const v = e.target.value;
-            setPosNumberRows((prev) =>
-              prev.map((r, idx) => (idx === i ? { ...r, from: v } : r))
-            );
-          }}
-          className="w-full h-11 rounded-xl border border-slate-300 bg-white px-3 text-base shadow-sm
-                    focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400"
-        >
-          <option value="">選択</option>
-          {posNumberOptions.map((opt) => (
-            <option key={opt.n} value={opt.n}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+          {/* 入力行（1行） */}
+          <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
+            <select
+              value={row.from}
+              onChange={(e) => {
+                const v = e.target.value;
+                setPosNumberRows((prev) =>
+                  prev.map((r, idx) => (idx === i ? { ...r, from: v } : r))
+                );
+              }}
+              className="w-full h-11 rounded-xl border border-slate-300 bg-white px-3 text-base shadow-sm
+                        focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400"
+            >
+              <option value="">選択</option>
+              {posNumberOptions.map((opt) => (
+                <option key={opt.n} value={opt.n}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
 
-        {/* 交代 */}
-        <select
-          value={row.mode}
-          onChange={(e) => {
-            const mode = e.target.value as "swap" | "replace";
-            setPosNumberRows((prev) =>
-              prev.map((r, idx) =>
-                idx === i ? { ...r, mode, to: "", benchPlayerId: "" } : r
-              )
-            );
-          }}
-          className="min-w-[90px] h-11 rounded-xl border border-emerald-400 bg-white px-2 text-sm font-bold text-center shadow-sm
-                    focus:outline-none focus:ring-2 focus:ring-emerald-400"
-        >
-          <option value="swap">が</option>
-          <option value="replace">に代わり</option>
-        </select>
+            <select
+              value={row.mode}
+              onChange={(e) => {
+                const mode = e.target.value as "swap" | "replace" | "swapPair";
+                setPosNumberRows((prev) =>
+                  prev.map((r, idx) =>
+                    idx === i ? { ...r, mode, to: "", benchPlayerId: "" } : r
+                  )
+                );
+              }}
+              className="min-w-[90px] h-11 rounded-xl border border-emerald-400 bg-white px-2 text-sm font-bold text-center shadow-sm
+                        focus:outline-none focus:ring-2 focus:ring-emerald-400"
+            >
+              <option value="swap">が</option>
+              <option value="swapPair">と</option>
+              <option value="replace">に代わり</option>
+            </select>
 
-        {/* 入替守備 */}
-        <select
-          value={row.to}
-          onChange={(e) => {
-            const v = e.target.value;
-            setPosNumberRows((prev) =>
-              prev.map((r, idx) => (idx === i ? { ...r, to: v } : r))
-            );
-          }}
-          className="w-full h-11 rounded-xl border border-slate-300 bg-white px-3 text-base shadow-sm
-                    focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400"
-        >
-          <option value="">選択</option>
-          {posNumberOptionsSimple.map((opt) => (
-            <option key={opt.n} value={opt.n}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-      </div>
+            <select
+              value={row.to}
+              onChange={(e) => {
+                const v = e.target.value;
+                setPosNumberRows((prev) =>
+                  prev.map((r, idx) => (idx === i ? { ...r, to: v } : r))
+                );
+              }}
+              className="w-full h-11 rounded-xl border border-slate-300 bg-white px-3 text-base shadow-sm
+                        focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400"
+            >
+              <option value="">選択</option>
+              {posNumberOptionsSimple.map((opt) => (
+                <option key={opt.n} value={opt.n}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </>
-      ) : (
-        /* ▼ replace：今まで通り2行（2行目に「控えが入る守備」） */
+        ) : row.mode === "swapPair" ? (
+          <>
+            {/* ラベル行（1行） */}
+            <div className="grid grid-cols-[1fr_auto_1fr] gap-3 text-[11px] text-slate-500 font-semibold mb-2">
+              <div className="text-left">（守備番号）</div>
+              <div className="text-center">（交代）</div>
+              <div className="text-left">（相手守備）</div>
+            </div>
+
+            {/* 入力行（1行） */}
+            <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
+              <select
+                value={row.from}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setPosNumberRows((prev) =>
+                    prev.map((r, idx) => (idx === i ? { ...r, from: v } : r))
+                  );
+                }}
+                className="w-full h-11 rounded-xl border border-slate-300 bg-white px-3 text-base shadow-sm
+                          focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400"
+              >
+                <option value="">選択</option>
+                {posNumberOptions.map((opt) => (
+                  <option key={opt.n} value={opt.n}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={row.mode}
+                onChange={(e) => {
+                  const mode = e.target.value as "swap" | "replace" | "swapPair";
+                  setPosNumberRows((prev) =>
+                    prev.map((r, idx) =>
+                      idx === i ? { ...r, mode, to: "", benchPlayerId: "" } : r
+                    )
+                  );
+                }}
+                className="min-w-[90px] h-11 rounded-xl border border-emerald-400 bg-white px-2 text-sm font-bold text-center shadow-sm
+                          focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              >
+                <option value="swap">が</option>
+                <option value="swapPair">と</option>
+                <option value="replace">に代わり</option>
+              </select>
+
+              <select
+                value={row.to}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setPosNumberRows((prev) =>
+                    prev.map((r, idx) => (idx === i ? { ...r, to: v } : r))
+                  );
+                }}
+                className="w-full h-11 rounded-xl border border-slate-300 bg-white px-3 text-base shadow-sm
+                          focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400"
+              >
+                <option value="">選択</option>
+                {posNumberOptionsSimple.map((opt) => (
+                  <option key={opt.n} value={opt.n}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </>
+        ) : (
         <>
           {/* 1行目：守備番号＋に代わり */}
           <div className="flex items-end gap-2">
@@ -8060,7 +8197,7 @@ const positionChanged = currentPos !== initialPos;
                   );
                 }}
                 className="w-full h-11 rounded-xl border border-slate-300 bg-white px-3 text-base shadow-sm
-                           focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400"
+                          focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400"
               >
                 <option value="">選択</option>
                 {posNumberOptions.map((opt) => (
@@ -8076,7 +8213,7 @@ const positionChanged = currentPos !== initialPos;
               <select
                 value={row.mode}
                 onChange={(e) => {
-                  const mode = e.target.value as "swap" | "replace";
+                  const mode = e.target.value as "swap" | "replace" | "swapPair";
                   setPosNumberRows((prev) =>
                     prev.map((r, idx) =>
                       idx === i ? { ...r, mode, to: "", benchPlayerId: "" } : r
@@ -8084,9 +8221,10 @@ const positionChanged = currentPos !== initialPos;
                   );
                 }}
                 className="w-full h-11 rounded-xl border border-emerald-400 bg-white px-2 text-sm font-bold text-center shadow-sm
-                           focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                          focus:outline-none focus:ring-2 focus:ring-emerald-400"
               >
                 <option value="swap">が</option>
+                <option value="swapPair">と</option>
                 <option value="replace">に代わり</option>
               </select>
             </div>
@@ -8107,7 +8245,7 @@ const positionChanged = currentPos !== initialPos;
                   );
                 }}
                 className="flex-1 h-11 rounded-xl border border-slate-300 bg-white px-3 text-base shadow-sm
-                           focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400"
+                          focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400"
               >
                 <option value="">控え選手</option>
 
@@ -8143,9 +8281,8 @@ const positionChanged = currentPos !== initialPos;
                   );
                 }}
                 className="flex-1 h-11 rounded-xl border border-slate-300 bg-white px-3 text-base shadow-sm
-                           focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400"
+                          focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400"
               >
-                
                 <option value="">入る守備</option>
                 {posNumberOptionsSimple.map((opt) => (
                   <option key={opt.n} value={opt.n}>
@@ -8283,8 +8420,13 @@ const positionChanged = currentPos !== initialPos;
                       [交代] を選ぶ
                     </div>
                     <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
-                      守備位置の入替なら
+                      守備位置の移動なら
                       <span className="font-bold">「が」</span>
+                      を選びます。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      守備位置どうしを入れ替えるなら
+                      <span className="font-bold">「と」</span>
                       を選びます。
                     </p>
                     <p className="mt-1 text-[13px] leading-5 text-slate-700">
@@ -8316,10 +8458,17 @@ const positionChanged = currentPos !== initialPos;
                   </div>
                   <div className="min-w-0">
                     <div className="text-[14px] font-bold leading-5 text-sky-800">
-                      [入替守備] を選ぶ
+                      [入替守備] または [相手守備] を選ぶ
                     </div>
                     <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
-                      交代後の守備番号を選びます。
+                      「が」のときは
+                      <span className="font-bold"> [入替守備] </span>
+                      を選びます。
+                    </p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-700">
+                      「と」のときは
+                      <span className="font-bold"> [相手守備] </span>
+                      を選びます。
                     </p>
                     <p className="mt-1 text-[13px] leading-5 text-slate-700">
                       守備位置と選手を確認して選んでください。
@@ -8329,7 +8478,6 @@ const positionChanged = currentPos !== initialPos;
               </div>
             </div>
           </div>
-
           {/* ボタン・メッセージ説明 */}
           <div className="rounded-[16px] border border-violet-200 bg-white px-3 py-3 shadow-sm">
             <h3 className="text-[15px] font-extrabold leading-tight text-violet-700">

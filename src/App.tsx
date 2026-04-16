@@ -45,7 +45,7 @@ import StartTimeAnnouncement from "./StartTimeAnnouncement";
 import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 
 // バージョン番号を定数で管理
-const APP_VERSION = "2.06 β"
+const APP_VERSION = "2.07 β"
 
 // iOS 判定を共通で使えるようにグローバル定数として定義
 const isIOS = (() => {
@@ -213,9 +213,11 @@ const App = () => {
 
   const [showManualPopup, setShowManualPopup] = useState(false);
   const [showContinuationModal, setShowContinuationModal] = useState(false);
+  const [showNoContinueModal, setShowNoContinueModal] = useState(false);
   const [showSuspendPopup, setShowSuspendPopup] = useState(false);
   const [showSuspendedGamePopup, setShowSuspendedGamePopup] = useState(false);
   const [showBoysManualPopup, setShowBoysManualPopup] = useState(false);
+
 
   const [showTiebreakPopup, setShowTiebreakPopup] = useState(false);
   // ▼ タイブレーク開始後のヒントモーダル
@@ -557,7 +559,6 @@ const handleBoysOnlyMenu = async (value: string) => {
 };
 
 
-
 const handleSpeak = async () => {  
   const txt =
       "この試合は、ただ今で打ち切り、継続試合となります。\n" +
@@ -617,8 +618,35 @@ const handleSpeak = async () => {
 
   useKeepScreenAwake();
 
+  const canResumeGame = async (): Promise<ScreenType | null> => {
+    const saved = await localForage.getItem<string>("lastGameScreen");
 
+    if (!saved || typeof saved !== "string") return null;
 
+    const ok: ScreenType[] = ["offense", "defense", "defenseChange"];
+    const nextScreen = ok.includes(saved as ScreenType)
+      ? (saved as ScreenType)
+      : null;
+
+    if (!nextScreen) return null;
+
+    const savedOrder =
+      (await localForage.getItem<Array<{ id: number; reason?: string }>>("startingBattingOrder")) ?? [];
+
+    const validIds = Array.from(
+      new Set(
+        savedOrder
+          .map((x) => x?.id)
+          .filter((id): id is number => typeof id === "number")
+      )
+    );
+
+    if (validIds.length < 9) {
+      return null;
+    }
+
+    return nextScreen;
+  };
 
   return (
     <>
@@ -639,7 +667,14 @@ const handleSpeak = async () => {
             disableIOSAwake();
             setIosKeepAwake(false);
           }}
-          onContinueGame={(nextScreen) => {
+          onContinueGame={async (_nextScreen) => {
+            const nextScreen = await canResumeGame();
+
+            if (!nextScreen) {
+              setShowNoContinueModal(true);
+              return;
+            }
+
             setIsContinueGame(true);
             setScreen(nextScreen);
           }}
@@ -2745,7 +2780,40 @@ const handleSpeak = async () => {
   </div>
 )}
 
+{/* ✅ 継続する試合なし モーダル */}
+{showNoContinueModal && (
+  <div
+    className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 px-6"
+    role="dialog"
+    aria-modal="true"
+    onClick={() => setShowNoContinueModal(false)}
+  >
+    <div
+      className="w-full max-w-sm rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+      onClick={(e) => e.stopPropagation()}
+      role="document"
+    >
+      <div className="bg-red-600 text-white text-center font-bold py-3">
+        確認
+      </div>
 
+      <div className="px-6 py-5 text-center">
+        <p className="whitespace-pre-line text-[15px] font-bold text-gray-800 leading-relaxed">
+          継続できる試合はありません
+        </p>
+      </div>
+
+      <div className="px-5 pb-5">
+        <button
+          className="w-full py-3 rounded-full bg-red-600 text-white font-semibold hover:bg-red-700 active:bg-red-800"
+          onClick={() => setShowNoContinueModal(false)}
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
 {/* ✅ 使い方（守備画面）モーダル */}
 {showHelpModal && (

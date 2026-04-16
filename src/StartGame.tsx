@@ -76,8 +76,8 @@ const StartGame = ({
 
   // 「試合開始」押下時に出す案内モーダルの表示フラグ
   const [showStartHint, setShowStartHint] = useState(false);
-
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showLineupErrorModal, setShowLineupErrorModal] = useState(false);
 
 
 useEffect(() => {
@@ -182,13 +182,14 @@ const getStartingNineCount = () => {
 
 // 1) ボタン押下時はモーダルを開くだけ
 const handleStart = async () => {
-   const count = getStartingNineCount();
-   if (count < 9) {
-     alert("スターティングメンバーを9人設定してください");
-     return;
-   }
-   // 問題なければ開始確認モーダルへ
-   setShowStartHint(true);
+  const count = getStartingNineCount();
+  if (count < 9) {
+    setShowLineupErrorModal(true);
+    return;
+  }
+
+  // 問題なければ開始確認モーダルへ
+  setShowStartHint(true);
 };
 
 // 2) モーダルの「OK」で本当に開始（元の handleStart の中身をこちらへ）
@@ -708,6 +709,47 @@ return (
           type="button"
           onClick={() => setShowHelpModal(false)}
           className="w-full rounded-2xl bg-emerald-600 py-3 text-[15px] font-bold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.98]"
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* ====== エラーモーダル ====== */}
+{showLineupErrorModal && (
+  <div
+    className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/50 px-4"
+    role="dialog"
+    aria-modal="true"
+    onClick={() => setShowLineupErrorModal(false)}
+  >
+    <div
+      className="w-full max-w-[420px] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
+      onClick={(e) => e.stopPropagation()}
+      role="document"
+    >
+      <div className="bg-rose-600 px-4 py-3 text-white">
+        <div className="flex items-center gap-2">
+          <span className="text-[18px] leading-none">⚠️</span>
+          <h2 className="text-[18px] font-extrabold leading-tight tracking-[0.01em]">
+            スタメン未設定
+          </h2>
+        </div>
+      </div>
+
+      <div className="bg-white px-4 py-5">
+        <p className="text-[15px] font-bold leading-6 text-slate-800">
+          スターティングメンバーを9人設定してください
+        </p>
+      </div>
+
+      <div className="bg-white px-4 pb-4 pt-1">
+        <button
+          type="button"
+          onClick={() => setShowLineupErrorModal(false)}
+          className="w-full rounded-2xl bg-rose-600 py-3 text-[15px] font-bold text-white shadow-sm transition hover:bg-rose-700 active:scale-[0.98]"
         >
           OK
         </button>
