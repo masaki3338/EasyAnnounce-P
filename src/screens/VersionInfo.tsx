@@ -76,6 +76,11 @@ const historyData: HistoryItem[] = [
     version: "Vesion 2.06 β",
     details: ["不具合修正"],
   },
+  {
+    date: "2026.04.16",
+    version: "Vesion 2.07 β",
+    details: ["複数チーム対応,守備番号で交代に「と」(守備位置交換)を追加"],
+  },
 ];
 
 export default function VersionInfo({ version, onBack }: Props) {
