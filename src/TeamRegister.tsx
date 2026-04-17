@@ -52,6 +52,11 @@ const TeamRegister = () => {
   const [showTeamMenu, setShowTeamMenu] = useState(false);
 
   const [showDeleteTeamConfirm, setShowDeleteTeamConfirm] = useState(false);
+  const [showSwitchTeamConfirm, setShowSwitchTeamConfirm] = useState(false);
+  const [showSwitchTeamComplete, setShowSwitchTeamComplete] = useState(false);
+  const [pendingSwitchTargetId, setPendingSwitchTargetId] = useState<string | null>(null);
+  const [pendingSwitchTargetName, setPendingSwitchTargetName] = useState("");
+  const [switchCompletedName, setSwitchCompletedName] = useState("");
 
   const [restoreMessage, setRestoreMessage] = useState("");
   const [showHelpModal, setShowHelpModal] = useState(false);
@@ -149,6 +154,44 @@ const clearContinuationGameCache = async () => {
     setEditingPlayer({});
     setShowTeamMenu(false);
   };
+
+  const openSwitchTeamConfirm = (folderId: string) => {
+  const folder = teamStore.teams.find((t) => t.id === folderId);
+  if (!folder) return;
+
+  if (folder.id === teamStore.selectedTeamId) {
+    setShowTeamMenu(false);
+    return;
+  }
+
+  setPendingSwitchTargetId(folder.id);
+  setPendingSwitchTargetName(folder.listName);
+  setShowSwitchTeamConfirm(true);
+};
+
+const confirmSwitchTeam = async () => {
+  if (!pendingSwitchTargetId) return;
+
+  const folder = teamStore.teams.find((t) => t.id === pendingSwitchTargetId);
+  if (!folder) return;
+
+  await clearContinuationGameCache();
+
+  setTeamStore((prev) => ({
+    ...prev,
+    selectedTeamId: folder.id,
+  }));
+
+  loadFolderToForm(folder);
+  setShowTeamMenu(false);
+
+  setShowSwitchTeamConfirm(false);
+  setPendingSwitchTargetId(null);
+  setPendingSwitchTargetName("");
+
+  setSwitchCompletedName(folder.listName);
+  setShowSwitchTeamComplete(true);
+};
 
   const selectFolder = async (folderId: string) => {
     const folder = teamStore.teams.find((t) => t.id === folderId);
@@ -764,37 +807,51 @@ const saveTeam = async () => {
   <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
 
   {showTeamMenu && (
-    <div className="absolute left-0 top-[calc(100%+8px)] z-50 w-64 overflow-hidden rounded-2xl border border-white/15 bg-slate-900/95 text-left shadow-2xl backdrop-blur">
+    <>
+      {/* 画面のどこでも外側タップで閉じるための透明レイヤー */}
       <button
         type="button"
-        onClick={createNewFolder}
-        className="block w-full border-b border-white/10 bg-blue-600 px-4 py-3 text-left text-sm font-bold text-white hover:bg-blue-700"
-      >
-        ＋ 新しい登録を作る
-      </button>
+        aria-label="登録済みチーム一覧を閉じる"
+        className="fixed inset-0 z-40 cursor-default bg-transparent"
+        onClick={() => setShowTeamMenu(false)}
+      />
 
-      {teamStore.teams.length === 0 ? (
-        <div className="px-4 py-3 text-sm text-white/70">
-          登録済みチームはありません
-        </div>
-      ) : (
-        teamStore.teams.map((folder) => {
-          const active = folder.id === teamStore.selectedTeamId;
-          return (
-            <button
-              key={folder.id}
-              type="button"
-              onClick={() => selectFolder(folder.id)}
-              className={`block w-full px-4 py-3 text-left text-sm ${
-                active ? "bg-white/20 text-white font-bold" : "text-white/90 hover:bg-white/10"
-              }`}
-            >
-              {folder.listName}
-            </button>
-          );
-        })
-      )}
-    </div>
+      {/* 登録リスト本体 */}
+      <div
+        className="absolute left-0 top-[calc(100%+8px)] z-50 w-64 overflow-hidden rounded-2xl border border-white/15 bg-slate-900/95 text-left shadow-2xl backdrop-blur"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={createNewFolder}
+          className="block w-full border-b border-white/10 bg-blue-600 px-4 py-3 text-left text-sm font-bold text-white hover:bg-blue-700"
+        >
+          ＋ 新しい登録を作る
+        </button>
+
+        {teamStore.teams.length === 0 ? (
+          <div className="px-4 py-3 text-sm text-white/70">
+            登録済みチームはありません
+          </div>
+        ) : (
+          teamStore.teams.map((folder) => {
+            const active = folder.id === teamStore.selectedTeamId;
+            return (
+              <button
+                key={folder.id}
+                type="button"
+                onClick={() => openSwitchTeamConfirm(folder.id)}
+                className={`block w-full px-4 py-3 text-left text-sm ${
+                  active ? "bg-white/20 text-white font-bold" : "text-white/90 hover:bg-white/10"
+                }`}
+              >
+                {folder.listName}
+              </button>
+            );
+          })
+        )}
+      </div>
+    </>
   )}
 
 </div>
@@ -1409,6 +1466,89 @@ const saveTeam = async () => {
   </div>
 )}
 
+{/* 登録切替確認モーダル */}
+{showSwitchTeamConfirm && (
+  <div
+    className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 px-6"
+    role="dialog"
+    aria-modal="true"
+    onClick={() => setShowSwitchTeamConfirm(false)}
+  >
+    <div
+      className="w-full max-w-sm rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+      onClick={(e) => e.stopPropagation()}
+      role="document"
+    >
+      <div className="bg-amber-500 text-white text-center font-bold py-3">
+        確認
+      </div>
+
+      <div className="px-6 py-5 text-center">
+        <p className="whitespace-pre-line text-[15px] font-bold text-gray-800 leading-relaxed">
+          登録を切り替えるとスタメン設定が初期化されます{"\n"}
+          「{pendingSwitchTargetName}」に切り替えます
+        </p>
+      </div>
+
+      <div className="px-5 pb-5">
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            className="w-full py-3 rounded-full bg-gray-300 text-gray-800 font-semibold hover:bg-gray-400 active:bg-gray-500"
+            onClick={() => {
+              setShowSwitchTeamConfirm(false);
+              setPendingSwitchTargetId(null);
+              setPendingSwitchTargetName("");
+            }}
+          >
+            キャンセル
+          </button>
+          <button
+            className="w-full py-3 rounded-full bg-amber-500 text-white font-semibold hover:bg-amber-600 active:bg-amber-700"
+            onClick={confirmSwitchTeam}
+          >
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* 登録切替完了モーダル */}
+{showSwitchTeamComplete && (
+  <div
+    className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 px-6"
+    role="dialog"
+    aria-modal="true"
+    onClick={() => setShowSwitchTeamComplete(false)}
+  >
+    <div
+      className="w-full max-w-sm rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+      onClick={(e) => e.stopPropagation()}
+      role="document"
+    >
+      <div className="bg-blue-600 text-white text-center font-bold py-3">
+        切り替え完了
+      </div>
+
+      <div className="px-6 py-5 text-center">
+        <p className="whitespace-pre-line text-[15px] font-bold text-gray-800 leading-relaxed">
+          「{switchCompletedName}」に切り替えました。{"\n"}
+          保存したあとにスタメン設定を行ってください。
+        </p>
+      </div>
+
+      <div className="px-5 pb-5">
+        <button
+          className="w-full py-3 rounded-full bg-blue-600 text-white font-semibold hover:bg-blue-700 active:bg-blue-800"
+          onClick={() => setShowSwitchTeamComplete(false)}
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
 {/* 入力不足モーダル */}
 {showFormErrorModal && (
