@@ -10,233 +10,108 @@
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800&display=swap" rel="stylesheet">
 
   <style>
-    * {
-      box-sizing: border-box;
-    }
-
+    * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: "Noto Sans JP", -apple-system, BlinkMacSystemFont, "Segoe UI",
-        "Hiragino Sans", "Yu Gothic", sans-serif;
-      background:
-        linear-gradient(180deg, rgba(12, 33, 74, 0.72), rgba(23, 84, 160, 0.62)),
-        url("https://images.unsplash.com/photo-1508341591423-4347099e1f19?auto=format&fit=crop&w=1200&q=80")
-        center/cover no-repeat;
-      min-height: 100vh;
-      color: #10233f;
-    }
-
-    .wrap {
+      font-family: "Noto Sans JP", sans-serif;
+      background: linear-gradient(180deg, rgba(12, 33, 74, 0.72), rgba(23, 84, 160, 0.62)),
+                  url("https://images.unsplash.com/photo-1508341591423-4347099e1f19?auto=format&fit=crop&w=1200&q=80") center/cover no-repeat;
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 20px 14px 32px;
+      padding: 20px;
     }
-
     .phone {
       width: 100%;
       max-width: 400px;
       background: rgba(255, 255, 255, 0.88);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
       border-radius: 30px;
       box-shadow: 0 20px 50px rgba(0, 0, 0, 0.22);
       overflow: hidden;
-      border: 1px solid rgba(255, 255, 255, 0.65);
     }
+    .hero { padding: 26px 20px 18px; text-align: center; background: linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0.58)); }
+    .mini { display: inline-block; padding: 6px 12px; background: #e9f1ff; color: #234b8f; border-radius: 999px; font-size: 12px; font-weight: 700; margin-bottom: 14px; }
+    .title { margin: 0; font-size: 34px; font-weight: 800; color: #123b84; }
+    .subtitle { margin: 12px 0 0; font-size: 16px; line-height: 1.8; color: #233a5d; font-weight: 500; }
+    .content { padding: 0 16px 18px; }
+    .card { background: #ffffff; border-radius: 24px; padding: 20px; box-shadow: 0 10px 24px rgba(15, 44, 94, 0.10); }
+    .card-title { margin: 0 0 8px; text-align: center; font-size: 20px; font-weight: 800; color: #173a77; }
+    .card-text { margin: 0 0 18px; text-align: center; font-size: 14px; line-height: 1.8; color: #4c5f7d; }
+    .buttons { display: flex; flex-direction: column; align-items: center; gap: 12px; }
 
-    .hero {
-      padding: 26px 20px 18px;
-      text-align: center;
-      background: linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0.58));
-    }
+    /* Google Playバッジスタイル */
+    .btn-android { display: block; width: 220px; filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.24)); }
+    .btn-android img { width: 100%; display: block; }
 
-    .mini {
-      display: inline-block;
-      padding: 6px 12px;
-      background: #e9f1ff;
-      color: #234b8f;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 700;
-      margin-bottom: 14px;
-    }
-
-    .title {
-      margin: 0;
-      font-size: 34px;
-      line-height: 1.2;
-      font-weight: 800;
-      color: #123b84;
-      letter-spacing: 0.01em;
-    }
-
-    .subtitle {
-      margin: 12px 0 0;
-      font-size: 16px;
-      line-height: 1.8;
-      color: #233a5d;
-      font-weight: 500;
-    }
-
-    .content {
-      padding: 0 16px 18px;
-    }
-
-    .card {
-      background: #ffffff;
-      border-radius: 24px;
-      padding: 20px 16px 18px;
-      box-shadow: 0 10px 24px rgba(15, 44, 94, 0.10);
-    }
-
-    .card-title {
-      margin: 0 0 8px;
-      text-align: center;
-      font-size: 22px;
-      font-weight: 800;
-      color: #173a77;
-    }
-
-    .card-text {
-      margin: 0 0 18px;
-      text-align: center;
-      font-size: 14px;
-      line-height: 1.8;
-      color: #4c5f7d;
-      font-weight: 500;
-    }
-
-    .features {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-      margin-bottom: 18px;
-    }
-
-    .feature {
-      background: #f4f8ff;
-      border: 1px solid #e3edff;
-      border-radius: 16px;
-      padding: 12px 8px;
-      text-align: center;
-      font-size: 12px;
-      line-height: 1.6;
-      color: #23406f;
-      font-weight: 700;
-    }
-
-    .buttons {
+    /* Apple用ボタン */
+    .btn-apple {
       display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    .btn {
-      display: block;
-      width: 100%;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 220px;
+      height: 64px;
+      background: #000000;
+      border: 1px solid #333;
+      border-radius: 13px;
       text-decoration: none;
-      text-align: center;
-      padding: 16px 14px;
-      border-radius: 16px;
-      font-size: 17px;
+      color: #ffffff;
       font-weight: 800;
-      line-height: 1.4;
+      font-size: 16px;
+      box-shadow: 0 8px 18px rgba(0, 0, 0, 0.24);
     }
+    .btn-apple img { height: 32px; width: auto; filter: invert(1); }
 
-    .btn-android {
-      background: linear-gradient(180deg, #43c75c, #2ea84a);
-      color: #fff;
-      box-shadow: 0 8px 18px rgba(46, 168, 74, 0.24);
-    }
-
-    .btn-ios {
-      background: linear-gradient(180deg, #2f84ff, #1d67d9);
-      color: #fff;
-      box-shadow: 0 8px 18px rgba(29, 103, 217, 0.24);
-    }
-
-    .note {
-      margin: 14px 0 0;
-      text-align: center;
-      font-size: 12px;
-      line-height: 1.7;
-      color: #5d6e89;
-      font-weight: 500;
-    }
-
-    .footer {
-      padding: 0 18px 22px;
-      text-align: center;
-      font-size: 12px;
-      line-height: 1.8;
-      color: #48607f;
-      font-weight: 500;
-    }
-
-    @media (max-width: 360px) {
-      .title {
-        font-size: 30px;
-      }
-
-      .subtitle {
-        font-size: 15px;
-      }
-
-      .features {
-        grid-template-columns: 1fr;
-      }
-    }
+    .note { margin: 14px 0 0; text-align: center; font-size: 13px; color: #5d6e89; font-weight: 500; }
+    .guide-img { width: 100%; border-radius: 12px; margin-top: 15px; border: 1px solid #eee; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="phone">
-      <div class="hero">
-        <div class="mini">野球アナウンス支援アプリ</div>
-        <h1 class="title">Easyアナウンス</h1>
-        <p class="subtitle">
-          野球アナウンス、もう迷わない！<br>
-          保護者の負担を減らして<br>
-          スムーズに読み上げできます。
+
+  <div class="phone">
+    <div class="hero">
+      <div class="mini">野球アナウンス支援アプリ</div>
+      <h1 class="title">Easyアナウンス</h1>
+      <p class="subtitle">
+        野球アナウンス、もう迷わない！<br>
+        保護者の負担を減らして<br>
+        スムーズに読み上げできます。
+      </p>
+    </div>
+
+    <div class="content">
+      <div class="card">
+        <h2 class="card-title">ダウンロードはこちら</h2>
+        <p class="card-text">
+          お使いの端末に合わせて<br>
+          お選びください
         </p>
-      </div>
+        
+        <div class="buttons">
+          <a class="btn-android" href="https://play.google.com/store/apps/details?id=com.easyannounce.pony" target="_blank">
+            <img src="https://easy-announce-p.vercel.app/google-play-badge.png" alt="Google Playで手に入れよう">
+          </a>
 
-      <div class="content">
-        <div class="card">
-          <h2 class="card-title">ダウンロードはこちら</h2>
-          <p class="card-text">
-            お使いの端末に合わせて<br>
-            お選びください
-          </p>
-
-          <div class="buttons">
-            <a
-              class="btn btn-android"
-              href="https://play.google.com/store/apps/details?id=com.easyannounce.pony"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              📱 Androidでダウンロード
-            </a>
-
-            <a
-              class="btn btn-ios"
-              href="https://easy-announce-p.vercel.app/"
-            >
-              🍎 iPhone / iPad で使う
-            </a>
-          </div>
-
-          <p class="note">
-            iPhone / iPad はブラウザから利用できます
-          </p>
+          <a class="btn-apple" href="https://easy-announce-p.vercel.app/">
+            <img src="iOS.jpg" alt="Apple">
+            <span>iPhone / iPad で使う</span>
+          </a>
         </div>
+
+        <p class="note">
+          iPhone / iPad はホーム画面に追加することで<br>
+          アプリのように利用できます
+        </p>
+
+        <p class="note" style="font-weight: bold; color: #234b8f;">
+         追加のやり方はこちら↓
+        </p>
+        <img src="https://easy-announce-p.vercel.app/IphoneInstallGuide.png" alt="インストールガイド" class="guide-img">
+
       </div>
-
-
     </div>
   </div>
+
 </body>
 </html>
