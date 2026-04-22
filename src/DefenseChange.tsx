@@ -3,7 +3,7 @@ import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { TouchBackend } from 'react-dnd-touch-backend';
 import { useDrag } from "react-dnd";
-
+import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 import localForage from "localforage";
 import { useNavigate } from "react-router-dom";
 import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
@@ -339,6 +339,41 @@ const nameWithHonor = (p: Player): string => `${nameRuby(p)}${honor(p)}`;
 
 /** 常にフル＋敬称（控えが入る側など） */
 const fullNameWithHonor = (p: Player): string => `${fullName(p)}${honor(p)}`;
+
+const buildPitcherCountAnnouncement = (
+  prevPitcherId: number | null,
+  prevPitchCounts: { current?: number; total?: number },
+  teamPlayers: Player[],
+  isBoysLeague: boolean = false, // 追加
+) => {
+  if (prevPitcherId == null) return "";
+
+  const prevPitcher = teamPlayers.find(
+    (p) => Number(p.id) === Number(prevPitcherId)
+  );
+  if (!prevPitcher) return "";
+
+  const current = Number(prevPitchCounts.current ?? 0);
+  const total = Number(prevPitchCounts.total ?? 0);
+
+  if (current === 0) return "";
+
+  const normalName = nameWithHonor(prevPitcher);
+  const boysName = `${nameRuby(prevPitcher)}投手`;
+
+  if (isBoysLeague) {
+    if (total > 0 && total !== current) {
+      return `なお、${boysName}、この回の投球数は${current}球です。合計投球は${total}球でした`;
+    }
+    return `なお、${boysName}、この回の投球数は${current}球でした`;
+  }
+
+  if (total > 0 && total !== current) {
+    return `なお、${normalName}の、この回の投球数は${current}球です。トータル${total}球でした。`;
+  }
+
+  return `なお、${normalName}の、この回の投球数は${current}球でした。`;
+};
 
 // ================================================================
 
@@ -3709,6 +3744,7 @@ const startingOrderRef = useRef<{ id: number; reason?: string }[]>([]);
 
   const [substitutionLogs, setSubstitutionLogs] = useState<string[]>([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [pitcherCountAnnouncement, setPitcherCountAnnouncement] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [dhEnabledAtStart, setDhEnabledAtStart] = useState<boolean>(false);
   const [ohtaniRule, setOhtaniRule] = useState(false);
@@ -4548,6 +4584,7 @@ const announcementText = useMemo(() => {
 // ★追加：交代アナウンスも「画面表示と同じ打順（draft優先）」を参照する
 const orderSrc = (battingOrderDraft?.length ? battingOrderDraft : battingOrder) || [];
 
+
 // --- リエントリー専用（複数件対応） ---
 let reentryLines: string[] = [];
 
@@ -4718,7 +4755,7 @@ if (replacement) {
 // ▼ ここは既存の changes 構築（battingOrder を走査して replace/mixed/shift を埋める）をそのまま維持
 
 // 既存：通常のアナウンス文
-const displayText = generateAnnouncementText(
+const baseDisplayText = generateAnnouncementText(
   changes,
   teamName,
   battingOrder,
@@ -4731,7 +4768,7 @@ const displayText = generateAnnouncementText(
   reentryFixedIds
 );
 
-const speakText = generateAnnouncementText(
+const baseSpeakText = generateAnnouncementText(
   changes,
   teamReading,
   battingOrder,
@@ -4743,6 +4780,14 @@ const speakText = generateAnnouncementText(
   reentryPreviewIds,
   reentryFixedIds
 );
+
+const displayText = [baseDisplayText, pitcherCountAnnouncement]
+  .filter(Boolean)
+  .join("<br />");
+
+const speakText = [baseSpeakText, pitcherCountAnnouncement]
+  .filter(Boolean)
+  .join(" ");
 
 // ▼▼▼ ここから追加（generateAnnouncementText の先頭で宣言）▼▼▼
 const isDup = (p: Player | undefined) =>
@@ -4886,7 +4931,17 @@ if (reentryLines.length > 0) {
 return normalText;
 
 
-}, [battingOrder, assignments, initialAssignments, battingReplacements, teamName, teamPlayers,usedPlayerInfo,dupLastNamesTick]);
+}, [
+  battingOrder,
+  assignments,
+  initialAssignments,
+  battingReplacements,
+  teamName,
+  teamPlayers,
+  usedPlayerInfo,
+  dupLastNamesTick,
+  pitcherCountAnnouncement,
+]);
 
 useEffect(() => {
   if (dirty) return; // ★手動で守備を触ったら、自動配置で上書きしない
@@ -6294,6 +6349,19 @@ const pitcherTotalsMap =
 const didPitcherChange =
   newPitcherId !== prevPitcherId;
 
+const leagueMode = getLeagueMode();
+const isBoysLeague = leagueMode === "boys";
+
+const prevPitcherCountAnnouncement = didPitcherChange
+  ? buildPitcherCountAnnouncement(
+      prevPitcherId,
+      prevPitchCounts,
+      teamPlayers,
+      isBoysLeague,
+    )
+  : "";
+setPitcherCountAnnouncement(prevPitcherCountAnnouncement);
+
 // ✅ 投手交代なら新投手の累計も 0 から始める
 if (didPitcherChange && newPitcherId != null) {
   pitcherTotalsMap[newPitcherId] = 0;
@@ -6382,9 +6450,44 @@ return;
 };
 
   // 新たにアナウンス表示だけの関数を定義
-  const showAnnouncement = () => {
-    setShowSaveModal(true);
-  };
+const showAnnouncement = async () => {
+  const prevPitchCounts =
+    (await localForage.getItem<{
+      current: number;
+      total: number;
+      pitcherId?: number | null;
+    }>("pitchCounts")) || {
+      current: 0,
+      total: 0,
+      pitcherId: null,
+    };
+
+  const newPitcherId =
+    typeof assignments["投"] === "number" ? Number(assignments["投"]) : null;
+
+  const prevPitcherId =
+    typeof prevPitchCounts.pitcherId === "number"
+      ? Number(prevPitchCounts.pitcherId)
+      : null;
+
+  const didPitcherChange = newPitcherId !== prevPitcherId;
+
+  const leagueMode = getLeagueMode();
+  const isBoysLeague = leagueMode === "boys";
+
+const prevPitcherCountAnnouncement = didPitcherChange
+  ? buildPitcherCountAnnouncement(
+      prevPitcherId,
+      prevPitchCounts,
+      teamPlayers,
+      isBoysLeague,
+    )
+  : "";
+
+  setPitcherCountAnnouncement(prevPitcherCountAnnouncement);
+  setShowSaveModal(true);
+};
+
 // “戻る”が押されたとき：変更があれば確認、なければそのまま戻る
 const handleBackClick = () => {
   if (isDirty) {
