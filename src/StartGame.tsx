@@ -1,6 +1,16 @@
 import React, { useEffect, useState } from "react";
 import localForage from "localforage";
 
+type BattingEntry = {
+  id: number;
+  reason?: string;
+};
+
+type ExtraPositionMap = Record<number, string | null>;
+
+const MIN_STARTERS = 9;
+const MAX_BATTING_ORDER = 15;
+
 
 // --- ミニSVGアイコン（依存なし） ---
 const IconPlay = () => (
@@ -68,9 +78,8 @@ const StartGame = ({
   const [isTwoUmpires, setIsTwoUmpires] = useState<boolean>(false);
   const [players, setPlayers] = useState<{ id: number; number: string | number; name: string }[]>([]);
   const [assignments, setAssignments] = useState<{ [pos: string]: number | null }>({});
-  const [battingOrder, setBattingOrder] = useState<
-    { id: number; reason: string }[]
-  >([]);
+  const [battingOrder, setBattingOrder] = useState<BattingEntry[]>([]);
+  const [extraPositionMap, setExtraPositionMap] = useState<ExtraPositionMap>({});
 
   const [benchOutIds, setBenchOutIds] = useState<number[]>([]); // 🆕
 
@@ -91,9 +100,14 @@ useEffect(() => {
       (await localForage.getItem<Record<string, number | null>>("lineupAssignments"));
 
     const order =
-      (await localForage.getItem<Array<{ id: number; reason?: string }>>("startingBattingOrder_draft")) ??
-      (await localForage.getItem<Array<{ id: number; reason?: string }>>("startingBattingOrder")) ??
-      (await localForage.getItem<Array<{ id: number; reason?: string }>>("battingOrder"));
+      (await localForage.getItem<BattingEntry[]>("startingBattingOrder_draft")) ??
+      (await localForage.getItem<BattingEntry[]>("startingBattingOrder")) ??
+      (await localForage.getItem<BattingEntry[]>("battingOrder"));
+
+    const extraPos =
+      (await localForage.getItem<ExtraPositionMap>("startingExtraPositionMap_draft")) ??
+      (await localForage.getItem<ExtraPositionMap>("startingExtraPositionMap")) ??
+      {};
 
     const sb = await localForage.getItem<number[]>("startingBenchOutIds_draft");
     const fb = await localForage.getItem<number[]>("startingBenchOutIds"); // 従来保存
@@ -138,7 +152,18 @@ useEffect(() => {
     }
 
     if (Array.isArray(order)) {
-      setBattingOrder(order as { id: number; reason: string }[]);
+      setBattingOrder(order as BattingEntry[]);
+    }
+
+    if (extraPos && typeof extraPos === "object") {
+      const normalizedExtraPos: ExtraPositionMap = {};
+      Object.entries(extraPos).forEach(([id, pos]) => {
+        const n = Number(id);
+        if (Number.isFinite(n)) {
+          normalizedExtraPos[n] = pos ?? null;
+        }
+      });
+      setExtraPositionMap(normalizedExtraPos);
     }
   };
 
@@ -151,39 +176,34 @@ useEffect(() => {
     return players.find((p) => Number(p.id) === id);
   };
 
-  // スタメンが9人そろっているかを判定するヘルパー
-const getStartingNineCount = () => {
-  // まず打順リストを優先（存在すればそれで判定）
-  const idsFromOrder =
-    Array.isArray(battingOrder)
-      ? battingOrder
-          .map((e: any) => Number(e?.id ?? e)) // e.id でも e が数値でも対応
-          .filter((id: number) => Number.isFinite(id))
-      : [];
+  // スタメン人数を判定するヘルパー（開始条件は9人以上）
+const getStartingMemberCount = () => {
+  const idsFromOrder = Array.isArray(battingOrder)
+    ? battingOrder
+        .map((e: any) => Number(e?.id ?? e))
+        .filter((id: number) => Number.isFinite(id))
+    : [];
 
-  if (idsFromOrder.length >= 9) return 9;
+  const uniqOrder = [...new Set(idsFromOrder)];
+  if (uniqOrder.length > 0) return uniqOrder.length;
 
-  // 打順が未設定/不足時は守備配置から補完（DH考慮）
-  const pos9 = ["投","捕","一","二","三","遊","左","中","右"];
+  const pos9 = ["投", "捕", "一", "二", "三", "遊", "左", "中", "右"];
   const hasDH = assignments && assignments["指"] != null;
-  const orderPos = hasDH ? [...pos9.filter(p => p !== "投"), "指"] : pos9;
+  const orderPos = hasDH ? [...pos9.filter((p) => p !== "投"), "指"] : pos9;
 
-  const idsFromAssign =
-    orderPos
-      .map((p) => assignments?.[p])
-      .filter((v) => v != null)
-      .map((v) => Number(v))
-      .filter((id) => Number.isFinite(id));
+  const idsFromAssign = orderPos
+    .map((p) => assignments?.[p])
+    .filter((v) => v != null)
+    .map((v) => Number(v))
+    .filter((id) => Number.isFinite(id));
 
-  // 重複除去してカウント
-  const uniq = [...new Set(idsFromAssign)].slice(0, 9);
-  return uniq.length;
+  return [...new Set(idsFromAssign)].length;
 };
 
 // 1) ボタン押下時はモーダルを開くだけ
 const handleStart = async () => {
-  const count = getStartingNineCount();
-  if (count < 9) {
+  const count = getStartingMemberCount();
+  if (count < MIN_STARTERS) {
     setShowLineupErrorModal(true);
     return;
   }
@@ -244,11 +264,20 @@ const normA: Record<string, number | null> = Object.fromEntries(
   }
 }
 
-const draftO = await localForage.getItem<Array<{ id: number; reason?: string }>>("startingBattingOrder_draft");
-const savedO = await localForage.getItem<Array<{ id: number; reason?: string }>>("startingBattingOrder");
+const draftO = await localForage.getItem<BattingEntry[]>("startingBattingOrder_draft");
+const savedO = await localForage.getItem<BattingEntry[]>("startingBattingOrder");
 const stateO = battingOrder; // ← StartGame画面に表示されている打順
-const oldO   = await localForage.getItem<Array<{ id: number; reason?: string }>>("battingOrder");
+const oldO   = await localForage.getItem<BattingEntry[]>("battingOrder");
 let adoptO = draftO ?? savedO ?? stateO ?? oldO ?? [];
+
+const draftExtraPos = await localForage.getItem<ExtraPositionMap>("startingExtraPositionMap_draft");
+const savedExtraPos = await localForage.getItem<ExtraPositionMap>("startingExtraPositionMap");
+const adoptExtraPos: ExtraPositionMap =
+  (draftExtraPos && typeof draftExtraPos === "object")
+    ? draftExtraPos
+    : (savedExtraPos && typeof savedExtraPos === "object")
+      ? savedExtraPos
+      : extraPositionMap;
 
 // 打順が空なら守備から暫定生成（DH考慮：投手を外してDHを入れる）
 if (!Array.isArray(adoptO) || adoptO.length === 0) {
@@ -259,7 +288,7 @@ if (!Array.isArray(adoptO) || adoptO.length === 0) {
   const ids = orderPositions
     .map(p => normA[p])
     .filter((id): id is number => typeof id === "number");
-  adoptO = ids.slice(0, 9).map(id => ({ id, reason: "スタメン" }));
+  adoptO = ids.slice(0, MAX_BATTING_ORDER).map(id => ({ id, reason: "スタメン" }));
 }
 
 // ベンチ外
@@ -270,16 +299,19 @@ const adoptB = Array.isArray(draftB) ? draftB : Array.isArray(savedB) ? savedB :
 // 2) 「スタメン保存」と同じキーに確定保存（StartingLineup.tsxのsaveAssignments相当）
 await localForage.setItem("startingassignments",    normA);
 await localForage.setItem("startingBattingOrder",   adoptO);
+await localForage.setItem("startingExtraPositionMap", adoptExtraPos);
 await localForage.setItem("startingBenchOutIds",    adoptB);
 
 // 3) ミラー（他画面が確実に読む“公式キー”）
 await localForage.setItem("lineupAssignments",      normA);
 await localForage.setItem("battingOrder",           adoptO);
+await localForage.setItem("startingExtraPositionMap", adoptExtraPos);
 await localForage.setItem("benchOutIds",            adoptB);
 
 // 4) 使い終わったドラフトは掃除（任意）
 await localForage.removeItem("startingassignments_draft");
 await localForage.removeItem("startingBattingOrder_draft");
+await localForage.removeItem("startingExtraPositionMap_draft");
 await localForage.removeItem("startingBenchOutIds_draft");
 // === NEW: 同姓（苗字）重複チェック → LocalForage 保存 =================
 {
@@ -342,15 +374,17 @@ await localForage.removeItem("startingBenchOutIds_draft");
     const n = Number(playerId);
     if (!Number.isFinite(n)) return "—";
 
-    // まずDH(指)を優先
-    const dh = (assignments as any)?.["指"];
-    if (dh != null && Number(dh) === n) return "指";
-
-    // それ以外は assignments から最初に一致したポジションを返す
-    const pos = Object.keys(assignments || {}).find(
+    // まずフィールド配置(assignments)を見る
+    const posFromAssignments = Object.keys(assignments || {}).find(
       (p) => Number((assignments as any)?.[p]) === n
     );
-    return pos ?? "—";
+    if (posFromAssignments) return posFromAssignments;
+
+    // 追加打順の守備位置（DH含む）を見る
+    const posFromExtra = extraPositionMap[n];
+    if (posFromExtra) return posFromExtra;
+
+    return "—";
   };
 
 return (
@@ -449,7 +483,7 @@ return (
         </div>
 
         <div className="text-sm leading-tight space-y-1">
-          {battingOrder.slice(0, 9).map((entry, index) => {
+          {battingOrder.slice(0, MAX_BATTING_ORDER).map((entry, index) => {
             const pos = getDisplayPos(entry?.id);
             const player = getPlayer(entry.id);
             return (

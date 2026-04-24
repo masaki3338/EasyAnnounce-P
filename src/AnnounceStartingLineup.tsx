@@ -52,6 +52,10 @@ type Player = {
   isFemale?: boolean;
 };
 type Umpire = { role: string; name: string; furigana: string };
+type ExtraPositionMap = Record<number, string | null>;
+
+const MIN_STARTERS = 9;
+const MAX_BATTING_ORDER = 15;
 
 /* === 情報カード（注意/補足用） === */
 const InfoCard: React.FC<{ icon: React.ReactNode; title: string; text: string }> = ({ icon, title, text }) => (
@@ -71,6 +75,7 @@ const AnnounceStartingLineup: React.FC<{
   const [teamPlayers, setTeamPlayers] = useState<Player[]>([]);
   const [assignments, setAssignments] = useState<{ [pos: string]: number | null }>({});
   const [battingOrder, setBattingOrder] = useState<{ id: number; reason: string }[]>([]);
+  const [extraPositionMap, setExtraPositionMap] = useState<ExtraPositionMap>({});
   const [homeTeamName, setHomeTeamName] = useState<string>("");
   const [homeTeamFurigana, setHomeTeamFurigana] = useState<string>("");
   const [awayTeamName, setAwayTeamName] = useState<string>("");
@@ -149,6 +154,10 @@ const AnnounceStartingLineup: React.FC<{
       const orderRaw =
         (await localForage.getItem<Array<{ id?: number; playerId?: number; reason?: string }>>("startingBattingOrder")) ??
         (await localForage.getItem<Array<{ id?: number; playerId?: number; reason?: string }>>("battingOrder")) ?? [];
+      const extraPosRaw =
+        (await localForage.getItem<ExtraPositionMap>("startingExtraPositionMap")) ??
+        (await localForage.getItem<ExtraPositionMap>("startingExtraPositionMap_draft")) ??
+        {};
 
       const normalizedAssign: { [pos: string]: number | null } = {};
       Object.entries(assignRaw).forEach(([pos, id]) => { normalizedAssign[pos] = id == null ? null : Number(id); });
@@ -161,8 +170,15 @@ const AnnounceStartingLineup: React.FC<{
           return { id: Number(id), reason: e?.reason ?? "スタメン" };
         })
         .filter(Boolean)
-        .slice(0, 9) as { id: number; reason: string }[];
+        .slice(0, MAX_BATTING_ORDER) as { id: number; reason: string }[];
       setBattingOrder(normalizedOrder);
+
+      const normalizedExtraPos: ExtraPositionMap = {};
+      Object.entries(extraPosRaw).forEach(([id, pos]) => {
+        const n = Number(id);
+        if (Number.isFinite(n)) normalizedExtraPos[n] = pos ?? null;
+      });
+      setExtraPositionMap(normalizedExtraPos);
 
       if (team) {
         setTeamPlayers((team as any).players || []);
@@ -189,6 +205,17 @@ const AnnounceStartingLineup: React.FC<{
 
   /* === 表示ヘルパ === */
   const getPositionName = (pos: string) => positionMapJP[pos] || pos;
+  const getDisplayPos = (playerId: number) => {
+    const posFromAssignments =
+      Object.entries(assignments).find(([_, pid]) => Number(pid) === Number(playerId))?.[0] ?? null;
+
+    if (posFromAssignments) return posFromAssignments;
+
+    const posFromExtra = extraPositionMap[playerId];
+    if (posFromExtra) return posFromExtra;
+
+    return "-";
+  };
   const getHonorific = (p: Player) => (p.isFemale ? "さん" : "くん");
   const renderFurigana = (kanji: string, kana: string) => (
     <ruby className="ruby-text">
@@ -225,7 +252,7 @@ const AnnounceStartingLineup: React.FC<{
       : team3rdBaseName;
 
   const isBoys = leagueMode === "boys";
-  const lineupEntries = battingOrder.slice(0, 9);
+  const lineupEntries = battingOrder.slice(0, MAX_BATTING_ORDER);
   const myBenchSide = benchSide || "1塁側";
 
   const benchPlayers = teamPlayers.filter(
@@ -406,14 +433,13 @@ const handleSpeak = () => {
             )}
           </p>
 
-          {/* 打順 1〜9 */}
+          {/* 打順 1〜15 */}
           <div className="mt-1 space-y-1">
             {lineupEntries.map((entry, idx) => {
               const p = teamPlayers.find((pl) => pl.id === entry.id);
               if (!p) return null;
 
-              const pos =
-                Object.entries(assignments).find(([_, pid]) => pid === p.id)?.[0] || "-";
+              const pos = getDisplayPos(p.id);
 
               // ★追加：表示用ポジション（大谷ルール時は投手を“指”表示にする）
               const displayPos =

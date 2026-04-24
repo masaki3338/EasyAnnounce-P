@@ -280,6 +280,9 @@ const DropTarget = ({ base, runnerAssignments, replacedRunners, setRunnerAssignm
   );
 };
 
+const MIN_STARTERS = 9;
+const MAX_BATTING_ORDER = 15;
+
 const positionNames: { [key: string]: string } = {
   "投": "ピッチャー",
   "捕": "キャッチャー",
@@ -311,6 +314,7 @@ const OffenseScreen: React.FC<OffenseScreenProps> = ({
     { id: number; reason: string }[]
   >([]);
   const [assignments, setAssignments] = useState<{ [pos: string]: number | null }>({});
+  const [extraPositionMap, setExtraPositionMap] = useState<Record<number, string | null>>({});
 const [currentBatterIndex, setCurrentBatterIndex] = useState(0);
 const hasRestoredCurrentBatterRef = useRef(false);
 
@@ -1150,15 +1154,26 @@ const handleFoulStop = () => {
         (await localForage.getItem<{ id:number; reason?:string }[]>("startingBattingOrder")) || [];
       const startingAssign =
         (await localForage.getItem<Record<string, number | null>>("startingassignments")) || {};
+      const startingExtraPos =
+        (await localForage.getItem<Record<number, string | null>>("startingExtraPositionMap")) ||
+        (await localForage.getItem<Record<number, string | null>>("startingExtraPositionMap_draft")) ||
+        {};
 
       if (!order || !Array.isArray(order) || order.length === 0) {
-        order = startingOrder.slice(0, 9);                 // 念のため9人に制限
+        order = startingOrder.slice(0, MAX_BATTING_ORDER); // 最大15人まで引き継ぐ
         if (order.length) await localForage.setItem("battingOrder", order);
       }
       if (!lineup || Object.keys(lineup).length === 0) {
         lineup = { ...startingAssign };
         if (Object.keys(lineup).length) await localForage.setItem("lineupAssignments", lineup);
 }
+
+      const normalizedExtraPos: Record<number, string | null> = {};
+      Object.entries(startingExtraPos || {}).forEach(([id, pos]) => {
+        const n = Number(id);
+        if (Number.isFinite(n)) normalizedExtraPos[n] = pos ?? null;
+      });
+      setExtraPositionMap(normalizedExtraPos);
 
       const loadBattingOrder = async () => {
         const order = await localForage.getItem<number[]>("battingOrder");
@@ -1174,7 +1189,7 @@ const handleFoulStop = () => {
         setTeamName(t.name || "");
         setTeamReading(t.furigana || t.kana || t.reading || t.name || "");
 
-        // 打順に載っている9人
+        // 打順に載っている選手（最大15人）
         const starterIds = new Set(
           (order as { id: number; reason: string }[]).map(e => e.id)
         );
@@ -1854,13 +1869,17 @@ const getPosition = (id: number): string | null => {
   // 1) 純粋な守備割当（大谷ルール時は「投＝指」の選手だけ指を返す）
   let posFromDefense: string | null = null;
   if (isOhtani && Number(id) === Number(pitcherId)) {
-    posFromDefense = "指"; // ← ここがポイント
+    posFromDefense = "指";
   } else {
     posFromDefense =
       Object.keys(assignments).find(
         (k) => Number((assignments as any)[k]) === Number(id)
       ) ?? null;
   }
+
+  // assignments に無ければ追加打順の守備位置を見る
+  const posFromExtra = extraPositionMap[Number(id)] ?? null;
+  const currentPos = posFromDefense || posFromExtra;
 
   // 2) いま塁上に「代走として」出ているか
   const isRunnerNow = Object.values(runnerAssignments || {}).some(
@@ -1886,7 +1905,7 @@ const getPosition = (id: number): string | null => {
   }
 
   // 4) どれでもなければ守備位置
-  return posFromDefense;
+  return currentPos;
 };
 
 
