@@ -5,7 +5,7 @@
  * - 画面デザイン（JSXの構造/クラス/文言）と機能は変更しない
  * - ロジックは同一のまま、読みやすいように日本語コメントを追加する
  * - データ保存は localForage の既存キーを維持する
- * ------------------------------------------------------------
+ * ------------------------------------------------------------ 
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -873,30 +873,60 @@ const addPitch = async () => {
 };
 
 const confirmScore = async () => {
-  let  score = parseInt(inputScore, 10);
+  let score = parseInt(inputScore, 10);
 
   if (isNaN(score) || score < 0) {
-    //alert("0以上の数字を入力してください");
     score = 0;
+  }
+
+  /**
+   * ★ 得点ボードから過去イニングを修正している場合
+   * editInning / editTopBottom が入っているときは、
+   * 現在イニングを進めない。
+   * 攻撃画面にも切り替えない。
+   * 投球数もリセットしない。
+   */
+  if (editInning !== null && editTopBottom !== null) {
+    const index = editInning - 1; // scores は 0始まり
+
+    const updatedScores: Scores = {
+      ...scores,
+      [index]: {
+        ...(scores[index] ?? {}),
+        [editTopBottom]: score,
+      },
+    };
+
+    await localForage.setItem("scores", updatedScores);
+    setScores(updatedScores);
+
+    setInputScore("");
+    setScoreOverwrite(true);
+    setEditInning(null);
+    setEditTopBottom(null);
+    setShowModal(false);
     return;
   }
 
+  /**
+   * ★ ここから下は「イニング終了」ボタンから開いた場合だけ
+   * 現在の半回に得点を入れて、表→裏 / 裏→次回表へ進める
+   */
   const index = inning - 1;
-  const updatedScores: Scores = { ...scores };
+  const half: "top" | "bottom" = isTop ? "top" : "bottom";
 
-  if (!updatedScores[index]) {
-    updatedScores[index] = {};
-  }
-
-  if (isTop) {
-    updatedScores[index].top = score;
-  } else {
-    updatedScores[index].bottom = score;
-  }
+  const updatedScores: Scores = {
+    ...scores,
+    [index]: {
+      ...(scores[index] ?? {}),
+      [half]: score,
+    },
+  };
 
   await localForage.setItem("scores", updatedScores);
   setScores(updatedScores);
   setInputScore("");
+  setScoreOverwrite(true);
   setShowModal(false);
 
   // 次の状態
@@ -923,13 +953,14 @@ const confirmScore = async () => {
     setInning(nextInning);
   }
 
-  // イニング変化時に投球数リセット
+  // イニング終了時だけ投球数リセット
   const pitcherId = assignments["投"];
   const updatedPitchCounts = {
     current: 0,
     total: totalPitchCount,
     pitcherId: pitcherId ?? null,
   };
+
   await localForage.setItem("pitchCounts", updatedPitchCounts);
   setCurrentPitchCount(0);
 
@@ -1426,6 +1457,7 @@ const handleStop = () => { ttsStop(); };
                 setEditTopBottom(clickedHalf);
                 const existing = scores[i]?.[clickedHalf];
                 setInputScore(existing !== undefined ? String(existing) : "");
+                setScoreOverwrite(true);
                 setShowModal(true);
               }}
             >
