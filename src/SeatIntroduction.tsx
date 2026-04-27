@@ -162,7 +162,8 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
           const yomi = forceFull
             ? `${p?.lastNameKana || ""} ${p?.firstNameKana || ""}`
             : `${p?.lastNameKana || ""}`;
-          return `${label} ${yomi}${p?.honorific || "くん"}`;
+          //return `${label} ${yomi}${p?.honorific || "くん"}`;
+          return `${label}、${yomi}${p?.honorific || "くん"}`;
         }),
       ].join("、") + "です。";
     setSpeaking(true);
