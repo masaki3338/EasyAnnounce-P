@@ -3875,6 +3875,11 @@ const field9IdsForDhModal = new Set<number>(
     .map((id) => Number(id))
 );
 
+// 打順が10人以上なら追加DHモード
+// 10人以上のときは「打順にいるが9守備にいない選手」だけをDH候補にする。
+// assignments["指"] に残っている選手は、前回状態や一時退避の可能性があるため追加しない。
+const isExtraBattingOrderForNumberModal = (battingOrder?.length ?? 0) >= 10;
+
 // 打順にいるが9守備にいない選手 = DH候補
 const dhEntriesForNumberModal = (() => {
   const seen = new Set<number>();
@@ -3891,33 +3896,41 @@ const dhEntriesForNumberModal = (() => {
     })
     .filter((x) => {
       if (!Number.isFinite(x.playerId)) return false;
+
+      // 9守備にいる選手はDH候補ではない
       if (field9IdsForDhModal.has(x.playerId)) return false;
+
+      // 重複防止
       if (seen.has(x.playerId)) return false;
       seen.add(x.playerId);
+
       return true;
     });
 
-  // assignments["指"] に明示DHがいる場合も漏れ防止で追加
-  const assignedDhId =
-    typeof (assignments as any)?.["指"] === "number"
-      ? Number((assignments as any)["指"])
-      : null;
+  // 9人＋通常DHのときだけ、assignments["指"] の明示DHを漏れ防止で追加する
+  // 10人以上ではここを使うと、余計な11人目が出るため追加しない。
+  if (!isExtraBattingOrderForNumberModal) {
+    const assignedDhId =
+      typeof (assignments as any)?.["指"] === "number"
+        ? Number((assignments as any)["指"])
+        : null;
 
-  if (
-    assignedDhId != null &&
-    Number.isFinite(assignedDhId) &&
-    !seen.has(assignedDhId)
-  ) {
-    const idx = (battingOrder ?? []).findIndex(
-      (entry: any, i: number) =>
-        Number((battingReplacements as any)?.[i]?.id ?? entry?.id) === assignedDhId
-    );
+    if (
+      assignedDhId != null &&
+      Number.isFinite(assignedDhId) &&
+      !seen.has(assignedDhId)
+    ) {
+      const idx = (battingOrder ?? []).findIndex(
+        (entry: any, i: number) =>
+          Number((battingReplacements as any)?.[i]?.id ?? entry?.id) === assignedDhId
+      );
 
-    entries.push({
-      battingIndex: idx >= 0 ? idx : entries.length,
-      battingOrderNo: idx >= 0 ? idx + 1 : entries.length + 10,
-      playerId: assignedDhId,
-    });
+      entries.push({
+        battingIndex: idx >= 0 ? idx : entries.length,
+        battingOrderNo: idx >= 0 ? idx + 1 : entries.length + 10,
+        playerId: assignedDhId,
+      });
+    }
   }
 
   // 守備番号としては 10, 11, 12... を割り当てる
@@ -6929,7 +6942,8 @@ const applyPosNumberChanges = () => {
       const fromNum = Number(from);
       const toNum = Number(to);
 
-      const isDhInvolved = fromNum === 10 || toNum === 10;
+      const isDhInvolved =
+        isDhModalNumber(fromNum) || isDhModalNumber(toNum);
 
       return {
         from,
@@ -7009,52 +7023,91 @@ const dhBreakReplaceRows = replaceRows.filter(
     isFieldNumber(Number(r.to))
 );
 
-// 10人以上の追加DHだけ単純交換
-// 「11(DH) → 5(三)」だけでなく、
-// 「5(三) → 11(DH)」も同じ単純交換として扱う
-const dhSimpleSwapRows = swapRows.filter((r) => {
+// ✅ 通常DHのDH解除は、左右一致チェックから外す
+// 例：9人＋DHで「10(指名打者) が 3(ファースト)」
+// これは入れ替えではなくDH解除なので、10→3だけでOK
+const normalDhBreakSwapRows = swapRows.filter((r) => {
   const fromNum = Number(r.from);
   const toNum = Number(r.to);
 
   return (
-    isExtraDhModeForNumberModal &&
-    (
-      (isDhModalNumber(fromNum) && isFieldNumber(toNum)) ||
-      (isFieldNumber(fromNum) && isDhModalNumber(toNum))
-    )
+    !isExtraDhModeForNumberModal &&
+    isDhModalNumber(fromNum) &&
+    isFieldNumber(toNum)
   );
 });
 
-// 通常の守備位置変更
-// DH単純交換の2方向は通常チェックから外す
+const normalDhBreakReplaceRows = replaceRows.filter((r) => {
+  const fromNum = Number(r.from);
+  const toNum = Number(r.to);
+
+  return (
+    !isExtraDhModeForNumberModal &&
+    isDhModalNumber(fromNum) &&
+    isFieldNumber(toNum)
+  );
+});
+
+// ✅ 通常の守備位置変更
+// 10人以上の追加DHは、通常の守備番号ローテーションとして扱う
+// 例：10 → 1、1 → 3、3 → 10 は左右一致チェックに含める
+// ただし、9人＋DHのDH解除 10 → 3 はチェックから外す
 const normalSwapRows = swapRows.filter((r) => {
   const fromNum = Number(r.from);
   const toNum = Number(r.to);
 
-  const isExtraDhSimpleSwap =
-    isExtraDhModeForNumberModal &&
-    (
-      (isDhModalNumber(fromNum) && isFieldNumber(toNum)) ||
-      (isFieldNumber(fromNum) && isDhModalNumber(toNum))
-    );
+  const isNormalDhBreak =
+    !isExtraDhModeForNumberModal &&
+    isDhModalNumber(fromNum) &&
+    isFieldNumber(toNum);
 
-  return !isExtraDhSimpleSwap;
+  return !isNormalDhBreak;
 });
 
-// 通常の控え交代
-const normalReplaceRows = replaceRows.filter(
-  (r) =>
-    !(
-      isDhModalNumber(Number(r.from)) &&
-      isFieldNumber(Number(r.to))
-    )
-);
+// ✅ 10人以上ではDH単純交換を別扱いしない
+const dhSimpleSwapRows: typeof swapRows = [];
+
+// ✅ 通常の控え交代
+// 通常DHのDH解除 replace は別処理に回す
+const normalReplaceRows = replaceRows.filter((r) => {
+  const fromNum = Number(r.from);
+  const toNum = Number(r.to);
+
+  const isNormalDhBreak =
+    !isExtraDhModeForNumberModal &&
+    isDhModalNumber(fromNum) &&
+    isFieldNumber(toNum);
+
+  return !isNormalDhBreak;
+});
 
 const swapFromNums = normalSwapRows.map((r) => Number(r.from));
 const swapToNums = normalSwapRows.map((r) => Number(r.to));
 const replaceFromNums = normalReplaceRows.map((r) => Number(r.from));
 const replaceToNums = normalReplaceRows.map((r) => Number(r.to));
 
+// ✅ 全体チェック用：DH単純交換を除外しない
+// 10人以上でDHを含む複数人ローテーションの場合、
+// DH行を除外すると左右の数が崩れて誤判定になるため。
+// ✅ 左右一致チェック用
+// 通常DHのDH解除は除外する
+// 10人以上の追加DHは normalSwapRows に残るのでチェック対象になる
+const allSwapFromNumsForBalance = normalSwapRows.map((r) => Number(r.from));
+const allSwapToNumsForBalance = normalSwapRows.map((r) => Number(r.to));
+const allReplaceFromNumsForBalance = normalReplaceRows.map((r) => Number(r.from));
+const allReplaceToNumsForBalance = normalReplaceRows.map((r) => Number(r.to));
+
+const allFromNumsForBalance = [
+  ...allSwapFromNumsForBalance,
+  ...allReplaceFromNumsForBalance,
+];
+
+const allToNumsForBalance = [
+  ...allSwapToNumsForBalance,
+  ...allReplaceToNumsForBalance,
+];
+
+// 以降の処理用は今まで通り
 const allFromNums = [...swapFromNums, ...replaceFromNums];
 const allToNums = [...swapToNums, ...replaceToNums];
 
@@ -7066,8 +7119,8 @@ const countNums = (nums: number[]) => {
   return map;
 };
 
-const fromCountMap = countNums(allFromNums);
-const toCountMap = countNums(allToNums);
+const fromCountMap = countNums(allFromNumsForBalance);
+const toCountMap = countNums(allToNumsForBalance);
 
 const allTouchedNums = new Set<number>([
   ...allFromNums,
@@ -7083,17 +7136,42 @@ const allTouchedNums = new Set<number>([
   ...dhBreakReplaceRows.map((r) => Number(r.to)),
 ]);
 
-// 通常の守備位置変更だけ、左右の番号数をチェックする
-// DH単純交換は 10 → 8 のような1行指定を許可する
-for (const n of new Set<number>([...allFromNums, ...allToNums])) {
-  const fromCount = fromCountMap.get(n) ?? 0;
-  const toCount = toCountMap.get(n) ?? 0;
+// ✅ 左右の番号組み合わせチェック
+// 通常は「左側に出た番号」と「右側に出た番号」の数が一致する必要がある。
+// ただし、通常DHのDH解除が含まれる場合は、
+// 10→3、3→2 のように左右一致しない指定も正しいためチェックしない。
+// ✅ 通常DHのDH解除
+// 9人＋DHで「10(DH) → 3」などの場合は左右一致しなくて正しい
+const hasNormalDhBreak =
+  !isExtraDhModeForNumberModal &&
+  (dhBreakSwapRows.length > 0 || dhBreakReplaceRows.length > 0);
 
-  if (fromCount !== toCount) {
-    setPosNumberError(
-      "交代の指定は、左側と右側で同じ番号の組み合わせになるように入力してください。"
-    );
-    return;
+// ✅ 10人以上の追加DH特別処理
+// 例：10(DH) → 1、1 → 3
+// 左右の番号は一致しないが、DHを守備に入れる特別処理なので許可する
+const hasExtraDhSpecialChange =
+  isExtraDhModeForNumberModal &&
+  swapRows.some((r) => {
+    const fromNum = Number(r.from);
+    const toNum = Number(r.to);
+
+    return isDhModalNumber(fromNum) && isFieldNumber(toNum);
+  });
+
+if (!hasNormalDhBreak && !hasExtraDhSpecialChange) {
+  for (const n of new Set<number>([
+    ...allFromNumsForBalance,
+    ...allToNumsForBalance,
+  ])) {
+    const fromCount = fromCountMap.get(n) ?? 0;
+    const toCount = toCountMap.get(n) ?? 0;
+
+    if (fromCount !== toCount) {
+      setPosNumberError(
+        "交代の指定は、左側と右側で同じ番号の組み合わせになるように入力してください。"
+      );
+      return;
+    }
   }
 }
 
@@ -7198,6 +7276,32 @@ const replaceBattingSlotPlayer = (orderIdx: number, playerId: number) => {
 // 10人以上の追加DH用。
 // 「11(DH) → 5(三)」でも「5(三) → 11(DH)」でも同じ結果にする。
 // -----------------------------
+// ✅ DH解除時に、最終的に外れる守備番号を取得する
+// 例）10(DH) → 3、3 → 2 の場合
+// DHが3へ入り、3の選手が2へ行くので、最終的に外れるのは2の選手
+const resolveDhBreakOutNumber = (startNum: number): number => {
+  let current = startNum;
+  const visited = new Set<number>();
+
+  while (true) {
+    if (visited.has(current)) break;
+    visited.add(current);
+
+    const nextRow = normalSwapRows.find(
+      (r) => Number(r.from) === current
+    );
+
+    if (!nextRow) break;
+
+    const nextNum = Number(nextRow.to);
+
+    if (!isFieldNumber(nextNum)) break;
+
+    current = nextNum;
+  }
+
+  return current;
+};
 const handledExtraDhSwapKeys = new Set<string>();
 
 dhSimpleSwapRows.forEach(({ from, to }) => {
@@ -7247,7 +7351,8 @@ dhBreakSwapRows.forEach(({ from, to }) => {
 
   const dhId = currentByNum.get(fromNum) ?? null;
   const pitcherId = currentByNum.get(1) ?? null;
-  const outgoingFielderId = currentByNum.get(toNum) ?? null;
+  const outNum = resolveDhBreakOutNumber(toNum);
+  const outgoingFielderId = currentByNum.get(outNum) ?? null;
 
   if (!toSym) return;
   if (typeof dhId !== "number") return;
@@ -7286,7 +7391,8 @@ dhBreakReplaceRows.forEach(({ from, to, benchPlayerId }) => {
 
   const dhId = currentByNum.get(fromNum) ?? null;
   const pitcherId = currentByNum.get(1) ?? null;
-  const outgoingFielderId = currentByNum.get(toNum) ?? null;
+  const outNum = resolveDhBreakOutNumber(toNum);
+  const outgoingFielderId = currentByNum.get(outNum) ?? null;
   const incomingId = Number(benchPlayerId);
 
   if (!toSym) return;

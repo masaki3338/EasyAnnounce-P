@@ -164,6 +164,11 @@ const buildDefenseMatchKey = (mi?: Partial<MatchInfo>) => {
 const getDefenseSnapshotKey = (matchKey: string) =>
   `defenseInningStartSnapshot::${matchKey}`;
 
+const getPreviousInningEndSnapshotKey = (matchKey: string) =>
+  `previousInningEndSnapshot::${matchKey}`;
+
+const getPreviousDefenseInningEndSnapshotKey = (matchKey: string) =>
+  `previousDefenseInningEndSnapshot::${matchKey}`;
 
   // ★ 追加：見出しが収まらない時に小さくする判定用
   const [isNarrow, setIsNarrow] = useState(false);
@@ -217,6 +222,8 @@ useEffect(() => {
   const [showPitchLimitModal, setShowPitchLimitModal] = useState(false);
   const [showRestoreConfirmModal, setShowRestoreConfirmModal] = useState(false);
   const [showRestoreCompleteModal, setShowRestoreCompleteModal] = useState(false);
+  const [restoreCompleteMessage, setRestoreCompleteMessage] =
+  useState("この回の最初に戻しました。");
 
   const synthRef = useRef(window.speechSynthesis);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -908,6 +915,11 @@ const confirmScore = async () => {
     return;
   }
 
+
+  // ★ 攻撃画面の「戻す」用：
+  // 守備画面のイニング終了ボタンを押す直前の状態を保存
+  await savePreviousDefenseInningEndSnapshot();
+
   /**
    * ★ ここから下は「イニング終了」ボタンから開いた場合だけ
    * 現在の半回に得点を入れて、表→裏 / 裏→次回表へ進める
@@ -1234,8 +1246,206 @@ const restoreDefenseInningStartSnapshot = async () => {
   ttsStop();
 
   console.log("[DEFENSE SNAPSHOT] restored", { storageKey, snapshot });
+  setRestoreCompleteMessage("この回の最初に戻しました。");
+  setShowRestoreCompleteModal(true);
+  
+};
+
+const savePreviousDefenseInningEndSnapshot = async () => {
+  const matchInfo =
+    (await localForage.getItem<MatchInfo>("matchInfo")) || {};
+
+  const matchKey = buildDefenseMatchKey(matchInfo);
+  const storageKey = getPreviousDefenseInningEndSnapshotKey(matchKey);
+
+  const [
+    savedAssignments,
+    savedBattingOrder,
+    savedStartingBattingOrder,
+    savedTempRunnerByOrder,
+    savedUsedPlayerInfo,
+    savedScores,
+    savedPitchCounts,
+    savedPitcherTotals,
+    savedBenchPlayers,
+    savedSubstitutionLogs,
+    savedPairLocks,
+    savedBattingReplacements,
+    savedOhtaniRule,
+    savedDhEnabledAtStart,
+  ] = await Promise.all([
+    localForage.getItem<Record<string, number | null>>("lineupAssignments"),
+    localForage.getItem<Array<{ id: number; reason?: string }>>("battingOrder"),
+    localForage.getItem<Array<{ id: number; reason?: string }>>("startingBattingOrder"),
+    localForage.getItem<Record<number, number>>("tempRunnerByOrder"),
+    localForage.getItem<Record<string, any>>("usedPlayerInfo"),
+    localForage.getItem<Scores>("scores"),
+    localForage.getItem<{ current: number; total: number; pitcherId?: number | null }>("pitchCounts"),
+    localForage.getItem<Record<number, number>>("pitcherTotals"),
+    localForage.getItem<any[]>("benchPlayers"),
+    localForage.getItem<any[]>("substitutionLogs"),
+    localForage.getItem<Record<string, any>>("pairLocks"),
+    localForage.getItem<Record<string, any>>("battingReplacements"),
+    localForage.getItem<boolean>("ohtaniRule"),
+    localForage.getItem<boolean>("dhEnabledAtStart"),
+  ]);
+
+  const currentInning = Number(inning);
+  const currentIsTop = Boolean(isTop);
+
+  const snapshot: DefenseInningSnapshot = {
+    savedAt: Date.now(),
+    matchKey,
+
+    // ★ 守備画面のイニング終了ボタンを押す直前の回
+    inning: currentInning,
+    isTop: currentIsTop,
+
+    lineupAssignments: structuredClone(savedAssignments || assignments || {}),
+    battingOrder: structuredClone(savedBattingOrder || battingOrder || []),
+    startingBattingOrder: structuredClone(savedStartingBattingOrder || startingOrder || []),
+    tempRunnerByOrder: structuredClone(savedTempRunnerByOrder || tempRunnerByOrder || {}),
+    usedPlayerInfo: structuredClone(savedUsedPlayerInfo || {}),
+
+    scores: structuredClone(savedScores || scores || {}),
+
+    pitchCounts: {
+      current: Number(savedPitchCounts?.current ?? currentPitchCount ?? 0),
+      total: Number(savedPitchCounts?.total ?? totalPitchCount ?? 0),
+      pitcherId:
+        typeof savedPitchCounts?.pitcherId === "number"
+          ? savedPitchCounts.pitcherId
+          : assignments?.["投"] ?? null,
+    },
+
+    pitcherTotals: structuredClone(savedPitcherTotals || pitcherTotals || {}),
+
+    matchInfo: {
+      ...matchInfo,
+      inning: currentInning,
+      isTop: currentIsTop,
+      isDefense: true,
+      isHome,
+    },
+
+    benchPlayers: structuredClone(savedBenchPlayers || []),
+    substitutionLogs: structuredClone(savedSubstitutionLogs || []),
+    pairLocks: structuredClone(savedPairLocks || {}),
+    battingReplacements: structuredClone(savedBattingReplacements || {}),
+    ohtaniRule: !!savedOhtaniRule,
+    dhEnabledAtStart: !!savedDhEnabledAtStart,
+  };
+
+  await localForage.setItem(storageKey, snapshot);
+
+  console.log("[PREV DEFENSE INNING END SNAPSHOT] saved", {
+    storageKey,
+    inning: currentInning,
+    isTop: currentIsTop,
+  });
+};
+
+const restorePreviousInningEndSnapshot = async () => {
+  const matchInfo =
+    (await localForage.getItem<MatchInfo>("matchInfo")) || {};
+
+  const matchKey = buildDefenseMatchKey(matchInfo);
+  const storageKey = getPreviousInningEndSnapshotKey(matchKey);
+
+  const snapshot =
+    await localForage.getItem<DefenseInningSnapshot>(storageKey);
+
+  if (!snapshot) {
+    alert("前のイニング終了直前の保存データがありません。");
+    return;
+  }
+
+  if (snapshot.matchKey !== matchKey) {
+    alert("別の試合の保存データです。復元を中止しました。");
+    return;
+  }
+
+  const safeAssignments = { ...(snapshot.lineupAssignments || {}) };
+  const restoredCount = Object.values(safeAssignments).filter(
+    (v): v is number => typeof v === "number"
+  ).length;
+
+  if (restoredCount === 0) {
+    alert("保存データの守備配置が空のため、復元を中止しました。");
+    console.log("[PREV INNING SNAPSHOT] restore blocked: empty lineupAssignments", snapshot);
+    return;
+  }
+
+  setAssignments(safeAssignments);
+  setBattingOrder(structuredClone(snapshot.battingOrder));
+  setStartingOrder(structuredClone(snapshot.startingBattingOrder));
+  setTempRunnerByOrder(structuredClone(snapshot.tempRunnerByOrder));
+  setScores(structuredClone(snapshot.scores));
+  setCurrentPitchCount(snapshot.pitchCounts.current ?? 0);
+  setTotalPitchCount(snapshot.pitchCounts.total ?? 0);
+  setPitcherTotals(structuredClone(snapshot.pitcherTotals ?? {}));
+  setInning(snapshot.inning);
+  setIsTop(snapshot.isTop);
+
+  await localForage.setItem("lineupAssignments", safeAssignments);
+  localStorage.setItem("assignmentsVersion", String(Date.now()));
+
+  await localForage.setItem("battingOrder", snapshot.battingOrder);
+  localStorage.setItem("battingOrderVersion", String(Date.now()));
+
+  await localForage.setItem("startingBattingOrder", snapshot.startingBattingOrder);
+  await localForage.setItem("tempRunnerByOrder", snapshot.tempRunnerByOrder);
+  await localForage.setItem("scores", snapshot.scores);
+  await localForage.setItem("pitcherTotals", snapshot.pitcherTotals ?? {});
+  await localForage.setItem("pitchCounts", snapshot.pitchCounts);
+  await localForage.setItem("usedPlayerInfo", snapshot.usedPlayerInfo ?? {});
+  await localForage.setItem("benchPlayers", snapshot.benchPlayers ?? []);
+  await localForage.setItem("substitutionLogs", snapshot.substitutionLogs ?? []);
+  await localForage.setItem("pairLocks", snapshot.pairLocks ?? {});
+  await localForage.setItem("battingReplacements", snapshot.battingReplacements ?? {});
+  await localForage.setItem("ohtaniRule", !!snapshot.ohtaniRule);
+  await localForage.setItem("dhEnabledAtStart", !!snapshot.dhEnabledAtStart);
+
+  await saveMatchInfo({
+    ...(snapshot.matchInfo || {}),
+    inning: snapshot.inning,
+    isTop: snapshot.isTop,
+    isDefense: false,
+    isHome,
+  });
+
+  setPitchLimitMessages([]);
+  setShowPitchLimitModal(false);
+  setShowConfirmModal(false);
+  setShowTempReentryModal(false);
+
+  ttsStop();
+
+  setRestoreCompleteMessage("前のイニング終了直前に戻しました。");
   setShowRestoreCompleteModal(true);
 
+  // 攻撃画面へ戻す
+  onSwitchToOffense();
+};
+
+const hasPreviousInning = () => {
+  return !(isTop && inning <= 1);
+};
+const getPreviousInningLabel = () => {
+  // 1回表の守備画面では、前の攻撃回が存在しない
+  if (isTop && inning <= 1) {
+    return "前のイニングなし";
+  }
+
+  // 現在が表の守備画面なら、前の攻撃回は「前の回の裏」
+  // 例：4回表の守備画面 → 3回裏に戻す
+  if (isTop) {
+    return `${inning - 1}回裏に戻す`;
+  }
+
+  // 現在が裏の守備画面なら、前の攻撃回は「同じ回の表」
+  // 例：4回裏の守備画面 → 4回表に戻す
+  return `${inning}回表に戻す`;
 };
 
 const handleStop = () => { ttsStop(); };
@@ -1489,21 +1699,29 @@ const handleStop = () => { ttsStop(); };
       </section>
       <div className="relative w-full max-w-2xl mx-auto my-2">
         <img src="/field.png" alt="フィールド図" className="w-full rounded shadow" />
-        {positions.map(pos => {
+{positions.map(pos => {
+  const isExtraBattingOrder = Array.isArray(battingOrder) && battingOrder.length >= 10;
+
+  // 10人以上のスタメン設定時は、フィールド図のDH選手名は表示しない
+  if (pos === "指" && isExtraBattingOrder) {
+    return null;
+  }
+
           const playerId = assignmentsForDisplay[pos]; // ★ 表示用に差し替え
           const playerNameNum = getPlayerNameNumber(playerId);
-          return (            
-          <div
-            key={pos}
-            className="absolute text-base font-bold text-white bg-black bg-opacity-60 rounded px-1 py-0.5 whitespace-nowrap text-center"
-            style={{ 
-              ...positionStyles[pos], 
-              transform: 'translate(-50%, -50%)', 
-              minWidth: '80px' 
-            }}
-          >
-            {playerNameNum ?? <span className="text-gray-300">DHなし</span>}
-          </div>
+
+          return (
+            <div
+              key={pos}
+              className="absolute text-base font-bold text-white bg-black bg-opacity-60 rounded px-1 py-0.5 whitespace-nowrap text-center"
+              style={{
+                ...positionStyles[pos],
+                transform: "translate(-50%, -50%)",
+                minWidth: "80px",
+              }}
+            >
+              {playerNameNum ?? <span className="text-gray-300">DHなし</span>}
+            </div>
           );
         })}
       </div>
@@ -2494,19 +2712,12 @@ if (typeof reEntryTarget?.index === "number") {
 
         <div className="px-6 py-6 text-center">
           <p className="text-[15px] font-bold text-gray-800 leading-relaxed whitespace-pre-line">
-            この回の最初に戻します。{"\n"}
-            よろしいですか？
+            戻す内容を選択してください。
           </p>
         </div>
 
         <div className="px-5 pb-5">
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              className="w-full py-3 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700 active:bg-red-800"
-              onClick={() => setShowRestoreConfirmModal(false)}
-            >
-              NO
-            </button>
+          <div className="px-5 pb-5 space-y-3">
             <button
               className="w-full py-3 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 active:bg-emerald-800"
               onClick={async () => {
@@ -2514,7 +2725,32 @@ if (typeof reEntryTarget?.index === "number") {
                 await restoreDefenseInningStartSnapshot();
               }}
             >
-              YES
+              回の最初に戻す
+            </button>
+
+            <button
+              className={`w-full py-3 rounded-xl text-white font-semibold ${
+                hasPreviousInning()
+                  ? "bg-blue-600 hover:bg-blue-700 active:bg-blue-800"
+                  : "bg-gray-400 cursor-not-allowed"
+              }`}
+              onClick={async () => {
+                if (!hasPreviousInning()) {
+                  return;
+                }
+
+                setShowRestoreConfirmModal(false);
+                await restorePreviousInningEndSnapshot();
+              }}
+            >
+              {getPreviousInningLabel()}
+            </button>
+
+            <button
+              className="w-full py-3 rounded-xl bg-gray-500 text-white font-semibold hover:bg-gray-600 active:bg-gray-700"
+              onClick={() => setShowRestoreConfirmModal(false)}
+            >
+              キャンセル
             </button>
           </div>
         </div>
@@ -2556,7 +2792,7 @@ if (typeof reEntryTarget?.index === "number") {
 
         <div className="px-6 py-6 text-center">
           <p className="text-[15px] font-bold text-gray-800 leading-relaxed">
-            この回の最初に戻しました。
+            {restoreCompleteMessage}
           </p>
         </div>
 

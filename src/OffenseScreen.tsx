@@ -191,6 +191,97 @@ type MatchInfo = {
   teamName?: string;
 };
 
+type Scores = {
+  [inningIndex: number]: {
+    top: number;
+    bottom: number;
+  };
+};
+
+type PreviousInningEndSnapshot = {
+  savedAt: number;
+  matchKey: string;
+
+  inning: number;
+  isTop: boolean;
+
+  lineupAssignments: Record<string, number | null>;
+  battingOrder: Array<{ id: number; reason?: string }>;
+  startingBattingOrder: Array<{ id: number; reason?: string }>;
+  tempRunnerByOrder: Record<number, number>;
+  usedPlayerInfo: Record<string, any>;
+
+  scores: Scores;
+
+  pitchCounts: {
+    current: number;
+    total: number;
+    pitcherId?: number | null;
+  };
+
+  pitcherTotals: Record<number, number>;
+
+  matchInfo: MatchInfo;
+
+  benchPlayers: any[];
+  substitutionLogs: any[];
+  pairLocks: Record<string, any>;
+  battingReplacements: Record<string, any>;
+
+  ohtaniRule: boolean;
+  dhEnabledAtStart: boolean;
+};
+
+type OffenseInningStartSnapshot = {
+  savedAt: number;
+  matchKey: string;
+
+  inning: number;
+  isTop: boolean;
+  isHome: boolean;
+
+  lineupAssignments: Record<string, number | null>;
+  battingOrder: Array<{ id: number; reason?: string }>;
+  usedPlayerInfo: Record<string, any>;
+  benchPlayers: any[];
+
+  scores: Scores;
+
+  runnerAssignments: { [base: string]: any | null };
+  replacedRunners: { [base: string]: any | null };
+  tempRunnerFlags: Record<string, boolean>;
+  selectedRunnerByBase: Record<string, any | null>;
+
+  currentBatterIndex: number;
+
+  matchInfo: MatchInfo;
+};
+
+const buildDefenseMatchKey = (mi?: Partial<MatchInfo>) => {
+  return [
+    mi?.tournamentName ?? "",
+    mi?.matchNumber ?? "",
+    mi?.opponentTeam ?? "",
+    mi?.teamName ?? "",
+    mi?.isHome ? "home" : "away",
+  ].join("::");
+};
+
+const getPreviousInningEndSnapshotKey = (matchKey: string) =>
+  `previousInningEndSnapshot::${matchKey}`;
+
+const OFFENSE_RESTORE_PREVIOUS_DEFENSE_EVENT =
+  "restore-offense-previous-defense";
+
+const getPreviousDefenseInningEndSnapshotKey = (matchKey: string) =>
+  `previousDefenseInningEndSnapshot::${matchKey}`;
+
+const getOffenseInningStartSnapshotKey = (
+  matchKey: string,
+  inning: number,
+  isTop: boolean
+) => `offenseInningStartSnapshot::${matchKey}::${inning}::${isTop ? "top" : "bottom"}`;
+
 const saveMatchInfo = async (patch: Partial<MatchInfo>) => {
   const prev = (await localForage.getItem<MatchInfo>("matchInfo")) || {};
   const next = { ...prev, ...patch };
@@ -346,6 +437,19 @@ useEffect(() => {
   const [inning, setInning] = useState(1);
   const [isTop, setIsTop] = useState(true);
   const [isHome, setIsHome] = useState(false); // 自チームが後攻かどうか
+  const [offenseStartSnapshotReady, setOffenseStartSnapshotReady] = useState(false);
+  const [showRestoreConfirmModal, setShowRestoreConfirmModal] = useState(false);
+  useEffect(() => {
+  const handler = () => {
+    setShowRestoreConfirmModal(true);
+  };
+
+  window.addEventListener("restore-offense-previous-defense", handler);
+
+  return () => {
+    window.removeEventListener("restore-offense-previous-defense", handler);
+  };
+}, []);
   const [showGroundPopup, setShowGroundPopup] = useState(false);
   const [pendingGroundPopup, setPendingGroundPopup] = useState(false);
   const [announcementHTMLStr, setAnnouncementHTMLStr] = useState<string>("");
@@ -1262,6 +1366,8 @@ const handleFoulStop = () => {
         setIsHome(matchInfo.isHome ?? false);
       }  
 
+      setOffenseStartSnapshotReady(true);
+
       const savedScores = await localForage.getItem("scores");
       if (savedScores && typeof savedScores === "object") {
         setScores(savedScores as any);
@@ -1623,25 +1729,412 @@ const setAnnouncementHTML = (html: string) => {
   setAnnouncementHTMLOverrideStr(html);
 };
 
+const savePreviousInningEndSnapshot = async () => {
+  const [
+    matchInfo,
+    savedAssignments,
+    savedBattingOrder,
+    savedStartingBattingOrder,
+    savedTempRunnerByOrder,
+    savedUsedPlayerInfo,
+    savedScores,
+    savedPitchCounts,
+    savedPitcherTotals,
+    savedBenchPlayers,
+    savedSubstitutionLogs,
+    savedPairLocks,
+    savedBattingReplacements,
+    savedOhtaniRule,
+    savedDhEnabledAtStart,
+  ] = await Promise.all([
+    localForage.getItem<MatchInfo>("matchInfo"),
+    localForage.getItem<Record<string, number | null>>("lineupAssignments"),
+    localForage.getItem<Array<{ id: number; reason?: string }>>("battingOrder"),
+    localForage.getItem<Array<{ id: number; reason?: string }>>("startingBattingOrder"),
+    localForage.getItem<Record<number, number>>("tempRunnerByOrder"),
+    localForage.getItem<Record<string, any>>("usedPlayerInfo"),
+    localForage.getItem<Scores>("scores"),
+    localForage.getItem<{ current: number; total: number; pitcherId?: number | null }>("pitchCounts"),
+    localForage.getItem<Record<number, number>>("pitcherTotals"),
+    localForage.getItem<any[]>("benchPlayers"),
+    localForage.getItem<any[]>("substitutionLogs"),
+    localForage.getItem<Record<string, any>>("pairLocks"),
+    localForage.getItem<Record<string, any>>("battingReplacements"),
+    localForage.getItem<boolean>("ohtaniRule"),
+    localForage.getItem<boolean>("dhEnabledAtStart"),
+  ]);
 
+  const mi = matchInfo || {};
+  const matchKey = buildDefenseMatchKey(mi);
+  const storageKey = getPreviousInningEndSnapshotKey(matchKey);
 
+  const currentInning = Number(inning);
+  const currentIsTop = Boolean(isTop);
+
+  const latestScores: Scores = {
+    ...(savedScores || scores || {}),
+  };
+
+  const snapshot: PreviousInningEndSnapshot = {
+    savedAt: Date.now(),
+    matchKey,
+
+    // ★ ここが重要
+    // まだ次の回へ進める前なので、
+    // 現在の inning / isTop が「イニング終了ボタンを押す直前」の状態
+    inning: currentInning,
+    isTop: currentIsTop,
+
+    lineupAssignments: structuredClone(savedAssignments || assignments || {}),
+    battingOrder: structuredClone(savedBattingOrder || battingOrder || []),
+    startingBattingOrder: structuredClone(savedStartingBattingOrder || []),
+    tempRunnerByOrder: structuredClone(savedTempRunnerByOrder || {}),
+    usedPlayerInfo: structuredClone(savedUsedPlayerInfo || {}),
+
+    scores: structuredClone(latestScores),
+
+    pitchCounts: {
+      current: Number(savedPitchCounts?.current ?? 0),
+      total: Number(savedPitchCounts?.total ?? 0),
+      pitcherId:
+        typeof savedPitchCounts?.pitcherId === "number"
+          ? savedPitchCounts.pitcherId
+          : savedAssignments?.["投"] ?? assignments?.["投"] ?? null,
+    },
+
+    pitcherTotals: structuredClone(savedPitcherTotals || {}),
+
+    matchInfo: {
+      ...mi,
+      inning: currentInning,
+      isTop: currentIsTop,
+      isDefense: false,
+      isHome,
+    },
+
+    benchPlayers: structuredClone(savedBenchPlayers || []),
+    substitutionLogs: structuredClone(savedSubstitutionLogs || []),
+    pairLocks: structuredClone(savedPairLocks || {}),
+    battingReplacements: structuredClone(savedBattingReplacements || {}),
+    ohtaniRule: !!savedOhtaniRule,
+    dhEnabledAtStart: !!savedDhEnabledAtStart,
+  };
+
+  await localForage.setItem(storageKey, snapshot);
+
+  console.log("[PREVIOUS INNING END SNAPSHOT] saved", {
+    storageKey,
+    inning: currentInning,
+    isTop: currentIsTop,
+  });
+};
+
+const saveOffenseInningStartSnapshotIfNeeded = async () => {
+  const matchInfo =
+    (await localForage.getItem<MatchInfo>("matchInfo")) || {};
+
+  // 守備画面扱いのときは保存しない
+  if (matchInfo.isDefense === true) return;
+
+  const matchKey = buildDefenseMatchKey(matchInfo);
+  const storageKey = getOffenseInningStartSnapshotKey(matchKey, inning, isTop);
+
+  // すでに保存済みなら上書きしない
+  // これが重要：代打・代走などをした後に「回の最初」が上書きされるのを防ぐ
+  const existing =
+    await localForage.getItem<OffenseInningStartSnapshot>(storageKey);
+
+  if (existing) return;
+
+  if (!battingOrder.length || Object.keys(assignments || {}).length === 0) {
+    return;
+  }
+
+  const snapshot: OffenseInningStartSnapshot = {
+    savedAt: Date.now(),
+    matchKey,
+
+    inning,
+    isTop,
+    isHome,
+
+    lineupAssignments: structuredClone(assignments || {}),
+    battingOrder: structuredClone(battingOrder || []),
+    usedPlayerInfo: structuredClone(usedPlayerInfo || {}),
+    benchPlayers: structuredClone(benchPlayers || []),
+
+    scores: structuredClone(scores || {}),
+
+    runnerAssignments: structuredClone(runnerAssignments || {}),
+    replacedRunners: structuredClone(replacedRunners || {}),
+    tempRunnerFlags: structuredClone(tempRunnerFlags || {}),
+    selectedRunnerByBase: structuredClone(selectedRunnerByBase || {}),
+
+    currentBatterIndex,
+
+    matchInfo: {
+      ...matchInfo,
+      inning,
+      isTop,
+      isDefense: false,
+      isHome,
+    },
+  };
+
+  await localForage.setItem(storageKey, snapshot);
+
+  console.log("[OFFENSE INNING START SNAPSHOT] saved", {
+    storageKey,
+    inning,
+    isTop,
+  });
+};
+
+useEffect(() => {
+  if (!offenseStartSnapshotReady) return;
+  if (!battingOrder.length) return;
+  if (Object.keys(assignments || {}).length === 0) return;
+
+  void saveOffenseInningStartSnapshotIfNeeded();
+}, [
+  offenseStartSnapshotReady,
+  inning,
+  isTop,
+  isHome,
+  battingOrder.length,
+  Object.keys(assignments || {}).length,
+]);
+
+const restorePreviousDefenseInningEndSnapshot = async () => {
+  const matchInfo =
+    (await localForage.getItem<MatchInfo>("matchInfo")) || {};
+
+  const matchKey = buildDefenseMatchKey(matchInfo);
+  const storageKey = getPreviousDefenseInningEndSnapshotKey(matchKey);
+
+  const snapshot =
+    await localForage.getItem<PreviousInningEndSnapshot>(storageKey);
+
+  if (!snapshot) {
+    alert("前の守備回終了直前の保存データがありません。");
+    return;
+  }
+
+  if (snapshot.matchKey !== matchKey) {
+    alert("別の試合の保存データです。復元を中止しました。");
+    return;
+  }
+
+  const safeAssignments = { ...(snapshot.lineupAssignments || {}) };
+
+  const restoredBattingOrder = structuredClone(
+    snapshot.battingOrder || []
+  ).map((entry) => ({
+    id: entry.id,
+    reason: entry.reason ?? "",
+  }));
+
+  setAssignments(safeAssignments);
+  setBattingOrder(restoredBattingOrder);
+  // 得点は全体をスナップショットに戻さない。
+  // 現在の得点ボードを維持して、この半回だけ 0 に戻す。
+  const currentScores =
+    ((await localForage.getItem<Scores>("scores")) || scores || {}) as Scores;
+
+  const restoredScores: Scores = structuredClone(currentScores || {});
+
+  const targetIndex = snapshot.inning - 1;
+
+  if (!restoredScores[targetIndex]) {
+    restoredScores[targetIndex] = { top: 0, bottom: 0 };
+  }
+
+  if (snapshot.isTop) {
+    restoredScores[targetIndex].top = 0;
+  } else {
+    restoredScores[targetIndex].bottom = 0;
+  }
+
+  setScores(restoredScores);
+  setInning(snapshot.inning);
+  setIsTop(snapshot.isTop);
+
+  await localForage.setItem("lineupAssignments", safeAssignments);
+  localStorage.setItem("assignmentsVersion", String(Date.now()));
+
+  await localForage.setItem("battingOrder", restoredBattingOrder);
+  localStorage.setItem("battingOrderVersion", String(Date.now()));
+
+  await localForage.setItem("startingBattingOrder", snapshot.startingBattingOrder || []);
+  await localForage.setItem("tempRunnerByOrder", snapshot.tempRunnerByOrder || {});
+  await localForage.setItem("scores", snapshot.scores || {});
+  await localForage.setItem("pitcherTotals", snapshot.pitcherTotals || {});
+  await localForage.setItem("pitchCounts", snapshot.pitchCounts || { current: 0, total: 0 });
+  await localForage.setItem("usedPlayerInfo", snapshot.usedPlayerInfo || {});
+  await localForage.setItem("benchPlayers", snapshot.benchPlayers || []);
+  await localForage.setItem("substitutionLogs", snapshot.substitutionLogs || []);
+  await localForage.setItem("pairLocks", snapshot.pairLocks || {});
+  await localForage.setItem("battingReplacements", snapshot.battingReplacements || {});
+  await localForage.setItem("ohtaniRule", !!snapshot.ohtaniRule);
+  await localForage.setItem("dhEnabledAtStart", !!snapshot.dhEnabledAtStart);
+
+  await saveMatchInfo({
+    ...(snapshot.matchInfo || {}),
+    inning: snapshot.inning,
+    isTop: snapshot.isTop,
+    isDefense: true,
+    isHome,
+  });
+
+  stop();
+
+  setShowRestoreConfirmModal(false);
+
+  // 復元後は守備画面へ移動
+  onSwitchToDefense();
+};
+
+const restoreOffenseInningStartSnapshot = async () => {
+  const matchInfo =
+    (await localForage.getItem<MatchInfo>("matchInfo")) || {};
+
+  const matchKey = buildDefenseMatchKey(matchInfo);
+  const storageKey = getOffenseInningStartSnapshotKey(matchKey, inning, isTop);
+
+  const snapshot =
+    await localForage.getItem<OffenseInningStartSnapshot>(storageKey);
+
+  if (!snapshot) {
+    alert("この回の開始時点の保存データがありません。");
+    return;
+  }
+
+  if (snapshot.matchKey !== matchKey) {
+    alert("別の試合の保存データです。復元を中止しました。");
+    return;
+  }
+
+  const restoredBattingOrder = structuredClone(
+    snapshot.battingOrder || []
+  ).map((entry) => ({
+    id: entry.id,
+    reason: entry.reason ?? "",
+  }));
+
+  setAssignments(structuredClone(snapshot.lineupAssignments || {}));
+  setBattingOrder(restoredBattingOrder);
+  setUsedPlayerInfo(structuredClone(snapshot.usedPlayerInfo || {}));
+  setBenchPlayers(structuredClone(snapshot.benchPlayers || []));
+const currentScores =
+  ((await localForage.getItem<Scores>("scores")) || scores || {}) as Scores;
+
+const restoredScores: Scores = structuredClone(currentScores || {});
+
+const targetIndex = snapshot.inning - 1;
+
+if (!restoredScores[targetIndex]) {
+  restoredScores[targetIndex] = { top: 0, bottom: 0 };
+}
+
+if (snapshot.isTop) {
+  restoredScores[targetIndex].top = undefined as any;
+} else {
+  restoredScores[targetIndex].bottom = undefined as any;
+}
+
+setScores(restoredScores);
+
+  setRunnerAssignments(structuredClone(snapshot.runnerAssignments || {
+    "1塁": null,
+    "2塁": null,
+    "3塁": null,
+  }));
+  setReplacedRunners(structuredClone(snapshot.replacedRunners || {}));
+  setTempRunnerFlags(structuredClone(snapshot.tempRunnerFlags || {}));
+  setSelectedRunnerByBase(structuredClone(snapshot.selectedRunnerByBase || {}));
+
+  setCurrentBatterIndex(snapshot.currentBatterIndex ?? 0);
+  setInning(snapshot.inning);
+  setIsTop(snapshot.isTop);
+  setIsHome(snapshot.isHome);
+
+  await localForage.setItem("lineupAssignments", snapshot.lineupAssignments || {});
+  localStorage.setItem("assignmentsVersion", String(Date.now()));
+
+  await localForage.setItem("battingOrder", restoredBattingOrder);
+  localStorage.setItem("battingOrderVersion", String(Date.now()));
+
+  await localForage.setItem("usedPlayerInfo", snapshot.usedPlayerInfo || {});
+  await localForage.setItem("benchPlayers", snapshot.benchPlayers || []);
+  await localForage.setItem("scores", restoredScores);
+  await localForage.setItem("runnerAssignments", snapshot.runnerAssignments || {
+    "1塁": null,
+    "2塁": null,
+    "3塁": null,
+  });
+
+  await localForage.setItem("replacedRunners", snapshot.replacedRunners || {});
+  await localForage.setItem("tempRunnerFlags", snapshot.tempRunnerFlags || {});
+  await localForage.setItem("selectedRunnerByBase", snapshot.selectedRunnerByBase || {});
+  await localForage.setItem("lastBatterIndex", snapshot.currentBatterIndex ?? 0);
+
+  await saveMatchInfo({
+    ...(snapshot.matchInfo || {}),
+    inning: snapshot.inning,
+    isTop: snapshot.isTop,
+    isDefense: false,
+    isHome: snapshot.isHome,
+  });
+
+  stop();
+  setShowRestoreConfirmModal(false);
+
+  console.log("[OFFENSE INNING START SNAPSHOT] restored", {
+    storageKey,
+    inning: snapshot.inning,
+    isTop: snapshot.isTop,
+  });
+};
+
+const hasPreviousDefenseInning = () => {
+  return !(isTop && inning <= 1);
+};
+
+const getPreviousDefenseInningLabel = () => {
+  // 1回表は戻り先なし
+  if (isTop && inning <= 1) {
+    return "前のイニングなし";
+  }
+
+  // 4回表の攻撃画面 → 3回裏の守備画面に戻す
+  if (isTop) {
+    return `${inning - 1}回裏に戻す`;
+  }
+
+  // 4回裏の攻撃画面 → 4回表の守備画面に戻す
+  return `${inning}回表に戻す`;
+};
 
 const confirmScore = async () => {
-  // ★ ここを追加：モーダル表示前に「終わった回」を確定
+  // ★ モーダル確定時に「終わった回」を確定
   lastEndedHalfRef.current = { inning, isTop };
+
   const score = parseInt(inputScore || "0", 10);
   const updatedScores = { ...scores };
 
   // ✅ 編集モード時
+  // 得点ボードから過去イニングを修正している場合は、
+  // 現在イニングを進めない。
+  // 前のイニング用スナップショットも保存しない。
   if (editInning !== null && editTopBottom !== null) {
-    // （バリデーション直後あたりで）
     lastEndedHalfRef.current = { inning, isTop };
 
-    const index = editInning - 1;
-    if (!updatedScores[index]) {
-      updatedScores[index] = { top: 0, bottom: 0 };
+    const editIndex = editInning - 1;
+    if (!updatedScores[editIndex]) {
+      updatedScores[editIndex] = { top: 0, bottom: 0 };
     }
-    updatedScores[index][editTopBottom] = score;
+
+    updatedScores[editIndex][editTopBottom] = score;
 
     await localForage.setItem("scores", updatedScores);
     setScores(updatedScores);
@@ -1653,6 +2146,123 @@ const confirmScore = async () => {
   }
 
   // ✅ 通常モード（イニング終了処理）
+  // ★ 前のイニングに戻す用：
+  // 得点を確定する直前の状態を保存しておく
+  await savePreviousInningEndSnapshot();
+
+  const restorePreviousDefenseInningEndSnapshot = async () => {
+  const matchInfo =
+    (await localForage.getItem<MatchInfo>("matchInfo")) || {};
+
+  const matchKey = buildDefenseMatchKey(matchInfo);
+  const storageKey = getPreviousDefenseInningEndSnapshotKey(matchKey);
+
+  const snapshot =
+    await localForage.getItem<PreviousInningEndSnapshot>(storageKey);
+
+  if (!snapshot) {
+    alert("前の守備回終了直前の保存データがありません。");
+    return;
+  }
+
+  if (snapshot.matchKey !== matchKey) {
+    alert("別の試合の保存データです。復元を中止しました。");
+    return;
+  }
+
+  const safeAssignments = { ...(snapshot.lineupAssignments || {}) };
+  const restoredCount = Object.values(safeAssignments).filter(
+    (v): v is number => typeof v === "number"
+  ).length;
+
+  if (restoredCount === 0) {
+    alert("保存データの守備配置が空のため、復元を中止しました。");
+    console.log(
+      "[OFFENSE RESTORE PREV DEFENSE] blocked: empty assignments",
+      snapshot
+    );
+    return;
+  }
+
+  const restoredBattingOrder = structuredClone(
+    snapshot.battingOrder || []
+  ).map((entry) => ({
+    id: entry.id,
+    reason: entry.reason ?? "",
+  }));
+
+  setAssignments(safeAssignments);
+  setBattingOrder(restoredBattingOrder);
+  // 得点は全体をスナップショットに戻さない。
+  // 現在の得点ボードを維持して、この半回だけ 0 に戻す。
+  const currentScores =
+    ((await localForage.getItem<Scores>("scores")) || scores || {}) as Scores;
+
+  const restoredScores: Scores = structuredClone(currentScores || {});
+
+  const targetIndex = snapshot.inning - 1;
+
+  if (!restoredScores[targetIndex]) {
+    restoredScores[targetIndex] = { top: 0, bottom: 0 };
+  }
+
+  if (snapshot.isTop) {
+    restoredScores[targetIndex].top = 0;
+  } else {
+    restoredScores[targetIndex].bottom = 0;
+  }
+
+  setScores(restoredScores);
+  setInning(snapshot.inning);
+  setIsTop(snapshot.isTop);
+
+  await localForage.setItem("lineupAssignments", safeAssignments);
+  localStorage.setItem("assignmentsVersion", String(Date.now()));
+
+  await localForage.setItem("battingOrder", restoredBattingOrder);
+  localStorage.setItem("battingOrderVersion", String(Date.now()));
+
+  await localForage.setItem(
+    "startingBattingOrder",
+    snapshot.startingBattingOrder || []
+  );
+  await localForage.setItem(
+    "tempRunnerByOrder",
+    snapshot.tempRunnerByOrder || {}
+  );
+  await localForage.setItem("scores", snapshot.scores || {});
+  await localForage.setItem("pitcherTotals", snapshot.pitcherTotals || {});
+  await localForage.setItem(
+    "pitchCounts",
+    snapshot.pitchCounts || { current: 0, total: 0 }
+  );
+  await localForage.setItem("usedPlayerInfo", snapshot.usedPlayerInfo || {});
+  await localForage.setItem("benchPlayers", snapshot.benchPlayers || []);
+  await localForage.setItem("substitutionLogs", snapshot.substitutionLogs || []);
+  await localForage.setItem("pairLocks", snapshot.pairLocks || {});
+  await localForage.setItem(
+    "battingReplacements",
+    snapshot.battingReplacements || {}
+  );
+  await localForage.setItem("ohtaniRule", !!snapshot.ohtaniRule);
+  await localForage.setItem("dhEnabledAtStart", !!snapshot.dhEnabledAtStart);
+
+  await saveMatchInfo({
+    ...(snapshot.matchInfo || {}),
+    inning: snapshot.inning,
+    isTop: snapshot.isTop,
+    isDefense: true,
+    isHome,
+  });
+
+  stop();
+
+  setShowRestoreConfirmModal(false);
+
+  // 復元後は守備画面へ移動
+  onSwitchToDefense();
+};
+
   const index = inning - 1;
   if (!updatedScores[index]) {
     updatedScores[index] = { top: 0, bottom: 0 };
@@ -3112,6 +3722,82 @@ useEffect(() => {
             </div>
           );
         })()}
+
+        {/* ✅ 攻撃画面：前の守備回に戻す確認モーダル */}
+        {showRestoreConfirmModal && (
+          <div className="fixed inset-0 z-50">
+            <div
+              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+              onClick={() => setShowRestoreConfirmModal(false)}
+            />
+
+            <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+              <div
+                className="
+                  bg-white shadow-2xl
+                  rounded-2xl
+                  w-full max-w-sm
+                  overflow-hidden
+                  flex flex-col
+                "
+                onClick={(e) => e.stopPropagation()}
+                style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+                role="dialog"
+                aria-modal="true"
+                aria-label="戻す確認"
+              >
+                <div className="px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
+                  <h2 className="text-lg font-extrabold tracking-wide text-center">
+                    確認
+                  </h2>
+                </div>
+
+                <div className="px-6 py-6 text-center">
+                  <p className="text-[15px] font-bold text-gray-800 leading-relaxed whitespace-pre-line">
+                    戻す内容を選択してください。
+                  </p>
+                </div>
+
+                <div className="px-5 pb-5 space-y-3">
+                  <button
+                    className="w-full py-3 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 active:bg-emerald-800"
+                    onClick={async () => {
+                      await restoreOffenseInningStartSnapshot();
+                    }}
+                  >
+                    回の最初に戻す                    
+                  </button>
+                  
+                  <button
+                    className={`w-full py-3 rounded-xl text-white font-semibold ${
+                      hasPreviousDefenseInning()
+                        ? "bg-blue-600 hover:bg-blue-700 active:bg-blue-800"
+                        : "bg-gray-400 cursor-not-allowed"
+                    }`}
+                    onClick={async () => {
+                      if (!hasPreviousDefenseInning()) {
+                        return;
+                      }
+
+                      await restorePreviousDefenseInningEndSnapshot();
+                    }}
+                  >
+                    {getPreviousDefenseInningLabel()}
+                  </button>
+
+                  <button
+                    className="w-full py-3 rounded-xl bg-gray-500 text-white font-semibold hover:bg-gray-600 active:bg-gray-700"
+                    onClick={() => setShowRestoreConfirmModal(false)}
+                  >
+                    キャンセル
+                  </button>
+                </div>
+
+                <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ✅ 得点入力時のポップアップ（中央モーダル・機能そのまま） */}
         {showModal && (
