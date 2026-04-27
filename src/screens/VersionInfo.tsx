@@ -86,6 +86,11 @@ const historyData: HistoryItem[] = [
     version: "Vesion 2.08 β",
     details: ["15人までのスタメン設定に対応"],
   },
+  {
+    date: "2026.04.27",
+    version: "Vesion 2.09 β",
+    details: ["イニングを戻す対応"],
+  },
 ];
 
 export default function VersionInfo({ version, onBack }: Props) {
