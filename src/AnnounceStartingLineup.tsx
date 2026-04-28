@@ -278,7 +278,8 @@ clone.querySelectorAll("ruby").forEach((rb) => {
   // 次も ruby なら「苗字 + 名前」の可能性が高いので、
   // 読み上げ用にだけ少し区切る
   const textNode = document.createTextNode(
-    (kana || fallback) + (nextIsRuby ? "　" : "　")
+    //(kana || fallback) + (nextIsRuby ? "　" : "")
+    (kana || fallback) + (nextIsRuby ? "、" : "")
   );
 
   rb.replaceWith(textNode);
@@ -307,6 +308,7 @@ const handleSpeak = () => {
   text = text
     // 「1番ショート」→「1番、ショート」
     .replace(/([0-9]+)番\s*/g, "$1番、")
+
     // 守備位置の直後だけ区切る
     .replace(
       /(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)\s*/g,

@@ -45,6 +45,14 @@ export default function AnnounceMindset({ onBack }: Props) {
                 <li>投手が投球動作に入った時</li>
                 <li>ボールが動いている時（インプレー中）</li>
               </ul>
+
+              {/* 補足 */}
+              <div className="mt-4 rounded-xl border border-amber-300/40 bg-amber-300/10 px-4 py-3 text-sm text-amber-50">
+                 <div className="leading-relaxed">
+                  アナウンス中にプレーが始まった場合は、
+                  <span className="font-extrabold text-white">続けてOK</span>
+                </div>
+              </div>
             </section>
 
             {/* ② */}
