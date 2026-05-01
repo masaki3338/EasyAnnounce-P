@@ -692,7 +692,7 @@ const handleSpeak = async () => {
 
 return (
   <>
-    {!appClosed && (
+    {screen === "menu" && !appClosed && (
       <button
         type="button"
         onClick={handleCloseApp}
