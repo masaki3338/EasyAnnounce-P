@@ -3217,7 +3217,13 @@ useEffect(() => {
           </tbody>
         </table>
    
-        <div className="space-y-0 text-sm font-bold text-gray-800">
+        <div
+          className="space-y-0 font-bold text-gray-800"
+          style={{
+            fontSize: "clamp(15px, 1.65vh, 24px)",
+            lineHeight: 1.25,
+          }}
+        >
         {currentGameState.battingOrder9.map((slot, idx) => {
           const player = getPlayer(slot.currentId);
           const isCurrent = idx === currentBatterIndex;
@@ -3255,11 +3261,11 @@ useEffect(() => {
                   }
                 }
               }}
-              className={`px-2 py-0.5 border-b cursor-pointer ${
+              className={`px-2 py-1 border-b cursor-pointer ${
                 isCurrent ? "bg-yellow-200" : ""
               }`}
             >
-              <div className="grid grid-cols-[50px_100px_150px_60px] items-center gap-2">
+              <div className="grid grid-cols-[clamp(42px,7vw,70px)_clamp(42px,8vw,90px)_minmax(0,1fr)_clamp(52px,8vw,90px)] items-center gap-2">
                 <div>{slot.order}番</div>
                 <div>{positionLabel}</div>
 
