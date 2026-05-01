@@ -1874,7 +1874,7 @@ const handleStop = () => { ttsStop(); };
       className="
         flex flex-col
         text-red-600
-        text-[clamp(20px,3.2dvh,34px)]
+        text-[clamp(16px,2.8dvh,30px)]
         font-bold
         space-y-[clamp(4px,0.8dvh,8px)]
         mt-[clamp(8px,1.4dvh,14px)]
