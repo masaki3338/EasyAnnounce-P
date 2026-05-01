@@ -8907,7 +8907,7 @@ const canDropHere =
             <div className="px-5 py-4 border border-red-500 bg-red-200 text-red-700 rounded-xl">
               <div
                 ref={modalTextRef}
-                className="text-rose-600 text-[clamp(20px,3.2vw,30px)] leading-[1.45] font-bold whitespace-pre-wrap text-center"
+                className="text-rose-600 text-lg md:text-2xl lg:text-3xl font-bold whitespace-pre-wrap"
                 dangerouslySetInnerHTML={{ __html: announcementText.displayText }}
               />
 
