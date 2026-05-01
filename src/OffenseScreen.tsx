@@ -3316,12 +3316,18 @@ useEffect(() => {
         <div className="border border-red-500 bg-red-200 text-red-700 p-2 rounded relative text-left">
           <div className="mt-2 w-full flex gap-2">
 
-            <span className="text-red-600 font-bold whitespace-pre-line">
+            <span
+              className="text-red-600 font-bold whitespace-pre-line"
+              style={{
+                fontSize: "clamp(16px, 1.75vh, 26px)",
+                lineHeight: 1.35,
+              }}
+            >
               {leagueMode === "boys"
                 ? `ご来場の皆様にお願いをいたします。
             試合中、スタンドに入りますファウルボールは大変危険でございます。
             打球の行方には十分ご注意ください。`
-                : `ファウルボールの行方には十分ご注意ください`}
+                : `ファールボールの行方には十分ご注意ください`}
             </span>
           </div>
 
@@ -3357,9 +3363,15 @@ useEffect(() => {
         <div className="border border-red-500 bg-red-200 text-red-700 p-2 rounded relative text-left">
           <div className="flex items-center mb-2">
 
-              <span className="text-red-600 font-bold whitespace-pre-line">
-                {tiebreakAnno ?? announcementOverride ?? announcement ?? ""}
-              </span>
+            <span
+              className="text-red-600 font-bold whitespace-pre-line"
+              style={{
+                fontSize: "clamp(17px, 1.9vh, 28px)",
+                lineHeight: 1.35,
+              }}
+            >
+              {tiebreakAnno ?? announcementOverride ?? announcement ?? ""}
+            </span>
 
           </div>
           {/* 🔊 打順アナウンス：読み上げ／停止（横いっぱい・半分ずつ） */}
