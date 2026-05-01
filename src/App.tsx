@@ -2182,7 +2182,14 @@ return (
     {/* 中央カード */}
     <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
       <div
-        className="bg-white shadow-2xl rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
+        className="
+          bg-white shadow-2xl rounded-2xl
+          w-[calc(100vw-24px)]
+          sm:w-[calc(100vw-32px)]
+          md:w-[82vw]
+          max-w-2xl
+          overflow-hidden flex flex-col
+        "
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {/* ヘッダー */}
@@ -2283,7 +2290,14 @@ return (
     {/* 中央カード */}
     <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
       <div
-        className="bg-white shadow-2xl rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
+        className="
+          bg-white shadow-2xl rounded-2xl
+          w-[calc(100vw-24px)]
+          sm:w-[calc(100vw-32px)]
+          md:w-[82vw]
+          max-w-2xl
+          overflow-hidden flex flex-col
+        "
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {/* ヘッダー（スマホ風グラデ&ハンドル） */}
@@ -2329,7 +2343,14 @@ return (
     {/* 中央カード */}
     <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
       <div
-        className="bg-white shadow-2xl rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
+        className="
+          bg-white shadow-2xl rounded-2xl
+          w-[calc(100vw-24px)]
+          sm:w-[calc(100vw-32px)]
+          md:w-[82vw]
+          max-w-2xl
+          overflow-hidden flex flex-col
+        "
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {/* ヘッダー */}
@@ -2882,7 +2903,14 @@ return (
     {/* 中央カード */}
     <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
       <div
-        className="bg-white shadow-2xl rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
+        className="
+          bg-white shadow-2xl rounded-2xl
+          w-[calc(100vw-24px)]
+          sm:w-[calc(100vw-32px)]
+          md:w-[82vw]
+          max-w-2xl
+          overflow-hidden flex flex-col
+        "
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {/* ヘッダー */}
@@ -3384,7 +3412,14 @@ return (
     {/* 中央カード */}
     <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
       <div
-        className="bg-white shadow-2xl rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
+        className="
+          bg-white shadow-2xl rounded-2xl
+          w-[calc(100vw-24px)]
+          sm:w-[calc(100vw-32px)]
+          md:w-[82vw]
+          max-w-2xl
+          overflow-hidden flex flex-col
+        "
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {/* ヘッダー */}
