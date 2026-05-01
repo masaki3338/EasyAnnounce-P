@@ -1771,54 +1771,109 @@ const handleStop = () => { ttsStop(); };
         })}
       </div>
 
-{/* 投球数（左=－1｜中央=表示｜右=＋1）  ※ボタン比率 1:1 */}
-<div className="w-full grid grid-cols-12 items-center gap-2 sm:gap-3 my-2">
-  {/* －1（4/12） */}
-<button
-  onClick={subtractPitch}
-  className="col-span-4 mx-auto w-[80%] h-10 rounded bg-yellow-500 text-white hover:bg-yellow-600 whitespace-nowrap"
->
-  ⚾︎投球数－１
-</button>
-
-  {/* 中央表示（4/12） */}
-<div className="col-span-4 min-w-0 text-center leading-tight">
-  {/* この回の投球数 */}
-  <p className="whitespace-nowrap leading-none tracking-tight text-[clamp(13px,3.6vw,18px)]">
-    <span className="font-semibold align-middle">この回の投球数:</span>{" "}
-    <strong className="tabular-nums align-middle text-[clamp(14px,4.2vw,20px)]">
-      {currentPitchCount}
-    </strong>
-  </p>
-
-{/* 累計投球数（タップで変更） */}
-<button
-  type="button"
-  onClick={() => openTotalPitchModal(totalPitchCount)}
+{/* 投球数（左=－1｜中央=表示｜右=＋1）  ※スマホは従来通り／タブレット以上は高さ連動 */}
+<div
   className="
-    mt-1 inline-flex items-center gap-2
-    rounded-full bg-emerald-600 text-white
-    px-3 py-1.5
-    shadow-md
-    active:scale-[0.97]
-    focus:outline-none
+    w-full
+    grid grid-cols-12
+    items-center
+    gap-2 sm:gap-3
+    my-2
+    md:my-[clamp(8px,1.5dvh,16px)]
   "
 >
-  <span className="text-xs opacity-90">累計投球</span>
-  <span className="font-bold tabular-nums text-base">
-    {totalPitchCount}
-  </span>
-  <span className="text-xs opacity-80">球</span>
-</button>
+  {/* －1（4/12） */}
+  <button
+    onClick={subtractPitch}
+    className="
+      col-span-4
+      mx-auto
+      w-[80%]
+      h-10
+      md:h-[clamp(42px,5.2dvh,58px)]
+      rounded
+      bg-yellow-500 text-white hover:bg-yellow-600
+      whitespace-nowrap
+      text-sm
+      md:text-[clamp(15px,2.2dvh,22px)]
+      font-bold
+    "
+  >
+    ⚾︎投球数－１
+  </button>
 
+  {/* 中央表示（4/12） */}
+  <div className="col-span-4 min-w-0 text-center leading-tight">
+    {/* この回の投球数 */}
+    <p
+      className="
+        whitespace-nowrap
+        leading-none
+        tracking-tight
+        text-[clamp(13px,3.6vw,18px)]
+        md:text-[clamp(15px,2.1dvh,22px)]
+      "
+    >
+      <span className="font-semibold align-middle">この回の投球数:</span>{" "}
+      <strong
+        className="
+          tabular-nums
+          align-middle
+          text-[clamp(14px,4.2vw,20px)]
+          md:text-[clamp(18px,2.8dvh,30px)]
+        "
+      >
+        {currentPitchCount}
+      </strong>
+    </p>
 
-</div>
+    {/* 累計投球数（タップで変更） */}
+    <button
+      type="button"
+      onClick={() => openTotalPitchModal(totalPitchCount)}
+      className="
+        mt-1
+        md:mt-[clamp(5px,0.9dvh,10px)]
+        inline-flex items-center gap-2
+        md:gap-[clamp(6px,1dvh,12px)]
+        rounded-full bg-emerald-600 text-white
+        px-3 py-1.5
+        md:px-[clamp(12px,2dvh,22px)]
+        md:py-[clamp(6px,1.2dvh,12px)]
+        shadow-md
+        active:scale-[0.97]
+        focus:outline-none
+      "
+    >
+      <span className="text-xs md:text-[clamp(13px,1.8dvh,18px)] opacity-90">
+        累計投球
+      </span>
 
+      <span className="font-bold tabular-nums text-base md:text-[clamp(18px,2.8dvh,30px)]">
+        {totalPitchCount}
+      </span>
+
+      <span className="text-xs md:text-[clamp(13px,1.8dvh,18px)] opacity-80">
+        球
+      </span>
+    </button>
+  </div>
 
   {/* ＋1（4/12） */}
   <button
     onClick={addPitch}
-    className="col-span-4 w-full h-10 rounded bg-green-500 text-white hover:bg-green-600 whitespace-nowrap"
+    className="
+      col-span-4
+      w-full
+      h-10
+      md:h-[clamp(42px,5.2dvh,58px)]
+      rounded
+      bg-green-500 text-white hover:bg-green-600
+      whitespace-nowrap
+      text-sm
+      md:text-[clamp(15px,2.2dvh,22px)]
+      font-bold
+    "
   >
     ⚾️投球数＋１
   </button>
