@@ -188,8 +188,12 @@ const BottomTab: React.FC<{
   );
 };
 
+
 const App = () => {
   const [screen, setScreen] = useState<ScreenType>("menu");
+    // ✅ アプリ終了用
+  const [appClosed, setAppClosed] = useState(false);
+  const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
   const [leagueMode, setLeagueMode] = useState<LeagueMode>("pony");
   const isBoys = leagueMode === "boys";
   const [showHelpModal, setShowHelpModal] = useState(false);
@@ -500,6 +504,43 @@ const disableIOSAwake = () => {
   setIosKeepAwake(false);
 };
 
+// ✅ 左上×ボタン押下時：確認モーダルを開く
+const handleCloseApp = () => {
+  setShowCloseConfirmModal(true);
+};
+
+// ✅ モーダルで「終了する」を押した時の処理
+const confirmCloseApp = async () => {
+  setShowCloseConfirmModal(false);
+
+  // 読み上げ停止
+  try {
+    stop();
+  } catch {}
+
+  // 画面常時点灯解除
+  try {
+    await releaseWakeLock();
+  } catch {}
+
+  try {
+    disableIOSAwake();
+  } catch {}
+
+  // PWA / ブラウザで閉じられる場合は閉じる
+  try {
+    window.close();
+  } catch {}
+
+  // window.close が効かない端末用
+  window.setTimeout(() => {
+    if (!document.hidden) {
+      setAppClosed(true);
+    }
+  }, 300);
+};
+
+
 // タブを裏に回したら自動解除
 useEffect(() => {
   const onVis = () => {
@@ -649,38 +690,128 @@ const handleSpeak = async () => {
     return nextScreen;
   };
 
-  return (
-    <>
-      {screen === "menu" && (
-        <Menu
-          onNavigate={setScreen}
-          leagueMode={leagueMode}
-          iosKeepAwake={iosKeepAwake}
-          onEnableIOSAwake={async () => {
-            const ok = await acquireWakeLock();
-            if (!ok) {
-              enableIOSAwake();
-            }
-            setIosKeepAwake(true);
-          }}
-          onDisableIOSAwake={async () => {
-            await releaseWakeLock().catch(() => {});
-            disableIOSAwake();
-            setIosKeepAwake(false);
-          }}
-          onContinueGame={async (_nextScreen) => {
-            const nextScreen = await canResumeGame();
+return (
+  <>
+    {!appClosed && (
+      <button
+        type="button"
+        onClick={handleCloseApp}
+        aria-label="アプリを終了"
+        className="
+          fixed top-3 left-3 z-[9998]
+          w-11 h-11
+          rounded-full
+          bg-black/70 text-white
+          text-2xl font-bold
+          shadow-lg
+          flex items-center justify-center
+          active:scale-95
+        "
+        style={{
+          top: "max(0.75rem, env(safe-area-inset-top))",
+          left: "max(0.75rem, env(safe-area-inset-left))",
+        }}
+      >
+        ×
+      </button>
+    )}
 
-            if (!nextScreen) {
-              setShowNoContinueModal(true);
-              return;
-            }
-
-            setIsContinueGame(true);
-            setScreen(nextScreen);
-          }}
+    {showCloseConfirmModal && (
+      <div className="fixed inset-0 z-[9999]">
+        <div
+          className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+          onClick={() => setShowCloseConfirmModal(false)}
         />
-      )}
+
+        <div className="absolute inset-0 flex items-center justify-center p-4">
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="close-app-title"
+          >
+            <div className="px-5 py-4 border-b bg-red-50">
+              <h2
+                id="close-app-title"
+                className="text-lg font-bold text-red-700 text-center"
+              >
+                アプリを終了しますか？
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-2 border-t">
+              <button
+                type="button"
+                onClick={() => setShowCloseConfirmModal(false)}
+                className="py-4 text-base font-bold text-gray-700 bg-white active:bg-gray-100"
+              >
+                キャンセル
+              </button>
+
+              <button
+                type="button"
+                onClick={confirmCloseApp}
+                className="py-4 text-base font-bold text-white bg-red-600 active:bg-red-700"
+              >
+                終了する
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {appClosed && (
+      <div className="fixed inset-0 z-[9999] bg-white flex flex-col items-center justify-center text-center px-6">
+        <div className="text-2xl font-bold text-gray-800 mb-4">
+          アプリを終了しました
+        </div>
+
+        <div className="text-gray-600 text-sm leading-relaxed mb-6">
+          画面を閉じる場合は、端末の戻るボタンやホームボタンで終了してください。
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setAppClosed(false)}
+          className="px-6 py-3 rounded-full bg-blue-600 text-white font-bold shadow hover:bg-blue-700"
+        >
+          アプリに戻る
+        </button>
+      </div>
+    )}
+
+    {screen === "menu" && (
+      <Menu
+        onNavigate={setScreen}
+        leagueMode={leagueMode}
+        iosKeepAwake={iosKeepAwake}
+        onEnableIOSAwake={async () => {
+          const ok = await acquireWakeLock();
+          if (!ok) {
+            enableIOSAwake();
+          }
+          setIosKeepAwake(true);
+        }}
+        onDisableIOSAwake={async () => {
+          await releaseWakeLock().catch(() => {});
+          disableIOSAwake();
+          setIosKeepAwake(false);
+        }}
+        onContinueGame={async (_nextScreen) => {
+          const nextScreen = await canResumeGame();
+
+          if (!nextScreen) {
+            setShowNoContinueModal(true);
+            return;
+          }
+
+          setIsContinueGame(true);
+          setScreen(nextScreen);
+        }}
+      />
+    )}
 
       {screen === "announceMindset" && (
         <>
