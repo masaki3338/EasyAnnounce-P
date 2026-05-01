@@ -2181,7 +2181,8 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
                   rounded-xl bg-white/90 text-gray-900 shadow border border-white/70
                   ${hoverPosKey === pos ? "ring-4 ring-emerald-400" : ""}
                   backdrop-blur-[2px] text-center
-                  flex items-center justify-center select-none touch-none`}
+                  flex items-center justify-center select-none touch-none
+                  font-bold`}
               >
                 {player ? (
                   <div
