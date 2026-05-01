@@ -1,81 +1,179 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-@layer utilities {
-  /* 既存の util クラスがここにあるならその下で OK */
 
-  /* ====== ドラッグ操作をタッチでもスムーズにする ====== */
-  .touch-draggable {
-    touch-action: none;            /* ピンチズーム／スクロールを抑止 */
-    -webkit-user-select: none;     /* iOS/Safari でのテキスト選択防止 */
-    user-select: none;             /* 他ブラウザでのテキスト選択防止 */
+/* =========================================================
+   Android / iPhone の文字サイズ設定を反映しやすくする基本設定
+   ========================================================= */
+html {
+  font-size: 100%;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  font-size: 1rem;
+}
+
+/* =========================================================
+   共通デザインクラス
+   他の画面でもこれを使うと文字サイズが端末設定に追従しやすい
+   ========================================================= */
+@layer components {
+  .app-screen {
+    @apply min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white px-4 sm:px-6;
+  }
+
+  .app-screen-inner {
+    @apply w-full max-w-2xl mx-auto;
+  }
+
+  .app-page-title {
+    @apply text-2xl sm:text-3xl font-extrabold tracking-wide leading-tight;
+  }
+
+  .app-sub-title {
+    @apply text-sm sm:text-base opacity-80 font-semibold leading-relaxed;
+  }
+
+  .app-card {
+    @apply rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg;
+  }
+
+  .app-section-title {
+    @apply text-base sm:text-lg font-extrabold mb-2 leading-snug;
+  }
+
+  .app-body {
+    @apply text-base leading-relaxed;
+  }
+
+  .app-body-large {
+    @apply text-lg leading-relaxed;
+  }
+
+  .app-small {
+    @apply text-sm leading-relaxed;
+  }
+
+  .app-button {
+    @apply px-4 py-2 rounded-xl text-base font-semibold shadow-md active:scale-95;
+  }
+
+  .app-button-large {
+    @apply px-6 py-4 rounded-2xl text-lg font-semibold shadow-lg active:scale-95;
+  }
+
+  .announce-box {
+    @apply rounded-2xl bg-white text-gray-900 p-4 shadow-xl border border-gray-200;
+  }
+
+  .announce-text {
+    @apply text-lg leading-relaxed font-semibold whitespace-pre-wrap;
+  }
+
+  .announce-button-row {
+    @apply grid grid-cols-2 gap-3 mt-4;
+  }
+
+  .announce-speak-button {
+    @apply app-button bg-blue-600 text-white;
+  }
+
+  .announce-stop-button {
+    @apply app-button bg-gray-600 text-white;
   }
 }
-/* Field background */
-.field-container {
-  position: relative;
-  width: 600px;
-  height: 360px;
+
+/* =========================================================
+   ルビ表示
+   選手名のふりがなも親文字サイズに合わせて拡大縮小する
+   ========================================================= */
+.ruby-text {
+  ruby-position: over;
+}
+
+.ruby-reading {
+  font-size: 0.5em;
+  line-height: 1;
+}
+
+/* =========================================================
+   攻撃画面：
+   ・Androidの文字フォント設定に追従しやすくする
+   ・横幅はそのまま
+   ・縦方向だけ拡大して下側の空白を減らす
+   ・スマホは今まで通り
+   ========================================================= */
+
+.app-screen-fit {
+  min-height: 100svh;
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: #f8fafc;
+
+  /* Android / ブラウザの文字サイズ設定を反映しやすくする */
+  font-size: 1rem;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+.app-scale-area {
+  width: 100%;
+  max-width: 100%;
   margin: 0 auto;
-  background: url('/field.jpg') no-repeat center / contain;
+  transform-origin: top center;
 }
 
-/* Grid absolute layout */
-.position-grid {
-  position: absolute;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(3, 1fr);
-}
-.position-cell {
-  position: relative;
-  border: 1px solid #ccc;
-  margin: 4px;
-  padding: 4px;
-}
-.position-cell.highlight { background: rgba(0, 255, 0, 0.2); }
-.player { font-weight: bold; }
-.empty { color: #ccc; }
-.pos-label { position: absolute; bottom: 2px; right: 4px; font-size: 12px; }
-
-/* Bench badges */
-.bench-list-badges {
-  display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px;
-}
-.badge {
-  padding: 4px 8px; border-radius: 12px; font-size: 0.875rem;
-}
-.badge-primary { background-color: #e0f7fa; color: #00796b; }
-.badge-secondary { background-color: #f0f0f0; color: #888; text-decoration: line-through; }
-
-/* Data section layout */
-.data-section { display: flex; justify-content: space-between; margin-top: 16px; }
-.buttons button { margin-right: 8px; }
-
-/* Buttons */
-.btn { padding: 8px 16px; border: none; border-radius: 4px; color: white; cursor: pointer; }
-.btn-primary { background-color: #007bff; }
-.btn-danger { background-color: #dc3545; }
-
-/* iOS Safari のドラッグ原点ズレ・スクロール干渉の緩和 */
-.touch-draggable {
-  -webkit-user-drag: element;
-  touch-action: none;
-  cursor: grab;
-}
-.touch-draggable:active {
-  cursor: grabbing;
+/* 攻撃画面の中身に文字サイズの基準を作る */
+.offense-fit-content {
+  font-size: 1rem;
+  line-height: 1.35;
 }
 
-/* Modal */
-.modal-backdrop {
-  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-  background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;
+/* スマホは今まで通り */
+@media (max-width: 767px) {
+  .app-scale-area {
+    transform: none;
+  }
+
+  .offense-fit-content {
+    font-size: 1rem;
+  }
 }
-.modal-content {
-  background: #fff; padding: 20px; border-radius: 4px; width: 400px;
+
+/* タブレット以上：文字・ボタンを少し見やすく */
+@media (min-width: 768px) {
+  .offense-fit-content {
+    font-size: 1.08rem;
+  }
 }
-.announcement-text { white-space: pre-wrap; }
-.modal-buttons { text-align: right; margin-top: 10px; }
+
+/* 大きめタブレット：さらに少し拡大 */
+@media (min-width: 900px) and (min-height: 1000px) {
+  .offense-fit-content {
+    font-size: 1.14rem;
+  }
+}
+
+/* タブレット縦：横幅はそのまま、縦方向だけ少し拡大 */
+@media (min-width: 768px) and (min-height: 850px) {
+  .app-scale-area {
+    transform: scaleY(1.08);
+  }
+}
+
+/* 縦がかなり余るタブレット */
+@media (min-width: 768px) and (min-height: 1000px) {
+  .app-scale-area {
+    transform: scaleY(1.14);
+  }
+}
+
+/* 大きめタブレット */
+@media (min-width: 900px) and (min-height: 1100px) {
+  .app-scale-area {
+    transform: scaleY(1.2);
+  }
+}
