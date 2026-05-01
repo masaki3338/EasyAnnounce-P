@@ -8873,8 +8873,8 @@ const canDropHere =
         className="
           bg-white shadow-2xl
           rounded-2xl
-          w-full md:max-w-md
-          max-h-[85vh]
+          w-full max-w-[min(96vw,900px)]
+          max-h-[88svh]
           overflow-hidden flex flex-col
         "
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
@@ -8902,9 +8902,9 @@ const canDropHere =
         </div>
 
         {/* 本文（スクロール領域） */}
-        <div className="px-4 py-3 overflow-y-auto flex-1">
+        <div className="px-5 py-4 overflow-y-auto flex-1">
           {announcementText && (
-            <div className="px-4 py-3 border border-red-500 bg-red-200 text-red-700 rounded-xl">
+            <div className="px-5 py-4 border border-red-500 bg-red-200 text-red-700 rounded-xl">
               <div
                 ref={modalTextRef}
                 className="text-rose-600 text-lg font-bold whitespace-pre-wrap"
