@@ -3067,15 +3067,22 @@ useEffect(() => {
         </div>
 
 
-      <table
-        className="w-full max-w-full border border-gray-400 text-center mb-2 table-fixed"
-        style={{
-          width: "100%",
-          tableLayout: "fixed",
-          fontSize: "clamp(10px, 1.25vh, 18px)",
-          lineHeight: 1.1,
-        }}
-      >
+<div
+  className="w-full px-[clamp(6px,1.6vw,16px)] mb-2"
+  style={{
+    paddingLeft: "max(clamp(6px, 1.6vw, 16px), env(safe-area-inset-left))",
+    paddingRight: "max(clamp(6px, 1.6vw, 16px), env(safe-area-inset-right))",
+  }}
+>
+  <table
+    className="w-full max-w-full border border-gray-400 text-center table-fixed"
+    style={{
+      width: "100%",
+      tableLayout: "fixed",
+      fontSize: "clamp(10px, 1.25vh, 18px)",
+      lineHeight: 1.1,
+    }}
+  >
         <colgroup>
           {/* チーム名列：画面幅に合わせて縮む */}
           <col style={{ width: "28%" }} />
@@ -3235,7 +3242,7 @@ useEffect(() => {
               ))}
           </tbody>
         </table>
-   
+   </div>
         <div
           className="space-y-0 font-bold text-gray-800"
           style={{
