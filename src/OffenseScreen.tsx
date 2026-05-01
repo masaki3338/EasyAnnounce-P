@@ -3067,24 +3067,36 @@ useEffect(() => {
         </div>
 
 
-        <table className="w-full border border-gray-400 text-center text-xs mb-2">
-            <colgroup>
-              {/* チーム名列： */}
-              <col className="w-40" />
-              {/* 9回分のスコア列：40pxずつ */}
-              {[...Array(9)].map((_, i) => (
-                <col key={i} className="w-10" />
-              ))}
-              {/* 計列：48px */}
-              <col className="w-12" />
-            </colgroup>
+      <table
+        className="w-full max-w-full border border-gray-400 text-center mb-2 table-fixed"
+        style={{
+          width: "100%",
+          tableLayout: "fixed",
+          fontSize: "clamp(10px, 1.25vh, 18px)",
+          lineHeight: 1.1,
+        }}
+      >
+        <colgroup>
+          {/* チーム名列：画面幅に合わせて縮む */}
+          <col style={{ width: "28%" }} />
+
+          {/* 1〜9回：残り幅を均等配分 */}
+          {[...Array(9)].map((_, i) => (
+            <col key={i} style={{ width: "6.5%" }} />
+          ))}
+
+          {/* 計列 */}
+          <col style={{ width: "13.5%" }} />
+        </colgroup>
           <thead>
             <tr>
-              <th className="border">回</th>
+              <th className="border py-[clamp(2px,0.55vh,8px)]">回</th>
               {[...Array(9).keys()].map(i => (
-                <th key={i} className="border">{i + 1}</th>
+                <th key={i} className="border py-[clamp(2px,0.55vh,8px)]">
+                  {i + 1}
+                </th>
               ))}
-              <th className="border">計</th>
+              <th className="border py-[clamp(2px,0.55vh,8px)]">計</th>
             </tr>
           </thead>
           <tbody>
@@ -3099,10 +3111,17 @@ useEffect(() => {
               })
               .map((row, rowIdx) => (
                 <tr key={rowIdx} className={row.isMyTeam ? "bg-gray-100" : ""}>
-                  <td className={`border ${row.isMyTeam ? "text-red-600 font-bold" : ""}`}>
-                    <span className="block max-w-[120px] truncate" title={row.name}>
-                      {row.name}
-                    </span>
+                  <td
+                    className={`border px-1 py-[clamp(2px,0.55vh,8px)] ${
+                      row.isMyTeam ? "text-red-600 font-bold" : ""
+                    }`}
+                  >
+                  <span
+                    className="block w-full truncate leading-tight"
+                    title={row.name}
+                  >
+                    {row.name}
+                  </span>
                   </td>
 
                   {[...Array(9).keys()].map(i => {
@@ -3121,8 +3140,8 @@ useEffect(() => {
                     return (
                       <td
                         key={i}
-                        className={`border text-center cursor-pointer hover:bg-gray-200 ${
-                          isNow ? "bg-yellow-300 font-bold border-2 border-yellow-500" : ""
+                        className={`border text-center cursor-pointer hover:bg-gray-200 font-semibold px-0 py-[clamp(2px,0.5vh,7px)] ${
+                          isNow ? "bg-yellow-300 font-extrabold border-2 border-yellow-500" : ""
                         }`}
                         onClick={() => {
                           const clickedInning = i + 1;
