@@ -3300,13 +3300,34 @@ useEffect(() => {
         <div className="w-full grid grid-cols-3 gap-2 my-1">
           <button
             onClick={handlePrev}
-            className="col-span-1 w-full h-8 rounded bg-green-500 text-white text-sm"
+            className="
+              col-span-1 w-full rounded bg-green-500 hover:bg-green-600
+              text-white font-extrabold
+              inline-flex items-center justify-center
+              whitespace-nowrap leading-none
+              active:scale-[0.98] transition
+            "
+            style={{
+              height: "clamp(34px, 4.2vh, 56px)",
+              fontSize: "clamp(13px, 1.65vh, 22px)",
+            }}
           >
             ⬅ 前の打者
           </button>
+
           <button
             onClick={handleNext}
-            className="col-span-2 w-full h-10 rounded bg-green-500 text-white"
+            className="
+              col-span-2 w-full rounded bg-green-500 hover:bg-green-600
+              text-white font-extrabold
+              inline-flex items-center justify-center
+              whitespace-nowrap leading-none
+              active:scale-[0.98] transition
+            "
+            style={{
+              height: "clamp(38px, 4.8vh, 64px)",
+              fontSize: "clamp(15px, 1.95vh, 28px)",
+            }}
           >
             ➡️ 次の打者
           </button>
