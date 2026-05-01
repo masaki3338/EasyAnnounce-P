@@ -2321,7 +2321,7 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
           onDragStart={(e) => handleDragStart(e, p.id)}
           onTouchStart={() => setTouchDrag({ playerId: p.id })}
           style={{ touchAction: "none" }}
-          className={`px-2 py-1 md:px-[clamp(10px,1.6dvh,18px)] md:py-[clamp(6px,1.1dvh,12px)] text-[14px] md:text-[clamp(16px,2.2dvh,24px)] font-bold leading-tight bg-white/85 text-gray-900 border border-rose-200 rounded-lg md:rounded-xl cursor-move select-none shadow-sm
+          className={`px-2 py-1 md:px-[clamp(8px,1.1dvh,12px)] md:py-[clamp(4px,0.7dvh,8px)] text-[14px] md:text-[clamp(14px,1.7dvh,18px)] font-bold leading-tight bg-white/85 text-gray-900 border border-rose-200 rounded-lg md:rounded-lg cursor-move select-none shadow-sm
             ${draggingPlayerId === p.id ? "ring-4 ring-amber-400 bg-amber-100" : ""}`}
         >
           {p.lastName}
@@ -2370,7 +2370,7 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
         setDraggingPlayerId(null);
       }}
       style={{ touchAction: "none" }}
-      className={`px-2 py-1 md:px-[clamp(10px,1.6dvh,18px)] md:py-[clamp(6px,1.1dvh,12px)] text-[14px] md:text-[clamp(16px,2.2dvh,24px)] font-bold leading-tight bg-white/85 text-gray-900 border border-rose-200 rounded-lg md:rounded-xl cursor-move select-none shadow-sm
+      className={`px-2 py-1 md:px-[clamp(8px,1.1dvh,12px)] md:py-[clamp(4px,0.7dvh,8px)] text-[14px] md:text-[clamp(14px,1.7dvh,18px)] font-bold leading-tight bg-white/85 text-gray-900 border border-rose-200 rounded-lg md:rounded-lg cursor-move select-none shadow-sm
         ${draggingPlayerId === p.id ? "ring-4 ring-amber-400 bg-amber-100" : ""}`}
     >
       {p.lastName}
