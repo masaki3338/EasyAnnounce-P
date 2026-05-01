@@ -8785,13 +8785,16 @@ const canDropHere =
       </div>
     </div>
 
-{/* ↓ フッターに隠れないための底上げスペーサー（モバイルのみ） ↓ */}
-<div className="md:hidden h-[calc(env(safe-area-inset-bottom)+72px)]" aria-hidden />
+{/* ↓ 固定フッターに隠れないための底上げスペーサー（スマホ・タブレット共通） ↓ */}
+<div
+  className="h-[calc(env(safe-area-inset-bottom)+150px)]"
+  aria-hidden
+/>
 
-{/* スマホ風のフッターアクション（小画面で固定） */}
-<div className="fixed inset-x-0 bottom-0 z-40 md:static md:mt-4">
+{/* スマホ・タブレット共通：常に下部固定 */}
+<div className="fixed inset-x-0 bottom-0 z-[1200]">
   <div className="mx-auto max-w-4xl">
-    <div className="bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70 border-t md:border-none shadow-[0_-8px_24px_rgba(0,0,0,.07)] px-4 py-3">
+    <div className="bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 border-t shadow-[0_-8px_24px_rgba(0,0,0,.10)] px-3 pt-2 pb-[calc(env(safe-area-inset-bottom)+10px)] md:px-4">
       
       {/* 上段：4つの操作ボタンを 2:2:4:2 で横並び */}
       <div className="grid grid-cols-10 gap-2 items-center">
