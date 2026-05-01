@@ -601,12 +601,27 @@ const confirmCloseApp = async () => {
     disableIOSAwake();
   } catch {}
 
-  // PWA / ブラウザで閉じられる場合は閉じる
+  const isIOS =
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+  // iPhone / iPad は window.close が効かないのでタイトル画面に戻す
+  if (isIOS) {
+    setScreen("menu");
+    return;
+  }
+
+  // Android / PC では閉じられる場合は閉じる
   try {
     window.close();
   } catch {}
 
-
+  // 閉じられない端末ではタイトル画面に戻す
+  window.setTimeout(() => {
+    if (!document.hidden) {
+      setScreen("menu");
+    }
+  }, 300);
 };
 
 
