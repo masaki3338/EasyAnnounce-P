@@ -2732,7 +2732,7 @@ if (typeof reEntryTarget?.index === "number") {
                 await restoreDefenseInningStartSnapshot();
               }}
             >
-              回の最初に戻す
+              この回の最初に戻す
             </button>
 
             <button

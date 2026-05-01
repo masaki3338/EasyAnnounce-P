@@ -3876,7 +3876,7 @@ useEffect(() => {
                       await restoreOffenseInningStartSnapshot();
                     }}
                   >
-                    回の最初に戻す                    
+                    この回の最初に戻す                    
                   </button>
                   
                   <button
