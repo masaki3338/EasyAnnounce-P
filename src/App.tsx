@@ -193,6 +193,7 @@ const App = () => {
   const [screen, setScreen] = useState<ScreenType>("menu");
     // ✅ アプリ終了用
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
+  const [showIOSCloseGuide, setShowIOSCloseGuide] = useState(false);
   const [leagueMode, setLeagueMode] = useState<LeagueMode>("pony");
   const isBoys = leagueMode === "boys";
   const [showHelpModal, setShowHelpModal] = useState(false);
@@ -605,21 +606,21 @@ const confirmCloseApp = async () => {
     /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
-  // iPhone / iPad は window.close が効かないのでタイトル画面に戻す
+  // iPhone / iPad は自動終了できないので案内モーダルを出す
   if (isIOS) {
-    setScreen("menu");
+    setShowIOSCloseGuide(true);
     return;
   }
 
-  // Android / PC では閉じられる場合は閉じる
+  // Android / PC は閉じられる場合は閉じる
   try {
     window.close();
   } catch {}
 
-  // 閉じられない端末ではタイトル画面に戻す
+  // 閉じられない端末では終了画面へ
   window.setTimeout(() => {
     if (!document.hidden) {
-      setScreen("menu");
+      setAppClosed(true);
     }
   }, 300);
 };
@@ -846,7 +847,53 @@ return (
       </div>
     )}
 
+{showIOSCloseGuide && (
+  <div className="fixed inset-0 z-[9999]">
+    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
+    <div className="absolute inset-0 flex items-center justify-center p-4">
+      <div
+        className="w-full max-w-sm rounded-2xl bg-white shadow-2xl overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ios-close-guide-title"
+      >
+        <div className="px-5 py-4 border-b bg-blue-50">
+          <h2
+            id="ios-close-guide-title"
+            className="text-lg font-bold text-blue-700 text-center"
+          >
+            閉じる準備ができました
+          </h2>
+        </div>
+
+        <div className="px-5 py-5 text-center">
+          <p className="text-sm text-gray-700 leading-relaxed">
+            読み上げを停止し、画面常時点灯も解除しました。
+          </p>
+
+          <p className="mt-3 text-sm font-bold text-gray-800 leading-relaxed">
+            iPhoneでは自動でアプリを終了できません。
+          </p>
+
+          <p className="mt-2 text-sm text-gray-700 leading-relaxed">
+            画面下のホームバーを上にスワイプして終了してください。
+          </p>
+        </div>
+
+        <div className="border-t">
+          <button
+            type="button"
+            onClick={() => setShowIOSCloseGuide(false)}
+            className="w-full py-4 text-base font-bold text-white bg-blue-600 active:bg-blue-700"
+          >
+            アプリに戻る
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
     {screen === "menu" && (
       <Menu
