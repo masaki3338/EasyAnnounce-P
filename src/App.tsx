@@ -2293,7 +2293,7 @@ return (
     onClick={() => setShowOffenseHelpModal(false)}
   >
     <div
-      className="w-full max-w-[460px] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
+      className="w-full max-w-[min(96vw,900px)] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
       onClick={(e) => e.stopPropagation()}
       role="document"
     >
@@ -2317,7 +2317,7 @@ return (
       </div>
 
       {/* 本文 */}
-      <div className="max-h-[72svh] overflow-y-auto bg-white px-3 py-3">
+      <div className="max-h-[78svh] overflow-y-auto bg-white px-4 py-4">
         <div className="space-y-3">
           {/* 上部説明 */}
           <div className="rounded-[16px] border border-sky-200 bg-sky-50 px-3 py-3">
@@ -3019,7 +3019,7 @@ return (
     onClick={() => setShowHelpModal(false)}
   >
     <div
-      className="w-full max-w-[460px] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
+      className="w-full max-w-[min(96vw,900px)] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
       onClick={(e) => e.stopPropagation()}
       role="document"
     >
@@ -3043,7 +3043,7 @@ return (
       </div>
 
       {/* 本文 */}
-      <div className="max-h-[72svh] overflow-y-auto bg-white px-3 py-3">
+      <div className="max-h-[78svh] overflow-y-auto bg-white px-4 py-4">
         <div className="space-y-3">
           {/* 上部説明 */}
           <div className="rounded-[16px] border border-sky-200 bg-sky-50 px-3 py-3">
@@ -3604,9 +3604,9 @@ const Menu = ({
           onClick={() => setShowMenuHelpModal(false)}
         />
 
-        <div className="absolute inset-0 flex items-center justify-center p-4">
-          <div
-            className="w-full max-w-md max-h-[85vh] overflow-hidden rounded-2xl bg-white shadow-2xl flex flex-col"
+      <div className="absolute inset-0 flex items-center justify-center px-3 py-4 sm:px-5">
+        <div
+          className="w-full max-w-[min(96vw,900px)] max-h-[88svh] overflow-hidden rounded-2xl bg-white shadow-2xl flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="bg-gradient-to-r from-sky-600 to-cyan-600 text-white px-4 py-3 flex items-center justify-between">
