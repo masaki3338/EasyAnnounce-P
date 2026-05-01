@@ -192,7 +192,6 @@ const BottomTab: React.FC<{
 const App = () => {
   const [screen, setScreen] = useState<ScreenType>("menu");
     // ✅ アプリ終了用
-  const [appClosed, setAppClosed] = useState(false);
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
   const [leagueMode, setLeagueMode] = useState<LeagueMode>("pony");
   const isBoys = leagueMode === "boys";
@@ -607,12 +606,7 @@ const confirmCloseApp = async () => {
     window.close();
   } catch {}
 
-  // window.close が効かない端末用
-  window.setTimeout(() => {
-    if (!document.hidden) {
-      setAppClosed(true);
-    }
-  }, 300);
+
 };
 
 
@@ -767,7 +761,7 @@ const handleSpeak = async () => {
 
 return (
   <>
-    {screen === "menu" && !appClosed && (
+    {screen === "menu" && (
       <button
         type="button"
         onClick={handleCloseApp}
@@ -837,25 +831,7 @@ return (
       </div>
     )}
 
-    {appClosed && (
-      <div className="fixed inset-0 z-[9999] bg-white flex flex-col items-center justify-center text-center px-6">
-        <div className="text-2xl font-bold text-gray-800 mb-4">
-          アプリを終了しました
-        </div>
 
-        <div className="text-gray-600 text-sm leading-relaxed mb-6">
-          画面を閉じる場合は、端末の戻るボタンやホームボタンで終了してください。
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setAppClosed(false)}
-          className="px-6 py-3 rounded-full bg-blue-600 text-white font-bold shadow hover:bg-blue-700"
-        >
-          アプリに戻る
-        </button>
-      </div>
-    )}
 
     {screen === "menu" && (
       <Menu
