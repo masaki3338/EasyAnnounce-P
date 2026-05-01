@@ -88,12 +88,18 @@ const StepRow: React.FC<{
 }> = ({ index, title, note, enabled, icon, isLast, onClick }) => {
   // 担当（enabled）の“明るいスカイ”テーマ（前回のまま）
 const enabledCard =
-  "relative w-full text-left rounded-2xl p-4 sm:p-5 lg:p-6 shadow-lg transition active:scale-95 min-h-[92px] lg:min-h-[108px] " +
+  "relative w-full text-left rounded-2xl p-4 sm:p-5 lg:p-6 " +
+  "md:p-[clamp(18px,2.4dvh,28px)] " +
+  "shadow-lg transition active:scale-95 " +
+  "min-h-[92px] lg:min-h-[108px] md:min-h-[clamp(112px,13.5dvh,150px)] " +
   "bg-gradient-to-br from-sky-400/35 via-sky-400/20 to-sky-300/10 " +
   "border border-sky-300/70 ring-1 ring-inset ring-sky-300/40 text-white";
 
 const disabledCard =
-  "relative w-full text-left rounded-2xl p-4 sm:p-5 lg:p-6 shadow-lg transition min-h-[92px] lg:min-h-[108px] " +
+  "relative w-full text-left rounded-2xl p-4 sm:p-5 lg:p-6 " +
+  "md:p-[clamp(18px,2.4dvh,28px)] " +
+  "shadow-lg transition " +
+  "min-h-[92px] lg:min-h-[108px] md:min-h-[clamp(112px,13.5dvh,150px)] " +
   "bg-gray-500/95 border border-gray-600 text-gray-700 hover:bg-gray-500/95";
   return (
     <div className="grid grid-cols-[32px,1fr] sm:grid-cols-[36px,1fr] gap-3 sm:gap-4 items-start">
@@ -101,7 +107,8 @@ const disabledCard =
       <div className="flex flex-col items-center">
         <div
           className={
-            "w-8 h-8 sm:w-9 sm:h-9 rounded-full text-xs sm:text-sm font-bold flex items-center justify-center " +
+            "w-8 h-8 sm:w-9 sm:h-9 md:w-[clamp(38px,4.8dvh,52px)] md:h-[clamp(38px,4.8dvh,52px)] " +
+            "rounded-full text-xs sm:text-sm md:text-[clamp(15px,2dvh,22px)] font-bold flex items-center justify-center " +
             (enabled
               ? "bg-gradient-to-br from-sky-400 to-sky-500 text-white shadow-[0_0_0_3px_rgba(56,189,248,0.25)]"
               : "bg-gray-300 text-gray-700")
@@ -127,7 +134,9 @@ const disabledCard =
         <div className="flex items-center gap-3">
           <div
             className={
-              "w-11 h-11 sm:w-12 sm:h-12 lg:w-14 lg:h-14 rounded-xl flex items-center justify-center " +
+              "w-11 h-11 sm:w-12 sm:h-12 lg:w-14 lg:h-14 " +
+              "md:w-[clamp(54px,6.2dvh,72px)] md:h-[clamp(54px,6.2dvh,72px)] " +
+              "rounded-xl flex items-center justify-center " +
               (enabled
                 ? "bg-sky-400/25 border border-sky-300/70 text-sky-50"
                 : "bg-gray-300 text-gray-700 border border-gray-500")
@@ -137,13 +146,23 @@ const disabledCard =
           </div>
           <div className="min-w-0">
 <div className="min-w-0">
-  <div className={"font-semibold text-[15px] sm:text-base lg:text-lg " + (enabled ? "" : "text-gray-800")}>
-    {title}
-  </div>
+<div
+  className={
+    "font-semibold text-[15px] sm:text-base lg:text-lg md:text-[clamp(18px,2.6dvh,28px)] leading-tight " +
+    (enabled ? "" : "text-gray-800")
+  }
+>
+  {title}
+</div>
 
   {note && (
     <div className="mt-0.5 flex items-center gap-2 flex-wrap">
-      <div className={"text-xs sm:text-sm " + (enabled ? "text-sky-50/80" : "text-gray-700/80")}>
+      <div
+        className={
+          "text-xs sm:text-sm md:text-[clamp(14px,2dvh,20px)] " +
+          (enabled ? "text-sky-50/80" : "text-gray-700/80")
+        }
+      >
         {note}
       </div>
 
@@ -307,8 +326,8 @@ const handleCloseOutOfChargeModal = () => {
       </header>
 
       {/* 縦ステッパー本体 */}
-      <main className="w-full max-w-[1200px] mt-5 lg:mt-6">
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 lg:gap-5">
+        <main className="w-full max-w-[1200px] mt-5 lg:mt-6 md:mt-[clamp(20px,3dvh,36px)]">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 lg:gap-5 md:gap-[clamp(16px,2.2dvh,28px)]">
           {steps.map((s, i) => (
             <StepRow
               key={s.key}
@@ -325,7 +344,17 @@ const handleCloseOutOfChargeModal = () => {
 
         <div className="mt-5">
           <button
-            className="w-full py-4 lg:py-5 rounded-2xl bg-white/90 hover:bg-white text-gray-900 font-semibold text-lg lg:text-xl shadow-lg active:scale-95"
+            className="
+              w-full
+              py-4 lg:py-5 md:py-[clamp(16px,2.4dvh,28px)]
+              rounded-2xl
+              bg-white/90 hover:bg-white
+              text-gray-900
+              font-semibold
+              text-lg lg:text-xl md:text-[clamp(20px,2.8dvh,30px)]
+              shadow-lg
+              active:scale-95
+            "
             onClick={onBack}
           >
             ← 試合開始画面に戻る
