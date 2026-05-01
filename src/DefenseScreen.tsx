@@ -879,6 +879,11 @@ const addPitch = async () => {
   }
 };
 
+const scoreModalTitle =
+  editInning !== null && editTopBottom !== null
+    ? `${editInning}回${editTopBottom === "top" ? "表" : "裏"}の得点を入力してください`
+    : `${inning}回${isTop ? "表" : "裏"}の得点を入力してください`;
+
 const confirmScore = async () => {
   let score = parseInt(inputScore, 10);
 
@@ -2400,7 +2405,9 @@ if (typeof reEntryTarget?.index === "number") {
         {/* 固定ヘッダー（他モーダルと統一トーン） */}
         <div className="sticky top-0 z-10 px-4 py-3 flex items-center justify-between
                         bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
-          <h2 className="text-lg font-extrabold tracking-wide">この回の得点を入力してください</h2>
+            <h2 className="text-lg font-extrabold tracking-wide">
+              {scoreModalTitle}
+            </h2>
           {/* ×は置かず機能据え置き */}
           <div className="w-9 h-9" />
         </div>

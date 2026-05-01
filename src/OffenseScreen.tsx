@@ -2115,6 +2115,11 @@ const getPreviousDefenseInningLabel = () => {
   return `${inning}回表に戻す`;
 };
 
+const scoreModalTitle =
+  editInning !== null && editTopBottom !== null
+    ? `${editInning}回${editTopBottom === "top" ? "表" : "裏"}の得点を入力してください`
+    : `${inning}回${isTop ? "表" : "裏"}の得点を入力してください`;
+
 const confirmScore = async () => {
   // ★ モーダル確定時に「終わった回」を確定
   lastEndedHalfRef.current = { inning, isTop };
@@ -2951,13 +2956,15 @@ useEffect(() => {
 
   return (
 <DndProvider backend={HTML5Backend}>
+  <div className="app-screen-fit">
+    <div className="app-scale-area">
 
   <div className="flex justify-end mb-0">
 
 
 </div>
       <div
-        className="max-w-4xl mx-auto px-2 pt-1 pb-2 select-none overflow-x-hidden"
+        className="offense-fit-content pt-1 pb-2 select-none overflow-x-hidden"
         onContextMenu={(e) => e.preventDefault()}        // 右クリック/長押しのメニュー抑止
         onSelectStart={(e) => e.preventDefault()}         // テキスト選択開始を抑止
         onPointerDown={(e) => {
@@ -3821,7 +3828,9 @@ useEffect(() => {
                 {/* 固定ヘッダー（他モーダルと統一） */}
                 <div className="sticky top-0 z-10 px-4 py-3 flex items-center justify-between
                                 bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
-                  <h2 className="text-lg font-extrabold tracking-wide">この回の得点を入力してください</h2>
+                  <h2 className="text-lg font-extrabold tracking-wide">
+                    {scoreModalTitle}
+                  </h2>
                   <div className="w-9 h-9" />
                 </div>
 
@@ -6116,6 +6125,8 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
         )}
 
       </div>
+    </div>
+  </div>
      </DndProvider>
   );
 };
