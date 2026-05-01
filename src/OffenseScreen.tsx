@@ -3425,14 +3425,19 @@ useEffect(() => {
               }
             }}
             className="
-              flex-[0.7] h-9
+              flex-[0.75] min-w-0
               bg-red-600 hover:bg-red-700
-              text-white font-bold text-sm
-              rounded-lg shadow
+              text-white font-extrabold
+              rounded-xl shadow-lg
               flex items-center justify-center
+              whitespace-nowrap leading-none
               active:scale-[0.96]
               transition
             "
+            style={{
+              height: "clamp(34px, 4.2vh, 56px)",
+              fontSize: "clamp(13px, 1.65vh, 22px)",
+            }}
           >
             得点−1
           </button>
@@ -3462,14 +3467,19 @@ useEffect(() => {
               }
             }}
             className="
-              flex-1 h-9
+              flex-1 min-w-0
               bg-blue-600 hover:bg-blue-700
-              text-white font-extrabold text-lg
+              text-white font-extrabold
               rounded-xl shadow-lg
               flex items-center justify-center
+              whitespace-nowrap leading-none
               active:scale-[0.97]
               transition
             "
+            style={{
+              height: "clamp(34px, 4.2vh, 56px)",
+              fontSize: "clamp(14px, 1.75vh, 24px)",
+            }}
           >
             得点＋1
           </button>
@@ -3524,15 +3534,20 @@ useEffect(() => {
               setShowModal(true);
             }}
             className="
-              flex-[2.1] h-10
+              flex-[2.1] min-w-0
               bg-black hover:bg-gray-900
-              text-white font-extrabold text-xl tracking-wider
+              text-white font-extrabold tracking-wider
               rounded-2xl shadow-xl
               flex items-center justify-center gap-2
+              whitespace-nowrap leading-none
               active:scale-[0.97]
               transition
               ring-4 ring-gray-400/40
             "
+            style={{
+              height: "clamp(38px, 4.8vh, 64px)",
+              fontSize: "clamp(15px, 1.95vh, 28px)",
+            }}
           >
             ⚾イニング終了
           </button>
