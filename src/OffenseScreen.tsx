@@ -4913,17 +4913,18 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
             {/* ★ 全デバイスで中央配置 */}
-            <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
-              <div
-                className="
-                  bg-white shadow-2xl
-                  rounded-2xl
-                  w-full md:max-w-md
-                  max-h-[85vh] md:max-h-[80vh]
-                  overflow-y-auto
-                "
-                style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-              >
+              <div className="absolute inset-0 flex items-center justify-center p-2 sm:p-4 overflow-hidden">
+                <div
+                  className="
+                    bg-white shadow-2xl
+                    rounded-2xl
+                    w-[96vw] sm:w-[94vw] md:w-[88vw] lg:w-[820px]
+                    max-w-[820px]
+                    max-h-[88vh]
+                    overflow-y-auto
+                  "
+                  style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+                >
                 {/* 固定ヘッダー（グラデ＋白文字） */}
                 <div className="sticky top-0 z-10 px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
                   <div className="relative flex items-center justify-center min-h-[44px]">
