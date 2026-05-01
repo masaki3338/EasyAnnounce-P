@@ -8956,7 +8956,7 @@ const canDropHere =
 {/* 追加：守備番号で交代（●が● / ●に代わって）モーダル */}
 {showPosNumberModal && (
   <div
-    className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-2 sm:p-4"
+    className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-2 sm:p-4"
     role="dialog"
     aria-modal="true"
     aria-label="守備番号で交代"
