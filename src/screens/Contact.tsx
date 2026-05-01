@@ -45,10 +45,96 @@ type UploadedImage = {
   bytes: number;
 };
 
+type ScreenInfo = {
+  innerWidth: number;
+  innerHeight: number;
+  devicePixelRatio: number;
+  physicalWidthApprox: number;
+  physicalHeightApprox: number;
+  screenWidth: number;
+  screenHeight: number;
+  availWidth: number;
+  availHeight: number;
+  visualViewportWidth?: number;
+  visualViewportHeight?: number;
+  visualViewportScale?: number;
+  orientation: "portrait" | "landscape";
+  userAgent: string;
+  tailwindBreakpoint: {
+    sm: boolean;
+    md: boolean;
+    lg: boolean;
+    xl: boolean;
+  };
+};
+
+const getScreenInfo = (): ScreenInfo => {
+  const vv = window.visualViewport;
+
+  return {
+    innerWidth: window.innerWidth,
+    innerHeight: window.innerHeight,
+
+    devicePixelRatio: window.devicePixelRatio || 1,
+    physicalWidthApprox: Math.round(
+      window.innerWidth * (window.devicePixelRatio || 1)
+    ),
+    physicalHeightApprox: Math.round(
+      window.innerHeight * (window.devicePixelRatio || 1)
+    ),
+
+    screenWidth: window.screen.width,
+    screenHeight: window.screen.height,
+    availWidth: window.screen.availWidth,
+    availHeight: window.screen.availHeight,
+
+    visualViewportWidth: vv?.width,
+    visualViewportHeight: vv?.height,
+    visualViewportScale: vv?.scale,
+
+    orientation:
+      window.innerWidth > window.innerHeight ? "landscape" : "portrait",
+
+    userAgent: navigator.userAgent,
+
+    tailwindBreakpoint: {
+      sm: window.matchMedia("(min-width: 640px)").matches,
+      md: window.matchMedia("(min-width: 768px)").matches,
+      lg: window.matchMedia("(min-width: 1024px)").matches,
+      xl: window.matchMedia("(min-width: 1280px)").matches,
+    },
+  };
+};
+
+const formatScreenInfo = (info: ScreenInfo) => {
+  return [
+    `innerWidth: ${info.innerWidth}`,
+    `innerHeight: ${info.innerHeight}`,
+    `devicePixelRatio: ${info.devicePixelRatio}`,
+    `physicalWidthApprox: ${info.physicalWidthApprox}`,
+    `physicalHeightApprox: ${info.physicalHeightApprox}`,
+    `screenWidth: ${info.screenWidth}`,
+    `screenHeight: ${info.screenHeight}`,
+    `availWidth: ${info.availWidth}`,
+    `availHeight: ${info.availHeight}`,
+    `visualViewportWidth: ${info.visualViewportWidth ?? "-"}`,
+    `visualViewportHeight: ${info.visualViewportHeight ?? "-"}`,
+    `visualViewportScale: ${info.visualViewportScale ?? "-"}`,
+    `orientation: ${info.orientation}`,
+    `Tailwind sm: ${info.tailwindBreakpoint.sm}`,
+    `Tailwind md: ${info.tailwindBreakpoint.md}`,
+    `Tailwind lg: ${info.tailwindBreakpoint.lg}`,
+    `Tailwind xl: ${info.tailwindBreakpoint.xl}`,
+    `userAgent: ${info.userAgent}`,
+  ].join("\n");
+};
+
 export default function Contact({ onBack, version = "0.0.1" }: Props) {
   const [text, setText] = useState("");
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
+
+  const [screenInfo, setScreenInfo] = useState<ScreenInfo | null>(null);
 
   const [files, setFiles] = useState<Preview[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -56,6 +142,22 @@ export default function Contact({ onBack, version = "0.0.1" }: Props) {
   useEffect(() => {
     return () => files.forEach((p) => URL.revokeObjectURL(p.url));
   }, [files]);
+
+  useEffect(() => {
+  const updateScreenInfo = () => {
+    setScreenInfo(getScreenInfo());
+  };
+
+  updateScreenInfo();
+
+  window.addEventListener("resize", updateScreenInfo);
+  window.addEventListener("orientationchange", updateScreenInfo);
+
+  return () => {
+    window.removeEventListener("resize", updateScreenInfo);
+    window.removeEventListener("orientationchange", updateScreenInfo);
+  };
+}, []);
 
   const count = text.length;
   const totalSizeMB = useMemo(
@@ -167,8 +269,18 @@ export default function Contact({ onBack, version = "0.0.1" }: Props) {
       const fd = new FormData();
       fd.append("_subject", SUBJECT);
       fd.append("subject", SUBJECT);
-      fd.append("message", body);
+      const latestScreenInfo = getScreenInfo();
+      const screenInfoText = formatScreenInfo(latestScreenInfo);
+      const messageWithDeviceInfo = `${body}
+
+      --- 端末・画面情報 ---
+      Version: ${version}
+      ${screenInfoText}`;
+
+      fd.append("message", messageWithDeviceInfo);
+      fd.append("user_message", body);
       fd.append("version", version);
+      fd.append("screen_info", screenInfoText);
       fd.append("email", email.trim());
 
       if (uploadedImages.length > 0) {
@@ -182,7 +294,7 @@ export default function Contact({ onBack, version = "0.0.1" }: Props) {
         fd.append("image_urls", imageText);
         fd.append(
           "message_with_images",
-          `${body}\n\n--- 添付画像 ---\n${imageText}`
+          `${messageWithDeviceInfo}\n\n--- 添付画像 ---\n${imageText}`
         );
       }
 
@@ -369,6 +481,42 @@ export default function Contact({ onBack, version = "0.0.1" }: Props) {
               ※不具合画面のスクリーンショットなどを添付できます
             </div>
           </div>
+
+<div className="rounded-2xl bg-black/20 border border-white/10 p-3 text-left">
+  <div className="text-sm font-bold text-white/90 mb-2">
+    端末・画面情報
+  </div>
+
+  <div className="text-xs text-white/70 leading-relaxed space-y-1">
+    <div>
+      表示領域：{screenInfo?.innerWidth ?? "-"} ×{" "}
+      {screenInfo?.innerHeight ?? "-"} px
+    </div>
+    <div>
+      画面：{screenInfo?.screenWidth ?? "-"} ×{" "}
+      {screenInfo?.screenHeight ?? "-"} px
+    </div>
+    <div>
+      倍率：{screenInfo?.devicePixelRatio ?? "-"}
+    </div>
+    <div>
+      推定物理px：{screenInfo?.physicalWidthApprox ?? "-"} ×{" "}
+      {screenInfo?.physicalHeightApprox ?? "-"} px
+    </div>
+    <div>
+      向き：{screenInfo?.orientation ?? "-"}
+    </div>
+    <div>
+      判定：sm={String(screenInfo?.tailwindBreakpoint.sm ?? false)} / md=
+      {String(screenInfo?.tailwindBreakpoint.md ?? false)} / lg=
+      {String(screenInfo?.tailwindBreakpoint.lg ?? false)}
+    </div>
+  </div>
+
+  <div className="mt-2 text-[11px] text-white/50 leading-relaxed">
+    ※この情報は、画面表示の不具合調査のため送信内容に自動で含まれます。
+  </div>
+</div>
 
           <label className="block">
             <div className="text-sm text-white/90 mb-2 font-semibold">
