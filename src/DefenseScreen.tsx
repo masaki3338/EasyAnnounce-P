@@ -1885,27 +1885,28 @@ const handleStop = () => { ttsStop(); };
         leading-tight
       "
     >
-    {announceMessages.map((msg, index) => {
-      const isPitchCountMessage =
-        msg.includes("ピッチャー") &&
-        (msg.includes("投球数") || msg.includes("トータル") || msg.includes("合計投球数"));
+{announceMessages.map((msg, index) => {
+  const isPitchCountMessage =
+    msg.includes("投球数") ||
+    msg.includes("トータル") ||
+    msg.includes("合計投球数") ||
+    msg.includes("球です");
 
-      return (
-        <p
-          key={index}
-          className={`
-            leading-tight
-            ${
-              isPitchCountMessage
-                ? "text-lg md:!text-[clamp(18px,2.2dvh,24px)]"
-                : ""
-            }
-          `}
-          dangerouslySetInnerHTML={{ __html: msg }}
-        />
-      );
-    })}
-
+  return (
+    <p
+      key={index}
+      className={`
+        leading-tight
+        ${
+          isPitchCountMessage
+            ? "text-lg md:!text-[clamp(19px,2.4dvh,26px)]"
+            : ""
+        }
+      `}
+      dangerouslySetInnerHTML={{ __html: msg }}
+    />
+  );
+})}
       {/* 読み上げ／停止 */}
       <div className="mt-2 md:mt-[clamp(8px,1.4dvh,14px)] grid grid-cols-2 gap-2">
         <button
