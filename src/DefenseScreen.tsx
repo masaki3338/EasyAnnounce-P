@@ -1580,24 +1580,36 @@ const handleStop = () => { ttsStop(); };
   </div>
 </div>
 
-        <table className="w-full border border-gray-400 text-center text-sm">
-          <colgroup>
-            {/* チーム名列： */}
-            <col className="w-40" />
-            {/* 9回分のスコア列：40pxずつ */}
-            {[...Array(9)].map((_, i) => (
-              <col key={i} className="w-10" />
-            ))}
-            {/* 計列：48px */}
-            <col className="w-12" />
-          </colgroup>
+        <table
+          className="
+            w-full
+            table-fixed
+            border border-gray-400
+            text-center
+            text-[clamp(13px,2.05dvh,20px)]
+          "
+        >
+        <colgroup>
+          {/* チーム名列 */}
+          <col className="w-[28%]" />
+
+          {/* 9回分のスコア列 */}
+          {[...Array(9)].map((_, i) => (
+            <col key={i} className="w-[7%]" />
+          ))}
+
+          {/* 計列 */}
+          <col className="w-[9%]" />
+        </colgroup>
           <thead>
             <tr>
-              <th className="border">回</th>
+              <th className="border h-[clamp(24px,3.8dvh,40px)]">回</th>
               {[...Array(9).keys()].map(i => (
-                <th key={i} className="border">{i + 1}</th>
+                <th key={i} className="border h-[clamp(24px,3.8dvh,40px)]">
+                  {i + 1}
+                </th>
               ))}
-              <th className="border">計</th>
+              <th className="border h-[clamp(24px,3.8dvh,40px)]">計</th>
             </tr>
           </thead>
           <tbody>
@@ -1613,11 +1625,27 @@ const handleStop = () => { ttsStop(); };
     .map((row, rowIndex) => {
       return (
         <tr key={rowIndex} className={row.isMyTeam ? "bg-gray-100" : ""}>
-        <td className={`border ${row.isMyTeam ? "text-red-600 font-bold" : ""}`}>
-          <span className="block max-w-[120px] truncate" title={row.name}>
-            {row.name}
-          </span>
-        </td>
+<td
+  className={`
+    border
+    h-[clamp(28px,4.2dvh,46px)]
+    px-1
+    ${row.isMyTeam ? "text-red-600 font-bold" : ""}
+  `}
+>
+  <span
+    className="
+      block
+      max-w-full
+      truncate
+      text-[clamp(12px,1.9dvh,18px)]
+      leading-tight
+    "
+    title={row.name}
+  >
+    {row.name}
+  </span>
+</td>
 
 
           {[...Array(9).keys()].map((i) => {
@@ -1643,9 +1671,13 @@ const handleStop = () => { ttsStop(); };
             return (
             <td
               key={i}
-              className={`border cursor-pointer text-center hover:bg-gray-200 ${
-                isHighlight ? "bg-yellow-300 font-bold border-2 border-yellow-500" : ""
-              }`}
+              className={`
+                border cursor-pointer text-center hover:bg-gray-200
+                h-[clamp(28px,4.2dvh,46px)]
+                font-semibold
+                tabular-nums
+                ${isHighlight ? "bg-yellow-300 font-bold border-2 border-yellow-500" : ""}
+              `}
               onClick={() => {
                 const clickedInning = i + 1;
 
@@ -1680,7 +1712,15 @@ const handleStop = () => { ttsStop(); };
             </td>
             );
           })}
-          <td className="border font-bold text-center">
+          <td
+            className="
+              border
+              font-bold
+              text-center
+              h-[clamp(28px,4.2dvh,46px)]
+              tabular-nums
+            "
+          >
             {(() => {
               const nInning = Number(inning);
 
