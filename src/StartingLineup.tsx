@@ -2283,7 +2283,7 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
       )}
 
       {/* 控え＋打順（縦並び） */}
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-6 md:gap-[clamp(24px,3.4dvh,40px)] w-full md:max-w-3xl">
         {/* 控え選手 */}
 <div>
   <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
@@ -2310,7 +2310,7 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
     }}
   >
     {availablePlayers.length === 0 ? (
-      <div className="min-h-[34px] px-2 py-1 text-[14px] font-bold text-gray-400 flex items-center">
+      <div className="min-h-[34px] md:min-h-[clamp(42px,5dvh,56px)] px-2 py-1 md:px-[clamp(10px,1.6dvh,18px)] md:py-[clamp(6px,1.1dvh,12px)] text-[14px] md:text-[clamp(16px,2.2dvh,24px)] font-bold text-gray-400 flex items-center">
         ベンチ入り選手はいません
       </div>
     ) : (
@@ -2321,7 +2321,7 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
           onDragStart={(e) => handleDragStart(e, p.id)}
           onTouchStart={() => setTouchDrag({ playerId: p.id })}
           style={{ touchAction: "none" }}
-          className={`px-2 py-1 text-[14px] font-bold leading-tight bg-white/85 text-gray-900 border border-rose-200 rounded-lg cursor-move select-none shadow-sm
+          className={`px-2 py-1 md:px-[clamp(10px,1.6dvh,18px)] md:py-[clamp(6px,1.1dvh,12px)] text-[14px] md:text-[clamp(16px,2.2dvh,24px)] font-bold leading-tight bg-white/85 text-gray-900 border border-rose-200 rounded-lg md:rounded-xl cursor-move select-none shadow-sm
             ${draggingPlayerId === p.id ? "ring-4 ring-amber-400 bg-amber-100" : ""}`}
         >
           {p.lastName}
@@ -2350,7 +2350,7 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
     onDrop={handleDropToBenchOut}
   >
 {benchOutPlayers.length === 0 ? (
-  <div className="min-h-[34px] px-2 py-1 text-[14px] font-bold text-gray-400 flex items-center">
+  <div className="min-h-[34px] md:min-h-[clamp(42px,5dvh,56px)] px-2 py-1 md:px-[clamp(10px,1.6dvh,18px)] md:py-[clamp(6px,1.1dvh,12px)] text-[14px] md:text-[clamp(16px,2.2dvh,24px)] font-bold text-gray-400 flex items-center">
     出場しない選手はいません
   </div>
 ) : (
@@ -2370,7 +2370,7 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
         setDraggingPlayerId(null);
       }}
       style={{ touchAction: "none" }}
-      className={`px-2 py-1 text-[14px] font-bold leading-tight bg-white/85 text-gray-900 border border-rose-200 rounded-lg cursor-move select-none shadow-sm
+      className={`px-2 py-1 md:px-[clamp(10px,1.6dvh,18px)] md:py-[clamp(6px,1.1dvh,12px)] text-[14px] md:text-[clamp(16px,2.2dvh,24px)] font-bold leading-tight bg-white/85 text-gray-900 border border-rose-200 rounded-lg md:rounded-xl cursor-move select-none shadow-sm
         ${draggingPlayerId === p.id ? "ring-4 ring-amber-400 bg-amber-100" : ""}`}
     >
       {p.lastName}
@@ -2384,22 +2384,21 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
         {/* 打順 */}
         <div>
           <div className="mb-2 flex items-center justify-between gap-2">
-            <h2 className="text-xl font-semibold flex items-center gap-2 min-w-0">
-              <span className="inline-flex w-9 h-9 rounded-xl bg-white/15 border border-white/20 items-center justify-center shrink-0">
+            <h2 className="text-xl md:text-[clamp(24px,3.2dvh,34px)] font-semibold flex items-center gap-2 md:gap-[clamp(8px,1.3dvh,14px)] min-w-0">
+              <span className="inline-flex w-9 h-9 md:w-[clamp(42px,5.2dvh,58px)] md:h-[clamp(42px,5.2dvh,58px)] rounded-xl bg-white/15 border border-white/20 items-center justify-center shrink-0">
                 <IconOrder />
               </span>
               <span className="shrink-0">打順</span>
-              <span className="min-w-0 text-[11px] px-2 py-0.5 rounded-full bg-white/10 border border-white/10 whitespace-nowrap">
+              <span className="min-w-0 text-[11px] md:text-[clamp(12px,1.7dvh,18px)] px-2 md:px-[clamp(8px,1.2dvh,14px)] py-0.5 md:py-[clamp(3px,0.7dvh,7px)] rounded-full bg-white/10 border border-white/10 whitespace-nowrap">
                 選手、守備位置を長押しして変更
               </span>
-  
             </h2>
 
             <button
               type="button"
               onClick={addBattingSlot}
               disabled={totalBattingSlots >= MAX_BATTING_ORDER}
-              className={`shrink-0 rounded-xl px-3 py-2 text-[12px] font-bold border ${
+              className={`shrink-0 rounded-xl px-3 py-2 md:px-[clamp(12px,1.8dvh,20px)] md:py-[clamp(8px,1.3dvh,14px)] text-[12px] md:text-[clamp(14px,1.9dvh,20px)] font-bold border ${
                 totalBattingSlots >= MAX_BATTING_ORDER
                   ? "bg-gray-500/30 text-gray-300 border-gray-500/30"
                   : "bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white border-blue-500"
@@ -2648,14 +2647,14 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
 
                     {player ? (
                       <>
-                        <span className="ml-4 whitespace-nowrap">
+                        <span className="ml-4 md:ml-[clamp(16px,2.4dvh,28px)] whitespace-nowrap">
                           {player.lastName}
                           {player.firstName}
                         </span>
-                        <span className="w-12">#{player.number}</span>
+                        <span className="w-12 md:w-[clamp(52px,6dvh,72px)]">#{player.number}</span>
                       </>
                     ) : (
-                      <span className="ml-4 whitespace-nowrap text-white/60">
+                      <span className="ml-4 md:ml-[clamp(16px,2.4dvh,28px)] whitespace-nowrap text-white/60">
                         ここに選手をドロップ
                       </span>
                     )}
