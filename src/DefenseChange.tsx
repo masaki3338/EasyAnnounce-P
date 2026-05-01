@@ -8869,7 +8869,7 @@ const canDropHere =
 
 {/* 🎤 アナウンス表示モーダル（常に中央表示） */}
 {showSaveModal && (
-  <div className="fixed inset-0 z-50">
+   <div className="fixed inset-0 z-[9999]">
     <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
     <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
       <div
