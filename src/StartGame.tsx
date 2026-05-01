@@ -548,26 +548,80 @@ return (
     {/* ← フッターと重ならないためのスペーサー */}
     <div aria-hidden className="h-36" />
 
-    {/* 固定フッター操作カード */}
-    <footer
-      className="fixed bottom-0 inset-x-0 z-40 px-4"
-      style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}
+{/* 固定フッター操作カード */}
+<footer
+  className="fixed bottom-0 inset-x-0 z-40 px-4 md:px-[clamp(16px,2.4dvh,28px)]"
+  style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}
+>
+  <div
+    className="
+      w-full
+      max-w-md md:max-w-none
+      mx-auto
+      rounded-2xl
+      md:rounded-[clamp(16px,2.4dvh,26px)]
+      bg-white/10
+      border border-white/10
+      shadow-xl
+      p-4
+      md:p-[clamp(16px,2.4dvh,28px)]
+      grid gap-3
+      md:gap-[clamp(12px,1.8dvh,20px)]
+    "
+  >
+    <button
+      onClick={onShowAnnouncement}
+      className="
+        w-full
+        px-6 py-3
+        md:px-[clamp(24px,3dvh,36px)]
+        md:py-[clamp(14px,2.4dvh,26px)]
+        rounded-xl
+        md:rounded-[clamp(12px,1.8dvh,20px)]
+        bg-blue-600 hover:bg-blue-700
+        active:scale-95
+        text-white
+        text-base
+        md:text-[clamp(18px,2.5dvh,28px)]
+        font-semibold
+        shadow
+        inline-flex items-center justify-center
+        gap-2
+        md:gap-[clamp(8px,1.2dvh,14px)]
+        whitespace-nowrap
+      "
     >
-      <div className="w-full max-w-md md:max-w-none mx-auto rounded-2xl bg-white/10 border border-white/10 shadow-xl p-4 grid gap-3">
-        <button
-          onClick={onShowAnnouncement}
-          className="w-full px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-base font-semibold shadow inline-flex items-center justify-center gap-2"
-        >
-          <IconMic /> 試合前アナウンス
-        </button>
-        <button
-          onClick={handleStart}
-          className="w-full px-6 py-3 rounded-xl bg-green-600 hover:bg-green-700 active:scale-95 text-white text-base font-semibold shadow inline-flex items-center justify-center gap-2"
-        >
-          <IconPlay /> 試合を開始する
-        </button>
-      </div>
-    </footer>
+      <IconMic className="w-5 h-5 md:w-[clamp(22px,3dvh,32px)] md:h-[clamp(22px,3dvh,32px)]" />
+      試合前アナウンス
+    </button>
+
+    <button
+      onClick={handleStart}
+      className="
+        w-full
+        px-6 py-3
+        md:px-[clamp(24px,3dvh,36px)]
+        md:py-[clamp(14px,2.4dvh,26px)]
+        rounded-xl
+        md:rounded-[clamp(12px,1.8dvh,20px)]
+        bg-green-600 hover:bg-green-700
+        active:scale-95
+        text-white
+        text-base
+        md:text-[clamp(18px,2.5dvh,28px)]
+        font-semibold
+        shadow
+        inline-flex items-center justify-center
+        gap-2
+        md:gap-[clamp(8px,1.2dvh,14px)]
+        whitespace-nowrap
+      "
+    >
+      <IconPlay className="w-5 h-5 md:w-[clamp(22px,3dvh,32px)] md:h-[clamp(22px,3dvh,32px)]" />
+      試合を開始する
+    </button>
+  </div>
+</footer>
 
     {/* ====== 開始時の案内モーダル ====== */}
     {showStartHint && (
