@@ -8286,29 +8286,44 @@ const canDropHere =
         {/* 控え選手（スマホっぽい見出しとタグ） */}
         <div className="mb-4">
           <div className="flex items-center mb-2">
-            <h2 className="text-lg font-bold text-slate-900">控え選手</h2>
-            <span className="ml-2 text-amber-600 text-sm inline-flex items-center whitespace-nowrap">
+            <h2 className="text-lg md:text-xl lg:text-2xl font-bold md:font-extrabold text-slate-900">
+              控え選手
+            </h2>
+            <span className="ml-2 text-amber-600 text-sm md:text-base lg:text-lg font-semibold md:font-bold inline-flex items-center whitespace-nowrap">
               ⚠️ 交代する選手にドロップ
             </span>
           </div>
 
           <div
-            className="flex flex-col gap-2 mb-6"
+            className="flex flex-col gap-2 md:gap-3 mb-6"
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => handleDrop(BENCH, e)}
           >
             {/* 未出場の控え */}
             {benchNeverPlayed.length === 0 ? (
-              <div className="text-xs text-gray-400 mb-1">（なし）</div>
+              <div className="text-xs md:text-base lg:text-lg text-gray-400 md:text-gray-500 font-medium md:font-bold mb-1">
+                （なし）
+              </div>
             ) : (
-              <div className="flex flex-wrap gap-2 mb-2">
+              <div className="flex flex-wrap gap-2 md:gap-3 mb-2 md:mb-3">
                 {benchNeverPlayed.map((p) => (
                   <div
                     key={`bench-${p.id}`}
                     style={{ touchAction: "none" }}
                     draggable
                     onDragStart={(e) => handleBenchDragStart(e, p.id)}
-                    className="px-3 py-1.5 text-sm bg-slate-100 hover:bg-slate-200 rounded-xl cursor-move select-none transition active:scale-[0.98]"
+                    className="
+                      px-3 py-1.5 md:px-4 md:py-2
+                      text-sm md:text-base lg:text-lg
+                      font-semibold md:font-extrabold
+                      text-slate-900
+                      bg-slate-100 hover:bg-slate-200
+                      border border-slate-200 md:border-2
+                      rounded-xl md:rounded-2xl
+                      shadow-sm
+                      cursor-move select-none
+                      transition active:scale-[0.98]
+                    "
                   >
                     {formatPlayerLabel(p)}
                   </div>
@@ -8317,18 +8332,34 @@ const canDropHere =
             )}
 
             {/* 出場済み（いまはベンチ） */}
-            <div className="text-xs font-semibold text-slate-600 mt-1">出場済み選手</div>
+            <div className="text-xs md:text-base lg:text-lg font-semibold md:font-extrabold text-slate-600 md:text-slate-700 mt-1 md:mt-2">
+              出場済み選手
+            </div>
+
             {benchPlayedOut.length === 0 ? (
-              <div className="text-xs text-gray-400">（なし）</div>
+              <div className="text-xs md:text-base lg:text-lg text-gray-400 md:text-gray-500 font-medium md:font-bold">
+                （なし）
+              </div>
             ) : (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 md:gap-3">
                 {benchPlayedOut.map((p) => (
                   <div
                     key={`played-${p.id}`}
                     style={{ touchAction: "none" }}
                     draggable
                     onDragStart={(e) => handleBenchDragStart(e, p.id)}
-                    className="px-3 py-1.5 text-sm bg-slate-50 text-slate-600 border border-slate-200 rounded-xl cursor-move select-none transition active:scale-[0.98]"
+                    className="
+                      px-3 py-1.5 md:px-4 md:py-2
+                      text-sm md:text-base lg:text-lg
+                      font-semibold md:font-extrabold
+                      text-slate-700 md:text-slate-800
+                      bg-slate-50
+                      border border-slate-200 md:border-2 md:border-slate-300
+                      rounded-xl md:rounded-2xl
+                      shadow-sm
+                      cursor-move select-none
+                      transition active:scale-[0.98]
+                    "
                     title="一度出場済みの選手"
                   >
                     {formatPlayerLabel(p)}
@@ -8341,390 +8372,415 @@ const canDropHere =
 
         {/* 2カラム（スマホでは縦積み） */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-{/* 打順一覧 */}
-<div className="flex-1">
-  <h2 className="text-lg font-bold mb-2 text-slate-900">
-    打順（1番〜{Math.max(9, battingOrder.length)}番）
-  </h2>
 
-  {(() => {
-    const orderViewBaseAssignments = isDirty ? initialAssignments : assignments;
-    const orderViewReplacements = isDirty ? battingReplacements : {};
-    const orderViewOrder =
-      isDirty && battingOrderDraft?.length === 9 ? battingOrderDraft : battingOrder;
+        {/* 打順一覧 */}
+        <div className="flex-1">
+          <h2 className="text-lg md:text-xl lg:text-2xl font-bold md:font-extrabold mb-2 md:mb-3 text-slate-900 leading-tight">
+            打順（1番〜{Math.max(9, battingOrder.length)}番）
+          </h2>
 
-    return (
-      <ul className="space-y-1 text-sm border border-slate-200 rounded-xl bg-white p-2">
-        {orderViewOrder.map((slot, index) => {
-          const dhStarterId = initialAssignments?.["指"];
-          const dhSlotIndex =
-            typeof dhStarterId === "number"
-              ? battingOrder.findIndex((e) => e.id === dhStarterId)
-              : -1;
+          {(() => {
+            const orderViewBaseAssignments = isDirty ? initialAssignments : assignments;
+            const orderViewReplacements = isDirty ? battingReplacements : {};
+            const orderViewOrder =
+              isDirty && battingOrderDraft?.length === 9 ? battingOrderDraft : battingOrder;
 
-          const dhActive = !!assignments["指"];
+            return (
+              <ul className="space-y-1 md:space-y-2 text-sm md:text-base lg:text-lg border border-slate-200 md:border-2 rounded-xl md:rounded-2xl bg-white p-2 md:p-3 shadow-sm">
+                {orderViewOrder.map((slot, index) => {
+                  const dhStarterId = initialAssignments?.["指"];
+                  const dhSlotIndex =
+                    typeof dhStarterId === "number"
+                      ? battingOrder.findIndex((e) => e.id === dhStarterId)
+                      : -1;
 
-const displayId = slot.id;
+                  const dhActive = !!assignments["指"];
 
-// 取消線用の「交代前選手」は、この画面を開いた時点の battingOrder を基準にする
-const beforeEntry = battingOrder[index];
-const beforeId = beforeEntry?.id ?? slot.id;
+                  const displayId = slot.id;
 
-const starter = teamPlayers.find((p) => p.id === beforeId); // 旧表示用
-const player =
-  (orderViewReplacements as any)[index]
-    ? (orderViewReplacements as any)[index]
-    : teamPlayers.find((p) => p.id === displayId); // 新表示用
-if (!starter || !player) return null;
+                  // 取消線用の「交代前選手」は、この画面を開いた時点の battingOrder を基準にする
+                  const beforeEntry = battingOrder[index];
+                  const beforeId = beforeEntry?.id ?? slot.id;
 
-// ★ 実際に表示している選手IDを使う
-const currentDisplayId =
-  typeof player?.id === "number" ? Number(player.id) : Number(displayId);
+                  const starter = teamPlayers.find((p) => p.id === beforeId); // 旧表示用
+                  const player =
+                    (orderViewReplacements as any)[index]
+                      ? (orderViewReplacements as any)[index]
+                      : teamPlayers.find((p) => p.id === displayId); // 新表示用
 
-let currentPos = getOrderDisplayPos(assignments, currentDisplayId);
-let initialPos = getOrderDisplayPos(orderViewBaseAssignments, beforeId);
+                  if (!starter || !player) return null;
 
-// ① 代打/代走でまだ守備位置解決できないときは fromPos を使う
-if (!currentPos || currentPos === "-" || currentPos === "－") {
-  const pinchInfo = Object.values(usedPlayerInfo || {}).find(
-    (info: any) =>
-      Number(info?.subId) === Number(currentDisplayId) &&
-      ["代打", "代走", "臨時代走"].includes(String(info?.reason ?? ""))
-  );
+                  // ★ 実際に表示している選手IDを使う
+                  const currentDisplayId =
+                    typeof player?.id === "number" ? Number(player.id) : Number(displayId);
 
-  if (pinchInfo?.fromPos) {
-    currentPos = posNameToSymbol[pinchInfo.fromPos] ?? pinchInfo.fromPos;
-  }
-}
+                  let currentPos = getOrderDisplayPos(assignments, currentDisplayId);
+                  let initialPos = getOrderDisplayPos(orderViewBaseAssignments, beforeId);
 
-// ② リエントリー済みの元スタメンなら、元の守備位置を表示
-if (!currentPos || currentPos === "-" || currentPos === "－") {
-  const usedEntry = (usedPlayerInfo as any)?.[currentDisplayId];
+                  // ① 代打/代走でまだ守備位置解決できないときは fromPos を使う
+                  if (!currentPos || currentPos === "-" || currentPos === "－") {
+                    const pinchInfo = Object.values(usedPlayerInfo || {}).find(
+                      (info: any) =>
+                        Number(info?.subId) === Number(currentDisplayId) &&
+                        ["代打", "代走", "臨時代走"].includes(String(info?.reason ?? ""))
+                    );
 
-  if (usedEntry?.hasReentered) {
-    const reentryPos = getOrderDisplayPos(initialAssignments, currentDisplayId);
-    if (reentryPos && reentryPos !== "-" && reentryPos !== "－") {
-      currentPos = reentryPos;
-    }
-  }
-}
+                    if (pinchInfo?.fromPos) {
+                      currentPos = posNameToSymbol[pinchInfo.fromPos] ?? pinchInfo.fromPos;
+                    }
+                  }
 
-// ③ 10人以上の打順では、
-//    「打順にはいるが9守備に配置されていない選手」をDH扱いにする
-//    ※ ここを初期守備位置へのフォールバックより先に行う
-const isBlankPos = (pos?: string | null) =>
-  !pos || pos === "-" || pos === "－";
+                  // ② リエントリー済みの元スタメンなら、元の守備位置を表示
+                  if (!currentPos || currentPos === "-" || currentPos === "－") {
+                    const usedEntry = (usedPlayerInfo as any)?.[currentDisplayId];
 
-const FIELD9_POS_KEYS_FOR_ORDER = ["投", "捕", "一", "二", "三", "遊", "左", "中", "右"];
+                    if (usedEntry?.hasReentered) {
+                      const reentryPos = getOrderDisplayPos(initialAssignments, currentDisplayId);
+                      if (reentryPos && reentryPos !== "-" && reentryPos !== "－") {
+                        currentPos = reentryPos;
+                      }
+                    }
+                  }
 
-const isInField9Now = (pid: number | null) => {
-  if (typeof pid !== "number") return false;
-  return FIELD9_POS_KEYS_FOR_ORDER.some(
-    (pos) => Number((assignments as any)?.[pos]) === Number(pid)
-  );
-};
+                  // ③ 10人以上の打順では、
+                  //    「打順にはいるが9守備に配置されていない選手」をDH扱いにする
+                  //    ※ ここを初期守備位置へのフォールバックより先に行う
+                  const isBlankPos = (pos?: string | null) =>
+                    !pos || pos === "-" || pos === "－";
 
-const isInField9Base = (pid: number | null) => {
-  if (typeof pid !== "number") return false;
-  return FIELD9_POS_KEYS_FOR_ORDER.some(
-    (pos) => Number((orderViewBaseAssignments as any)?.[pos]) === Number(pid)
-  );
-};
+                  const FIELD9_POS_KEYS_FOR_ORDER = [
+                    "投",
+                    "捕",
+                    "一",
+                    "二",
+                    "三",
+                    "遊",
+                    "左",
+                    "中",
+                    "右",
+                  ];
 
-const isTenOrMoreBattingOrder = orderViewOrder.length >= 10;
+                  const isInField9Now = (pid: number | null) => {
+                    if (typeof pid !== "number") return false;
+                    return FIELD9_POS_KEYS_FOR_ORDER.some(
+                      (pos) => Number((assignments as any)?.[pos]) === Number(pid)
+                    );
+                  };
 
-// 現在の選手が、打順にはいるが9守備にいない場合はDH
-if (isTenOrMoreBattingOrder && !isInField9Now(currentDisplayId)) {
-  currentPos = "指";
-}
+                  const isInField9Base = (pid: number | null) => {
+                    if (typeof pid !== "number") return false;
+                    return FIELD9_POS_KEYS_FOR_ORDER.some(
+                      (pos) => Number((orderViewBaseAssignments as any)?.[pos]) === Number(pid)
+                    );
+                  };
 
-// 初期状態でも、打順にはいるが9守備にいない選手はDH
-if (isTenOrMoreBattingOrder && !isInField9Base(beforeId)) {
-  initialPos = "指";
-}
+                  const isTenOrMoreBattingOrder = orderViewOrder.length >= 10;
 
-// ④ それでも現在守備位置が取れない場合だけ、最後の保険として初期守備位置を使う
-//    ※ ただし、すでにDH判定された選手は上書きしない
-if (isBlankPos(currentPos)) {
-  if (!isBlankPos(initialPos)) {
-    currentPos = initialPos;
-  }
-}
+                  // 現在の選手が、打順にはいるが9守備にいない場合はDH
+                  if (isTenOrMoreBattingOrder && !isInField9Now(currentDisplayId)) {
+                    currentPos = "指";
+                  }
 
-// ⑤ 従来どおり、通常DHスロットは「指」を優先
-if (dhActive && dhSlotIndex === index) {
-  currentPos = "指";
-  if (isBlankPos(initialPos)) {
-    initialPos = "指";
-  }
-}
+                  // 初期状態でも、打順にはいるが9守備にいない選手はDH
+                  if (isTenOrMoreBattingOrder && !isInField9Base(beforeId)) {
+                    initialPos = "指";
+                  }
 
-const playerChanged = currentDisplayId !== beforeId;
-const positionChanged = currentPos !== initialPos;
+                  // ④ それでも現在守備位置が取れない場合だけ、最後の保険として初期守備位置を使う
+                  //    ※ ただし、すでにDH判定された選手は上書きしない
+                  if (isBlankPos(currentPos)) {
+                    if (!isBlankPos(initialPos)) {
+                      currentPos = initialPos;
+                    }
+                  }
 
-          const isPinchHitter = slot.reason === "代打";
-          const isPinchRunner = slot.reason === "代走";
-          const isTempPinchRunner = slot.reason === "臨時代走";
-          const isPinch = isPinchHitter || isPinchRunner || isTempPinchRunner;
-          const pinchLabel = isPinchHitter
-            ? "代打"
-            : isPinchRunner
-            ? "代走"
-            : isTempPinchRunner
-            ? "臨時代走"
-            : "";
+                  // ⑤ 従来どおり、通常DHスロットは「指」を優先
+                  if (dhActive && dhSlotIndex === index) {
+                    currentPos = "指";
+                    if (isBlankPos(initialPos)) {
+                      initialPos = "指";
+                    }
+                  }
 
-          const shouldShowPinchBadge = isPinch;
-          const shouldHighlightPlayer = isDirty && (playerChanged || isPinch);
+                  const playerChanged = currentDisplayId !== beforeId;
+                  const positionChanged = currentPos !== initialPos;
 
-          return (
-            <li key={index} className="py-1 px-2 border-b last:border-b-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-slate-500 w-8">{index + 1}番</span>
+                  const isPinchHitter = slot.reason === "代打";
+                  const isPinchRunner = slot.reason === "代走";
+                  const isTempPinchRunner = slot.reason === "臨時代走";
+                  const isPinch = isPinchHitter || isPinchRunner || isTempPinchRunner;
+                  const pinchLabel = isPinchHitter
+                    ? "代打"
+                    : isPinchRunner
+                    ? "代走"
+                    : isTempPinchRunner
+                    ? "臨時代走"
+                    : "";
 
-                {playerChanged ? (
-                  <>
-                    <span className="line-through text-gray-400">
-                      {withMark(initialPos)}{" "}
-                      <ruby>
-                        {starter.lastName}
-                        {starter.firstName}
-                        <rt>
-                          {starter.lastNameKana}
-                          {starter.firstNameKana}
-                        </rt>
-                      </ruby>
-                      {starter.number ? ` #${starter.number}` : ""}
+                  const shouldShowPinchBadge = isPinch;
+                  const shouldHighlightPlayer = isDirty && (playerChanged || isPinch);
+
+                  const pinchBadge = shouldShowPinchBadge ? (
+                    <span className="text-[11px] md:text-sm lg:text-base px-1.5 md:px-2 py-0.5 md:py-1 rounded md:rounded-lg bg-red-50 text-red-600 md:text-red-700 border border-red-200 font-semibold md:font-extrabold">
+                      {pinchLabel}
                     </span>
+                  ) : null;
 
-                    <span className="text-gray-400">➡</span>
+                  return (
+                    <li
+                      key={index}
+                      className="py-1 md:py-2 px-2 md:px-3 border-b last:border-b-0"
+                    >
+                      <div className="flex items-center gap-2 md:gap-3 flex-wrap leading-relaxed">
+                        <span className="text-slate-500 md:text-slate-700 w-8 md:w-12 shrink-0 font-normal md:font-extrabold">
+                          {index + 1}番
+                        </span>
 
-                    <span className="text-red-600 font-bold">
-                      {withMark(currentPos)}{" "}
-                      <ruby>
-                        {player.lastName}
-                        {player.firstName}
-                        <rt>
-                          {player.lastNameKana}
-                          {player.firstNameKana}
-                        </rt>
-                      </ruby>
-                      {player.number ? ` #${player.number}` : ""}
-                    </span>
+                        {playerChanged ? (
+                          <>
+                            <span className="line-through text-gray-400 font-normal md:font-semibold">
+                              {withMark(initialPos)}{" "}
+                              <ruby>
+                                {starter.lastName}
+                                {starter.firstName}
+                                <rt>
+                                  {starter.lastNameKana}
+                                  {starter.firstNameKana}
+                                </rt>
+                              </ruby>
+                              {starter.number ? ` #${starter.number}` : ""}
+                            </span>
 
-                    {shouldShowPinchBadge && (
-                      <span className="text-[11px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200">
-                        {pinchLabel}
-                      </span>
-                    )}
-                  </>
-                ) : positionChanged ? (
-                  <>
-                    <span className="text-slate-800">
-                      <span className="text-gray-400">{withMark(initialPos)}</span>
-                      <span className="text-gray-400 mx-1">➡</span>
-                      <span className="text-red-600 font-bold">{withMark(currentPos)}</span>{" "}
-                      <span className={shouldHighlightPlayer ? "text-red-600 font-bold" : ""}>
-                        <ruby>
-                          {player.lastName}
-                          {player.firstName}
-                          <rt>
-                            {player.lastNameKana}
-                            {player.firstNameKana}
-                          </rt>
-                        </ruby>
-                        {player.number ? ` #${player.number}` : ""}
-                      </span>
-                    </span>
+                            <span className="text-gray-400 font-bold">➡</span>
 
-                    {shouldShowPinchBadge && (
-                      <span className="text-[11px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200">
-                        {pinchLabel}
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <span className={shouldHighlightPlayer ? "text-red-600 font-bold" : "text-slate-800"}>
-                      {withMark(currentPos)}{" "}
-                      <ruby>
-                        {player.lastName}
-                        {player.firstName}
-                        <rt>
-                          {player.lastNameKana}
-                          {player.firstNameKana}
-                        </rt>
-                      </ruby>
-                      {player.number ? ` #${player.number}` : ""}
-                    </span>
+                            <span className="text-red-600 md:text-red-700 font-bold md:font-extrabold">
+                              {withMark(currentPos)}{" "}
+                              <ruby>
+                                {player.lastName}
+                                {player.firstName}
+                                <rt>
+                                  {player.lastNameKana}
+                                  {player.firstNameKana}
+                                </rt>
+                              </ruby>
+                              {player.number ? ` #${player.number}` : ""}
+                            </span>
 
-                    {shouldShowPinchBadge && (
-                      <span className="text-[11px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200">
-                        {pinchLabel}
-                      </span>
-                    )}
-                  </>
-                )}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-    );
-  })()}
-</div>
+                            {pinchBadge}
+                          </>
+                        ) : positionChanged ? (
+                          <>
+                            <span className="text-slate-800 font-normal md:font-bold">
+                              <span className="text-gray-400">{withMark(initialPos)}</span>
+                              <span className="text-gray-400 mx-1 md:mx-2 font-bold">➡</span>
+                              <span className="text-red-600 md:text-red-700 font-bold md:font-extrabold">
+                                {withMark(currentPos)}
+                              </span>{" "}
+                              <span
+                                className={
+                                  shouldHighlightPlayer
+                                    ? "text-red-600 md:text-red-700 font-bold md:font-extrabold"
+                                    : "text-slate-800 md:font-bold"
+                                }
+                              >
+                                <ruby>
+                                  {player.lastName}
+                                  {player.firstName}
+                                  <rt>
+                                    {player.lastNameKana}
+                                    {player.firstNameKana}
+                                  </rt>
+                                </ruby>
+                                {player.number ? ` #${player.number}` : ""}
+                              </span>
+                            </span>
 
-{/* 交代内容（右） */}
-<div className="w-full">
-  <h2 className="text-lg font-bold mb-2 text-slate-900">交代内容</h2>
+                            {pinchBadge}
+                          </>
+                        ) : (
+                          <>
+                            <span
+                              className={
+                                shouldHighlightPlayer
+                                  ? "text-red-600 md:text-red-700 font-bold md:font-extrabold"
+                                  : "text-slate-800 md:font-bold"
+                              }
+                            >
+                              {withMark(currentPos)}{" "}
+                              <ruby>
+                                {player.lastName}
+                                {player.firstName}
+                                <rt>
+                                  {player.lastNameKana}
+                                  {player.firstNameKana}
+                                </rt>
+                              </ruby>
+                              {player.number ? ` #${player.number}` : ""}
+                            </span>
 
-  {!isDirty ? (
-    <div className="text-sm border border-slate-200 p-3 rounded-xl bg-white text-slate-400">
-      なし
-    </div>
-  ) : (
-    <ul className="text-sm border border-slate-200 p-3 rounded-xl bg-white space-y-1">
-      {(() => {
-        const posPriority = { "投": 1, "捕": 2, "一": 3, "二": 4, "三": 5, "遊": 6, "左": 7, "中": 8, "右": 9 };
+                            {pinchBadge}
+                          </>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            );
+          })()}
+        </div>
 
-        const dhStarterId = initialAssignments?.["指"];
-        const dhSlotIndex =
-          typeof dhStarterId === "number"
-            ? startingOrderRef.current.findIndex(e => e.id === dhStarterId)
-            : -1;
+        {/* 交代内容（右） */}
+        <div className="w-full">
+          <h2 className="text-lg font-bold mb-2 text-slate-900">交代内容</h2>
 
-        const changes = battingOrder.map((entry, index) => {
-          const starter = teamPlayers.find((p) => p.id === entry.id);
-          if (!starter) return null;
+          {!isDirty ? (
+            <div className="text-sm border border-slate-200 p-3 rounded-xl bg-white text-slate-400">
+              なし
+            </div>
+          ) : (
+            <ul className="text-sm border border-slate-200 p-3 rounded-xl bg-white space-y-1">
+              {(() => {
+                const posPriority = { "投": 1, "捕": 2, "一": 3, "二": 4, "三": 5, "遊": 6, "左": 7, "中": 8, "右": 9 };
 
-          let replaced = battingReplacements[index] ?? teamPlayers.find(p => p.id === entry.id);
+                const dhStarterId = initialAssignments?.["指"];
+                const dhSlotIndex =
+                  typeof dhStarterId === "number"
+                    ? startingOrderRef.current.findIndex(e => e.id === dhStarterId)
+                    : -1;
 
-          if (index === dhSlotIndex) {
-            const dhStarterId = initialAssignments?.["指"];
-            const dhNowId = assignments?.["指"];
+                const changes = battingOrder.map((entry, index) => {
+                  const starter = teamPlayers.find((p) => p.id === entry.id);
+                  if (!starter) return null;
 
-            if (
-              typeof dhNowId === "number" &&
-              typeof dhStarterId === "number" &&
-              dhNowId !== dhStarterId
-            ) {
-              const dhNowPlayer = teamPlayers.find(p => p.id === dhNowId);
-              if (dhNowPlayer) replaced = dhNowPlayer;
-            }
-          }
+                  let replaced = battingReplacements[index] ?? teamPlayers.find(p => p.id === entry.id);
 
-          const currentId = replaced?.id ?? entry.id;
-          const currentPlayer = replaced ?? starter;
+                  if (index === dhSlotIndex) {
+                    const dhStarterId = initialAssignments?.["指"];
+                    const dhNowId = assignments?.["指"];
 
-          let currentPos = getPositionName(assignments, currentId);
-          const initialPos = getPositionName(initialAssignments, entry.id);
+                    if (
+                      typeof dhNowId === "number" &&
+                      typeof dhStarterId === "number" &&
+                      dhNowId !== dhStarterId
+                    ) {
+                      const dhNowPlayer = teamPlayers.find(p => p.id === dhNowId);
+                      if (dhNowPlayer) replaced = dhNowPlayer;
+                    }
+                  }
 
-          const playerChanged = !!replaced && replaced.id !== entry.id;
-          const positionChanged = currentPos !== initialPos;
-          const isPinchHitter = entry.reason === "代打";
-          const isPinchRunner = entry.reason === "代走";
-          const pinchReasons = ["代打", "代走", "臨時代走"] as const;
+                  const currentId = replaced?.id ?? entry.id;
+                  const currentPlayer = replaced ?? starter;
 
-          const resolvePinchFromPosSymBySubId = (subId: number): string => {
-            for (const info of Object.values(usedPlayerInfo || {})) {
-              if (!info) continue;
-              if (!pinchReasons.includes(String((info as any).reason) as any)) continue;
-              if ((info as any).subId !== subId) continue;
+                  let currentPos = getPositionName(assignments, currentId);
+                  const initialPos = getPositionName(initialAssignments, entry.id);
 
-              const fromPos = (info as any).fromPos as string | undefined;
-              if (!fromPos) return "";
-              return (posNameToSymbol as any)[fromPos] ?? fromPos;
-            }
-            return "";
-          };
+                  const playerChanged = !!replaced && replaced.id !== entry.id;
+                  const positionChanged = currentPos !== initialPos;
+                  const isPinchHitter = entry.reason === "代打";
+                  const isPinchRunner = entry.reason === "代走";
+                  const pinchReasons = ["代打", "代走", "臨時代走"] as const;
 
-          if (!playerChanged && !positionChanged && !isPinchHitter && !isPinchRunner) {
-            return null;
-          }
+                  const resolvePinchFromPosSymBySubId = (subId: number): string => {
+                    for (const info of Object.values(usedPlayerInfo || {})) {
+                      if (!info) continue;
+                      if (!pinchReasons.includes(String((info as any).reason) as any)) continue;
+                      if ((info as any).subId !== subId) continue;
 
-          if (isPinchHitter && currentPos) {
-            if (!replaced) {
-              replaced = teamPlayers.find(p => p.id === entry.id);
-            }
-            return {
-              key: `pinch-assigned-${index}`,
-              type: 1,
-              pos: currentPos,
-              jsx: (
-                <li key={`pinch-assigned-${index}`}>
-                  代打：{replaced?.lastName}{replaced?.firstName} #{replaced?.number} ➡ {withFull(currentPos)}
-                </li>
-              )
-            };
-          }
+                      const fromPos = (info as any).fromPos as string | undefined;
+                      if (!fromPos) return "";
+                      return (posNameToSymbol as any)[fromPos] ?? fromPos;
+                    }
+                    return "";
+                  };
 
-          if (isPinchRunner && currentPos) {
-            if (!replaced) {
-              replaced = teamPlayers.find(p => p.id === entry.id);
-            }
-            return {
-              key: `runner-assigned-${index}`,
-              type: 2,
-              pos: currentPos,
-              jsx: (
-                <li key={`runner-assigned-${index}`}>
-                  代走：{replaced?.lastName}{replaced?.firstName} #{replaced?.number} ➡ {withFull(currentPos)}
-                </li>
-              )
-            };
-          }
+                  if (!playerChanged && !positionChanged && !isPinchHitter && !isPinchRunner) {
+                    return null;
+                  }
 
-          if (playerChanged) {
-            return {
-              key: `replaced-${index}`,
-              type: 3,
-              pos: currentPos,
-              jsx: (
-                <li key={`replaced-${index}`}>
-                  {withFull(initialPos)}：{starter.lastName}{starter.firstName} #{starter.number}
-                  {" "}➡{" "}
-                  {withFull(currentPos)}：{currentPlayer.lastName}{currentPlayer.firstName} #{currentPlayer.number}
-                </li>
-              )
-            };
-          }
+                  if (isPinchHitter && currentPos) {
+                    if (!replaced) {
+                      replaced = teamPlayers.find(p => p.id === entry.id);
+                    }
+                    return {
+                      key: `pinch-assigned-${index}`,
+                      type: 1,
+                      pos: currentPos,
+                      jsx: (
+                        <li key={`pinch-assigned-${index}`}>
+                          代打：{replaced?.lastName}{replaced?.firstName} #{replaced?.number} ➡ {withFull(currentPos)}
+                        </li>
+                      )
+                    };
+                  }
 
-          if (positionChanged) {
-            return {
-              key: `shift-${index}`,
-              type: 4,
-              pos: currentPos,
-              jsx: (
-                <li key={`shift-${index}`}>
-                  {starter.lastName}{starter.firstName} #{starter.number}
-                  {" "}
-                  {withFull(initialPos)}
-                  {" "}➡{" "}
-                  {withFull(currentPos)}
-                </li>
-              )
-            };
-          }
+                  if (isPinchRunner && currentPos) {
+                    if (!replaced) {
+                      replaced = teamPlayers.find(p => p.id === entry.id);
+                    }
+                    return {
+                      key: `runner-assigned-${index}`,
+                      type: 2,
+                      pos: currentPos,
+                      jsx: (
+                        <li key={`runner-assigned-${index}`}>
+                          代走：{replaced?.lastName}{replaced?.firstName} #{replaced?.number} ➡ {withFull(currentPos)}
+                        </li>
+                      )
+                    };
+                  }
 
-          return null;
-        })
-          .filter(Boolean)
-          .sort((a: any, b: any) => {
-            const pa = posPriority[a?.pos as keyof typeof posPriority] ?? 99;
-            const pb = posPriority[b?.pos as keyof typeof posPriority] ?? 99;
-            if (pa !== pb) return pa - pb;
-            return (a?.type ?? 99) - (b?.type ?? 99);
-          });
+                  if (playerChanged) {
+                    return {
+                      key: `replaced-${index}`,
+                      type: 3,
+                      pos: currentPos,
+                      jsx: (
+                        <li key={`replaced-${index}`}>
+                          {withFull(initialPos)}：{starter.lastName}{starter.firstName} #{starter.number}
+                          {" "}➡{" "}
+                          {withFull(currentPos)}：{currentPlayer.lastName}{currentPlayer.firstName} #{currentPlayer.number}
+                        </li>
+                      )
+                    };
+                  }
 
-        if (!changes.length) {
-          return <li className="text-slate-400">なし</li>;
-        }
+                  if (positionChanged) {
+                    return {
+                      key: `shift-${index}`,
+                      type: 4,
+                      pos: currentPos,
+                      jsx: (
+                        <li key={`shift-${index}`}>
+                          {starter.lastName}{starter.firstName} #{starter.number}
+                          {" "}
+                          {withFull(initialPos)}
+                          {" "}➡{" "}
+                          {withFull(currentPos)}
+                        </li>
+                      )
+                    };
+                  }
 
-        return changes.map((c: any) => c.jsx);
-      })()}
-    </ul>
-  )}
-</div>
+                  return null;
+                })
+                  .filter(Boolean)
+                  .sort((a: any, b: any) => {
+                    const pa = posPriority[a?.pos as keyof typeof posPriority] ?? 99;
+                    const pb = posPriority[b?.pos as keyof typeof posPriority] ?? 99;
+                    if (pa !== pb) return pa - pb;
+                    return (a?.type ?? 99) - (b?.type ?? 99);
+                  });
+
+                if (!changes.length) {
+                  return <li className="text-slate-400">なし</li>;
+                }
+
+                return changes.map((c: any) => c.jsx);
+              })()}
+            </ul>
+          )}
+        </div>
         </div>
       </div>
     </div>
@@ -9316,7 +9372,7 @@ const positionChanged = currentPos !== initialPos;
     onClick={() => setShowPosNumberHelpModal(false)}
   >
     <div
-      className="w-full max-w-[460px] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
+      className="w-full max-w-[min(96vw,900px)] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
       onClick={(e) => e.stopPropagation()}
       role="document"
     >
@@ -9340,7 +9396,7 @@ const positionChanged = currentPos !== initialPos;
       </div>
 
       {/* 本文 */}
-      <div className="max-h-[72svh] overflow-y-auto bg-white px-3 py-3">
+      <div className="max-h-[78svh] overflow-y-auto bg-white px-4 py-4">
         <div className="space-y-3">
           {/* 上部説明 */}
           <div className="rounded-[16px] border border-sky-200 bg-sky-50 px-3 py-3">
@@ -9639,7 +9695,7 @@ const positionChanged = currentPos !== initialPos;
     onClick={() => setShowHelpModal(false)}
   >
     <div
-      className="w-full max-w-[460px] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
+      className="w-full max-w-[min(96vw,900px)] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
       onClick={(e) => e.stopPropagation()}
       role="document"
     >
@@ -9663,7 +9719,7 @@ const positionChanged = currentPos !== initialPos;
       </div>
 
       {/* 本文 */}
-      <div className="max-h-[72svh] overflow-y-auto bg-white px-3 py-3">
+      <div className="max-h-[78svh] overflow-y-auto bg-white px-4 py-4">
         <div className="space-y-3">
           {/* 上部説明 */}
           <div className="rounded-[16px] border border-sky-200 bg-sky-50 px-3 py-3">
