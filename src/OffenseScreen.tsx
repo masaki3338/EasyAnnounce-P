@@ -3538,47 +3538,71 @@ useEffect(() => {
           </button>
         </div>
 
-        {/* 操作ボタン（横いっぱい・等幅・固定順：DH解除 → リエントリー → 代走 → 代打） */}
-        <div className="w-full grid grid-cols-3 gap-2 mt-2">
-          {/* DH解除（常に表示。条件を満たさない時は disabled） */}
-          <button
-            onClick={() => setShowDhDisableModal(true)}
-            disabled={!isDhTurn || !dhActive || !pitcherId}
-            className="w-full h-8 rounded bg-gray-800 text-white px-2 text-sm
-                      inline-flex items-center justify-center
-                      disabled:bg-gray-300 disabled:text-white disabled:cursor-not-allowed"
-            title="DH解除"
-          >
-            <span className="whitespace-nowrap leading-none tracking-tight
-                            text-[clamp(10px,3.2vw,16px)]">
-              DH解除
-            </span>
-          </button>
+{/* 操作ボタン（横いっぱい・等幅・固定順：DH解除 → 代走 → 代打） */}
+<div className="w-full grid grid-cols-3 gap-2 mt-2">
+  {/* DH解除（常に表示。条件を満たさない時は disabled） */}
+  <button
+    onClick={() => setShowDhDisableModal(true)}
+    disabled={!isDhTurn || !dhActive || !pitcherId}
+    className="
+      w-full rounded bg-gray-800 text-white px-2
+      inline-flex items-center justify-center
+      disabled:bg-gray-300 disabled:text-white disabled:cursor-not-allowed
+      active:scale-[0.98] transition
+    "
+    style={{
+      height: "clamp(34px, 4.2vh, 54px)",
+      fontSize: "clamp(14px, 1.75vh, 24px)",
+      lineHeight: 1,
+    }}
+    title="DH解除"
+  >
+    <span className="whitespace-nowrap font-extrabold tracking-tight">
+      DH解除
+    </span>
+  </button>
 
+  {/* 代走 */}
+  <button
+    onClick={() => {
+      setRunnerModalMode("runner");
+      setShowRunnerModal(true);
+    }}
+    className="
+      w-full rounded bg-orange-600 text-white
+      inline-flex items-center justify-center
+      font-extrabold whitespace-nowrap
+      active:scale-[0.98] transition
+    "
+    style={{
+      height: "clamp(34px, 4.2vh, 54px)",
+      fontSize: "clamp(14px, 1.75vh, 24px)",
+      lineHeight: 1,
+    }}
+    title="代走"
+  >
+    🏃‍♂️代走
+  </button>
 
-
-
-          {/* 代走 */}
-          <button
-            onClick={() => {
-              setRunnerModalMode("runner");
-              setShowRunnerModal(true);
-            }}
-            className="w-full h-8 rounded bg-orange-600 text-white text-sm"
-            title="代走"
-          >
-            🏃‍♂️代走
-          </button>
-
-          {/* 代打 */}
-          <button
-            onClick={() => setShowSubModal(true)}
-            className="w-full h-8 rounded bg-orange-600 text-white text-sm"
-            title="代打"
-          >
-            🏏代打
-          </button>
-        </div>
+  {/* 代打 */}
+  <button
+    onClick={() => setShowSubModal(true)}
+    className="
+      w-full rounded bg-orange-600 text-white
+      inline-flex items-center justify-center
+      font-extrabold whitespace-nowrap
+      active:scale-[0.98] transition
+    "
+    style={{
+      height: "clamp(34px, 4.2vh, 54px)",
+      fontSize: "clamp(14px, 1.75vh, 24px)",
+      lineHeight: 1,
+    }}
+    title="代打"
+  >
+    🏏代打
+  </button>
+</div>
 
         {/* ✅ DH解除のポップアップ */}
         {showDhDisableModal && (() => {
