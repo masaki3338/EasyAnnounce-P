@@ -3652,22 +3652,27 @@ const Menu = ({
 
 
     {/* ✅ 野球アナウンスの心得（横長ボタン） */}
-      <button
-        onClick={() => onNavigate("announceMindset")}
-        className="
-          inline-flex items-center gap-3
-          mb-4
-          rounded-2xl
-          bg-gray-200 text-gray-900
-          py-3 px-6
-          shadow-lg
-          hover:bg-gray-100
-          transition
-        "
-      >
-      <span className="text-xl">📖</span>
+    <button
+      onClick={() => onNavigate("announceMindset")}
+      className="
+        inline-flex items-center gap-3
+        md:gap-[clamp(12px,1.8dvh,20px)]
+        mb-4
+        md:mb-[clamp(16px,2.4dvh,28px)]
+        rounded-2xl
+        md:rounded-[clamp(16px,2.4dvh,26px)]
+        bg-gray-200 text-gray-900
+        py-3 px-6
+        md:py-[clamp(14px,2.2dvh,24px)]
+        md:px-[clamp(26px,4dvh,44px)]
+        shadow-lg
+        hover:bg-gray-100
+        transition
+      "
+    >
+      <span className="text-xl md:text-[clamp(24px,3.2dvh,36px)]">📖</span>
       <span
-        className="text-lg font-bold tracking-wide"
+        className="text-lg md:text-[clamp(20px,2.8dvh,30px)] font-bold tracking-wide"
         style={{ fontFamily: "'M PLUS Rounded 1c', sans-serif" }}
       >
         野球アナウンスの心得
@@ -3675,41 +3680,105 @@ const Menu = ({
     </button>
 
     {/* ✅ 4つだけのグリッド（2×2） */}
-    <div className="w-full grid grid-cols-2 gap-4">
+    <div className="w-full grid grid-cols-2 gap-4 md:gap-[clamp(16px,2.6dvh,30px)]">
       <button
         onClick={() => onNavigate("teamRegister")}
-        className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+        className="
+          rounded-2xl
+          md:rounded-[clamp(16px,2.4dvh,26px)]
+          bg-white/10 hover:bg-white/15
+          border border-white/10
+          p-4
+          md:p-[clamp(18px,2.8dvh,32px)]
+          md:min-h-[clamp(118px,16dvh,170px)]
+          text-left
+          shadow-lg
+          active:scale-95
+          transition
+        "
       >
-        <div className="text-2xl">🧢</div>
-        <div className="mt-2 font-bold">チーム・選手登録</div>
-        <div className="text-xs opacity-80 mt-1">ふりがな,背番号登録等</div>
+        <div className="text-2xl md:text-[clamp(30px,4.4dvh,46px)]">🧢</div>
+        <div className="mt-2 md:mt-[clamp(8px,1.3dvh,14px)] font-bold md:text-[clamp(18px,2.6dvh,28px)]">
+          チーム・選手登録
+        </div>
+        <div className="text-xs md:text-[clamp(13px,1.8dvh,18px)] opacity-80 mt-1 md:mt-[clamp(4px,0.8dvh,8px)]">
+          ふりがな,背番号登録等
+        </div>
       </button>
 
       <button
         onClick={() => onNavigate("matchCreate")}
-        className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+        className="
+          rounded-2xl
+          md:rounded-[clamp(16px,2.4dvh,26px)]
+          bg-white/10 hover:bg-white/15
+          border border-white/10
+          p-4
+          md:p-[clamp(18px,2.8dvh,32px)]
+          md:min-h-[clamp(118px,16dvh,170px)]
+          text-left
+          shadow-lg
+          active:scale-95
+          transition
+        "
       >
-        <div className="text-2xl">🗓️</div>
-        <div className="mt-2 font-bold">試合作成</div>
-        <div className="text-xs opacity-80 mt-1">対戦相手,スタメン設定等</div>
+        <div className="text-2xl md:text-[clamp(30px,4.4dvh,46px)]">🗓️</div>
+        <div className="mt-2 md:mt-[clamp(8px,1.3dvh,14px)] font-bold md:text-[clamp(18px,2.6dvh,28px)]">
+          試合作成
+        </div>
+        <div className="text-xs md:text-[clamp(13px,1.8dvh,18px)] opacity-80 mt-1 md:mt-[clamp(4px,0.8dvh,8px)]">
+          対戦相手,スタメン設定等
+        </div>
       </button>
 
       <button
         onClick={() => onNavigate("startGame")}
-        className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+        className="
+          rounded-2xl
+          md:rounded-[clamp(16px,2.4dvh,26px)]
+          bg-white/10 hover:bg-white/15
+          border border-white/10
+          p-4
+          md:p-[clamp(18px,2.8dvh,32px)]
+          md:min-h-[clamp(118px,16dvh,170px)]
+          text-left
+          shadow-lg
+          active:scale-95
+          transition
+        "
       >
-        <div className="text-2xl">🏁</div>
-        <div className="mt-2 font-bold">試合開始</div>
-        <div className="text-xs opacity-80 mt-1">試合前アナウンス等</div>
+        <div className="text-2xl md:text-[clamp(30px,4.4dvh,46px)]">🏁</div>
+        <div className="mt-2 md:mt-[clamp(8px,1.3dvh,14px)] font-bold md:text-[clamp(18px,2.6dvh,28px)]">
+          試合開始
+        </div>
+        <div className="text-xs md:text-[clamp(13px,1.8dvh,18px)] opacity-80 mt-1 md:mt-[clamp(4px,0.8dvh,8px)]">
+          試合前アナウンス等
+        </div>
       </button>
 
       <button
         onClick={() => onNavigate("operationSettings")}
-        className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+        className="
+          rounded-2xl
+          md:rounded-[clamp(16px,2.4dvh,26px)]
+          bg-white/10 hover:bg-white/15
+          border border-white/10
+          p-4
+          md:p-[clamp(18px,2.8dvh,32px)]
+          md:min-h-[clamp(118px,16dvh,170px)]
+          text-left
+          shadow-lg
+          active:scale-95
+          transition
+        "
       >
-        <div className="text-2xl">⚙️</div>
-        <div className="mt-2 font-bold">運用設定</div>
-        <div className="text-xs opacity-80 mt-1">投球数,タイブレーク等</div>
+        <div className="text-2xl md:text-[clamp(30px,4.4dvh,46px)]">⚙️</div>
+        <div className="mt-2 md:mt-[clamp(8px,1.3dvh,14px)] font-bold md:text-[clamp(18px,2.6dvh,28px)]">
+          運用設定
+        </div>
+        <div className="text-xs md:text-[clamp(13px,1.8dvh,18px)] opacity-80 mt-1 md:mt-[clamp(4px,0.8dvh,8px)]">
+          投球数,タイブレーク等
+        </div>
       </button>
     </div>
 
@@ -3717,7 +3786,22 @@ const Menu = ({
       {canContinue && lastScreen && (
         <button
           onClick={() => onContinueGame(lastScreen)}
-          className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl shadow-xl font-semibold transition active:scale-95"
+          className="
+            mt-6
+            md:mt-[clamp(22px,3.2dvh,36px)]
+            w-full
+            bg-blue-600 hover:bg-blue-700
+            text-white
+            py-4
+            md:py-[clamp(16px,2.8dvh,30px)]
+            rounded-2xl
+            md:rounded-[clamp(16px,2.4dvh,26px)]
+            shadow-xl
+            font-semibold
+            md:text-[clamp(18px,2.6dvh,28px)]
+            transition
+            active:scale-95
+          "
         >
           ▶ 試合を継続する
         </button>
