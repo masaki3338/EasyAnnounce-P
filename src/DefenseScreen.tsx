@@ -1834,21 +1834,20 @@ const handleStop = () => { ttsStop(); };
     className="
       border border-red-500
       bg-red-200 text-red-700
-      p-[clamp(8px,1.4dvh,14px)]
+      p-2 md:p-[clamp(8px,1.4dvh,14px)]
       rounded
       relative text-left
     "
   >
     {/* 🔴 上段：マイクアイコン + 注意書き */}
-    <div className="flex items-start gap-[clamp(6px,1.1dvh,10px)]">
+    <div className="flex items-start gap-2 md:gap-[clamp(6px,1.1dvh,10px)]">
       <img
         src="/mic-red.png"
         alt="mic"
         className="
-          w-[clamp(24px,3.2dvh,34px)]
-          h-[clamp(24px,3.2dvh,34px)]
-          mt-[-2px]
-          shrink-0
+          w-6 h-6 mt-[-2px] shrink-0
+          md:w-[clamp(24px,3.2dvh,34px)]
+          md:h-[clamp(24px,3.2dvh,34px)]
         "
       />
 
@@ -1856,15 +1855,17 @@ const handleStop = () => { ttsStop(); };
         className="
           bg-yellow-100 text-yellow-800
           border-l-4 border-yellow-500
-          px-[clamp(8px,1.4dvh,14px)]
-          py-[clamp(2px,0.8dvh,6px)]
-          text-[clamp(13px,1.9dvh,20px)]
+          px-2 py-0
+          text-xs
+          md:px-[clamp(8px,1.4dvh,14px)]
+          md:py-[clamp(2px,0.8dvh,6px)]
+          md:text-[clamp(13px,1.9dvh,20px)]
           font-semibold
           whitespace-nowrap
           leading-tight
         "
       >
-        <span className="mr-2 text-[clamp(22px,3.2dvh,34px)]">⚠️</span>
+        <span className="mr-2 text-2xl md:text-[clamp(22px,3.2dvh,34px)]">⚠️</span>
         守備回終了時に🎤
       </div>
     </div>
@@ -1874,10 +1875,13 @@ const handleStop = () => { ttsStop(); };
       className="
         flex flex-col
         text-red-600
-        text-[clamp(16px,2.8dvh,30px)]
+        text-lg
+        md:text-[clamp(20px,3.2dvh,34px)]
         font-bold
-        space-y-[clamp(4px,0.8dvh,8px)]
-        mt-[clamp(8px,1.4dvh,14px)]
+        space-y-1
+        md:space-y-[clamp(4px,0.8dvh,8px)]
+        mt-2
+        md:mt-[clamp(8px,1.4dvh,14px)]
         leading-tight
       "
     >
@@ -1890,26 +1894,28 @@ const handleStop = () => { ttsStop(); };
       ))}
 
       {/* 読み上げ／停止 */}
-      <div className="mt-[clamp(8px,1.4dvh,14px)] grid grid-cols-2 gap-2">
+      <div className="mt-2 md:mt-[clamp(8px,1.4dvh,14px)] grid grid-cols-2 gap-2">
         <button
           onClick={handleSpeak}
           className="
             w-full
-            h-[clamp(34px,4.8dvh,52px)]
+            h-8
+            md:h-[clamp(34px,4.8dvh,52px)]
             rounded-xl
             bg-blue-600 hover:bg-blue-700
             text-white
             inline-flex items-center justify-center gap-2
-            text-[clamp(14px,2.1dvh,22px)]
-            font-bold
+            text-sm
+            md:text-[clamp(14px,2.1dvh,22px)]
+            md:font-bold
           "
         >
           <span className="inline-flex items-center gap-2 whitespace-nowrap align-middle">
             <IconMic
               className="
-                w-[clamp(20px,2.8dvh,30px)]
-                h-[clamp(20px,2.8dvh,30px)]
-                shrink-0
+                w-5 h-5 shrink-0
+                md:w-[clamp(20px,2.8dvh,30px)]
+                md:h-[clamp(20px,2.8dvh,30px)]
               "
               aria-hidden="true"
             />
@@ -1921,13 +1927,15 @@ const handleStop = () => { ttsStop(); };
           onClick={handleStop}
           className="
             w-full
-            h-[clamp(34px,4.8dvh,52px)]
+            h-8
+            md:h-[clamp(34px,4.8dvh,52px)]
             rounded-xl
             bg-red-600 hover:bg-red-700
             text-white
             inline-flex items-center justify-center
-            text-[clamp(14px,2.1dvh,22px)]
-            font-bold
+            text-sm
+            md:text-[clamp(14px,2.1dvh,22px)]
+            md:font-bold
           "
         >
           <span className="whitespace-nowrap leading-none">停止</span>
