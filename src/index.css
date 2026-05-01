@@ -99,81 +99,93 @@ body {
 }
 
 /* =========================================================
-   攻撃画面：
-   ・Androidの文字フォント設定に追従しやすくする
-   ・横幅はそのまま
-   ・縦方向だけ拡大して下側の空白を減らす
-   ・スマホは今まで通り
+   端末・表示領域に合わせた全画面共通調整
+   App.tsx で --app-vvh / data-device-kind / data-short-tablet を設定する
    ========================================================= */
 
+:root {
+  --app-vvw: 100vw;
+  --app-vvh: 100svh;
+  --app-root-font-size: 16px;
+}
+
+/* 実際に見えている高さを優先する */
+html,
+body,
+#root {
+  min-height: var(--app-vvh);
+}
+
+/* スマホは今まで通り */
+html[data-device-kind="phone"] {
+  font-size: 16px;
+}
+
+/* タブレットだけ文字・ボタン・余白の基準を少し大きくする */
+html[data-device-kind="tablet"] {
+  font-size: var(--app-root-font-size);
+}
+
+/* h-screen / min-h-screen が innerHeight 基準でズレる端末対策 */
+html[data-short-tablet="true"] .h-screen {
+  height: var(--app-vvh) !important;
+}
+
+html[data-short-tablet="true"] .min-h-screen {
+  min-height: var(--app-vvh) !important;
+}
+
+/* 既存の画面外枠クラス */
 .app-screen-fit {
-  min-height: 100svh;
+  min-height: var(--app-vvh);
   width: 100%;
   overflow-x: hidden;
   overflow-y: auto;
   background: #f8fafc;
 
-  /* Android / ブラウザの文字サイズ設定を反映しやすくする */
-  font-size: 1rem;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
 
+/* 攻撃画面などの中身。横方向のscaleは使わない */
 .app-scale-area {
   width: 100%;
   max-width: 100%;
   margin: 0 auto;
+  transform: none;
   transform-origin: top center;
 }
 
-/* 攻撃画面の中身に文字サイズの基準を作る */
+/* 攻撃画面の中身 */
 .offense-fit-content {
   font-size: 1rem;
   line-height: 1.35;
 }
 
-/* スマホは今まで通り */
-@media (max-width: 767px) {
-  .app-scale-area {
-    transform: none;
-  }
-
-  .offense-fit-content {
-    font-size: 1rem;
-  }
+/* タブレット時だけ攻撃画面内も少し見やすく */
+html[data-device-kind="tablet"] .offense-fit-content {
+  font-size: 1.08rem;
 }
 
-/* タブレット以上：文字・ボタンを少し見やすく */
-@media (min-width: 768px) {
-  .offense-fit-content {
-    font-size: 1.08rem;
-  }
+/* 今回のような表示高さが低めのタブレット */
+html[data-short-tablet="true"] .offense-fit-content {
+  font-size: 1.12rem;
 }
 
-/* 大きめタブレット：さらに少し拡大 */
-@media (min-width: 900px) and (min-height: 1000px) {
-  .offense-fit-content {
-    font-size: 1.14rem;
-  }
+/* タブレットではボタンを少し押しやすく */
+html[data-device-kind="tablet"] button {
+  min-height: 2.65rem;
 }
 
-/* タブレット縦：横幅はそのまま、縦方向だけ少し拡大 */
-@media (min-width: 768px) and (min-height: 850px) {
-  .app-scale-area {
-    transform: scaleY(1.08);
-  }
+/* 入力欄もタブレットで見やすく */
+html[data-device-kind="tablet"] input,
+html[data-device-kind="tablet"] select,
+html[data-device-kind="tablet"] textarea {
+  font-size: 1rem;
 }
 
-/* 縦がかなり余るタブレット */
-@media (min-width: 768px) and (min-height: 1000px) {
-  .app-scale-area {
-    transform: scaleY(1.14);
-  }
-}
-
-/* 大きめタブレット */
-@media (min-width: 900px) and (min-height: 1100px) {
-  .app-scale-area {
-    transform: scaleY(1.2);
-  }
+/* タブレットでモーダルを画面幅に合わせて広く */
+html[data-device-kind="tablet"] .tablet-wide-modal {
+  width: min(96vw, 900px);
+  max-width: min(96vw, 900px);
 }

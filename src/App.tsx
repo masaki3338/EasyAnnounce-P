@@ -222,6 +222,81 @@ const App = () => {
   const [showSuspendedGamePopup, setShowSuspendedGamePopup] = useState(false);
   const [showBoysManualPopup, setShowBoysManualPopup] = useState(false);
 
+  // ✅ 端末・表示領域に合わせて全画面のサイズを自動調整
+useEffect(() => {
+  const updateResponsiveVars = () => {
+    const vw = window.visualViewport?.width ?? window.innerWidth;
+    const vh = window.visualViewport?.height ?? window.innerHeight;
+
+    const isPortrait = window.matchMedia("(orientation: portrait)").matches;
+
+    const isPhone = vw < 640;
+
+    const isTabletPortrait =
+      vw >= 640 &&
+      vw < 1024 &&
+      isPortrait;
+
+    // 今回のような「幅はタブレット、実表示高さが低め」の端末
+    const isShortTablet =
+      isTabletPortrait &&
+      vw >= 760 &&
+      vw <= 850 &&
+      vh >= 780 &&
+      vh <= 900;
+
+    // 普通のタブレット
+    const isNormalTablet =
+      isTabletPortrait &&
+      !isShortTablet;
+
+    let rootFontSize = 16;
+
+    // スマホは変えない
+    if (isPhone) {
+      rootFontSize = 16;
+    }
+
+    // 今回の端末 800 × 844 付近は少し大きくする
+    else if (isShortTablet) {
+      rootFontSize = 18;
+    }
+
+    // 普通のタブレットも少しだけ大きくする
+    else if (isNormalTablet) {
+      rootFontSize = 17;
+    }
+
+    document.documentElement.style.setProperty("--app-vvw", `${vw}px`);
+    document.documentElement.style.setProperty("--app-vvh", `${vh}px`);
+    document.documentElement.style.setProperty("--app-root-font-size", `${rootFontSize}px`);
+
+    document.documentElement.dataset.deviceKind = isPhone
+      ? "phone"
+      : isTabletPortrait
+      ? "tablet"
+      : "desktop";
+
+    document.documentElement.dataset.shortTablet = isShortTablet
+      ? "true"
+      : "false";
+  };
+
+  updateResponsiveVars();
+
+  window.addEventListener("resize", updateResponsiveVars);
+  window.addEventListener("orientationchange", updateResponsiveVars);
+  window.visualViewport?.addEventListener("resize", updateResponsiveVars);
+  window.visualViewport?.addEventListener("scroll", updateResponsiveVars);
+
+  return () => {
+    window.removeEventListener("resize", updateResponsiveVars);
+    window.removeEventListener("orientationchange", updateResponsiveVars);
+    window.visualViewport?.removeEventListener("resize", updateResponsiveVars);
+    window.visualViewport?.removeEventListener("scroll", updateResponsiveVars);
+  };
+}, []);
+
   const [offenseRestoreTrigger, setOffenseRestoreTrigger] = useState(0);
 
   const [showTiebreakPopup, setShowTiebreakPopup] = useState(false);
