@@ -2015,17 +2015,31 @@ const handleStop = () => { ttsStop(); };
 )}
 
 {/* 🔽 守備交代 + 得点±1 + イニング終了（1行固定） */}
-<div className="my-3 flex gap-2">
+<div
+  className="
+    my-3
+    md:my-[clamp(10px,1.8dvh,18px)]
+    flex gap-2
+    md:gap-[clamp(8px,1.4dvh,14px)]
+  "
+>
   {/* 守備交代 */}
   <button
     type="button"
     onClick={onChangeDefense}
     className="
-      flex-1 h-12
+      flex-1
+      h-12
+      md:h-[clamp(50px,6.2dvh,70px)]
       bg-orange-500 hover:bg-orange-600
       text-white font-bold
-      rounded-xl shadow-lg
+      text-base
+      md:text-[clamp(17px,2.4dvh,25px)]
+      rounded-xl
+      md:rounded-[clamp(12px,1.8dvh,20px)]
+      shadow-lg
       flex items-center justify-center
+      whitespace-nowrap leading-none
       transform hover:scale-[1.02] active:scale-[0.97]
       transition-all duration-150
     "
@@ -2038,11 +2052,17 @@ const handleStop = () => { ttsStop(); };
     type="button"
     onClick={() => changeRun(-1)}
     className="
-      flex-[0.6] h-12 min-w-0
+      flex-[0.6]
+      h-12
+      md:h-[clamp(50px,6.2dvh,70px)]
+      min-w-0
       bg-red-600 hover:bg-red-700
       text-white font-extrabold
       text-[clamp(12px,3.5vw,16px)]
-      rounded-xl shadow-lg
+      md:text-[clamp(15px,2.2dvh,23px)]
+      rounded-xl
+      md:rounded-[clamp(12px,1.8dvh,20px)]
+      shadow-lg
       flex items-center justify-center
       whitespace-nowrap leading-none
       transform hover:scale-[1.02] active:scale-[0.97]
@@ -2053,17 +2073,23 @@ const handleStop = () => { ttsStop(); };
     得点−1
   </button>
 
-
   {/* 得点 +1 */}
   <button
     type="button"
     onClick={() => changeRun(+1)}
     className="
-      flex-1 h-12
+      flex-1
+      h-12
+      md:h-[clamp(50px,6.2dvh,70px)]
       bg-blue-600 hover:bg-blue-700
-      text-white font-extrabold text-lg
-      rounded-xl shadow-lg
+      text-white font-extrabold
+      text-lg
+      md:text-[clamp(17px,2.4dvh,25px)]
+      rounded-xl
+      md:rounded-[clamp(12px,1.8dvh,20px)]
+      shadow-lg
       flex items-center justify-center
+      whitespace-nowrap leading-none
       transform hover:scale-[1.02] active:scale-[0.97]
       transition-all duration-150
       ring-4 ring-blue-400/40
@@ -2087,13 +2113,20 @@ const handleStop = () => { ttsStop(); };
       setShowModal(true);
     }}
     className="
-      flex-[1.4] h-12 min-w-0
+      flex-[1.4]
+      h-12
+      md:h-[clamp(50px,6.2dvh,70px)]
+      min-w-0
       bg-black hover:bg-gray-900
       text-white font-extrabold
       text-[clamp(13px,3.6vw,18px)]
+      md:text-[clamp(16px,2.3dvh,24px)]
       tracking-wider
-      rounded-xl shadow-lg
+      rounded-xl
+      md:rounded-[clamp(12px,1.8dvh,20px)]
+      shadow-lg
       flex items-center justify-center gap-2
+      md:gap-[clamp(6px,1dvh,12px)]
       whitespace-nowrap leading-none
       transform hover:scale-[1.02] active:scale-[0.97]
       transition-all duration-150
@@ -2102,7 +2135,6 @@ const handleStop = () => { ttsStop(); };
   >
     ⚾イニング終了
   </button>
-
 </div>
 
 
