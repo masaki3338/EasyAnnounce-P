@@ -3246,8 +3246,8 @@ useEffect(() => {
         <div
           className="space-y-0 font-bold text-gray-800"
           style={{
-            fontSize: "clamp(15px, 1.65vh, 24px)",
-            lineHeight: 1.25,
+            fontSize: "clamp(13px, 1.45vh, 22px)",
+            lineHeight: 1.12,
           }}
         >
         {currentGameState.battingOrder9.map((slot, idx) => {
@@ -3287,7 +3287,7 @@ useEffect(() => {
                   }
                 }
               }}
-              className={`px-2 py-1 border-b cursor-pointer ${
+              className={`px-2 py-0.5 border-b cursor-pointer ${
                 isCurrent ? "bg-yellow-200" : ""
               }`}
             >
@@ -3295,7 +3295,7 @@ useEffect(() => {
                 <div>{slot.order}番</div>
                 <div>{positionLabel}</div>
 
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 min-w-0 overflow-hidden">
                   <input
                     type="checkbox"
                     checked={checkedIds.includes(slot.currentId)}
@@ -3303,17 +3303,17 @@ useEffect(() => {
                     className="mr-2"
                   />
 
-                  <ruby>
-                    {player?.lastName ?? ""}
-                    {player?.lastNameKana && <rt>{player.lastNameKana}</rt>}
-                  </ruby>
+                <ruby className="truncate max-w-[45%]">
+                  {player?.lastName ?? ""}
+                  {player?.lastNameKana && <rt>{player.lastNameKana}</rt>}
+                </ruby>
 
-                  {player?.firstName?.trim() ? (
-                    <ruby>
-                      {player.firstName}
-                      {player.firstNameKana && <rt>{player.firstNameKana}</rt>}
-                    </ruby>
-                  ) : null}
+                {player?.firstName?.trim() ? (
+                  <ruby className="truncate max-w-[45%]">
+                    {player.firstName}
+                    {player.firstNameKana && <rt>{player.firstNameKana}</rt>}
+                  </ruby>
+                ) : null}
                 </div>
 
                 <div>{formatNumberBadge(player?.number)}</div>
