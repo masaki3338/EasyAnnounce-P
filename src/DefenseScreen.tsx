@@ -1885,13 +1885,26 @@ const handleStop = () => { ttsStop(); };
         leading-tight
       "
     >
-      {announceMessages.map((msg, index) => (
+    {announceMessages.map((msg, index) => {
+      const isPitchCountMessage =
+        msg.includes("ピッチャー") &&
+        (msg.includes("投球数") || msg.includes("トータル") || msg.includes("合計投球数"));
+
+      return (
         <p
           key={index}
-          className="leading-tight"
+          className={`
+            leading-tight
+            ${
+              isPitchCountMessage
+                ? "text-lg md:!text-[clamp(18px,2.2dvh,24px)]"
+                : ""
+            }
+          `}
           dangerouslySetInnerHTML={{ __html: msg }}
         />
-      ))}
+      );
+    })}
 
       {/* 読み上げ／停止 */}
       <div className="mt-2 md:mt-[clamp(8px,1.4dvh,14px)] grid grid-cols-2 gap-2">
