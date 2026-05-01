@@ -910,11 +910,11 @@ return (
         aria-modal="true"
         onClick={() => setShowHelpModal(false)}
       >
-        <div
-          className="w-full max-w-[460px] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
-          onClick={(e) => e.stopPropagation()}
-          role="document"
-        >
+          <div
+            className="w-full max-w-[min(96vw,900px)] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
+            onClick={(e) => e.stopPropagation()}
+            role="document"
+          >
           {/* ヘッダー */}
           <div className="flex items-center justify-between bg-sky-600 px-4 py-3 text-white">
             <div className="flex items-center gap-2">
@@ -935,7 +935,7 @@ return (
           </div>
 
           {/* 本文 */}
-          <div className="max-h-[72svh] overflow-y-auto bg-white px-3 py-3">
+          <div className="max-h-[78svh] overflow-y-auto bg-white px-4 py-4">
             <div className="space-y-3">
               {/* 上部説明 */}
               <div className="rounded-[16px] border border-sky-200 bg-sky-50 px-3 py-3">
