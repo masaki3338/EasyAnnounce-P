@@ -751,7 +751,7 @@ const handleSpeak = async () => {
   return map[n] ?? `だい${n}しあい`;
 };
 
-  useKeepScreenAwake();
+  //useKeepScreenAwake();
 
   const canResumeGame = async (): Promise<ScreenType | null> => {
     const saved = await localForage.getItem<string>("lastGameScreen");
