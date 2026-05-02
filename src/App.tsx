@@ -909,6 +909,29 @@ return (
         leagueMode={leagueMode}
         iosKeepAwake={iosKeepAwake}
         onEnableIOSAwake={async () => {
+          const ua = navigator.userAgent || "";
+
+          const isStandalone =
+            window.matchMedia("(display-mode: standalone)").matches ||
+            (navigator as any).standalone === true;
+
+          const isChromeBrowser =
+            /Chrome/i.test(ua) &&
+            !/Edg|OPR|SamsungBrowser/i.test(ua) &&
+            !isStandalone;
+
+          // ✅ Chromeブラウザで直接開いている場合はWake Lockを使わない
+          // 一部端末で「Chromeが応答していません」が出るため
+          if (isChromeBrowser) {
+            alert(
+              "Chromeで直接開いている場合、この端末では待機機能が不安定です。\n\n" +
+              "ホーム画面に追加したアプリ、またはGoogle Play版で使用してください。\n" +
+              "もしくは端末の設定でスリープ時間を長めにしてください。"
+            );
+            setIosKeepAwake(false);
+            return;
+          }
+
           const ok = await acquireWakeLock();
 
           if (!ok) {
