@@ -4031,10 +4031,20 @@ const NotImplemented = ({ onBack }: { onBack: () => void }) => (
  
 
 
+const isTouchDevice = () => typeof window !== "undefined" && "ontouchstart" in window;
+
 const AppWrapped = () => (
-  <DndProvider backend={HTML5Backend}>
+  <DndProvider
+    backend={isTouchDevice() ? TouchBackend : HTML5Backend}
+    options={
+      isTouchDevice()
+        ? {
+            enableMouseEvents: true, // これを必ず追加！
+          }
+        : undefined
+    }
+  >
     <App />
   </DndProvider>
 );
-
 export default AppWrapped;
