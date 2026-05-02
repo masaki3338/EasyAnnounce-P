@@ -910,9 +910,16 @@ return (
         iosKeepAwake={iosKeepAwake}
         onEnableIOSAwake={async () => {
           const ok = await acquireWakeLock();
+
           if (!ok) {
-            enableIOSAwake();
+            alert(
+              "この端末では画面常時点灯が使えません。\n" +
+              "端末の設定でスリープ時間を長めに設定してください。"
+            );
+            setIosKeepAwake(false);
+            return;
           }
+
           setIosKeepAwake(true);
         }}
         onDisableIOSAwake={async () => {
