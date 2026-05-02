@@ -8,7 +8,7 @@ import { DndProvider } from 'react-dnd';
 import { TouchBackend } from 'react-dnd-touch-backend';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
-//import { useKeepScreenAwake } from "./hooks/useKeepScreenAwake";
+import { useKeepScreenAwake } from "./hooks/useKeepScreenAwake";
 
 import { speak, stop } from "./lib/tts"; // ファイル先頭付近に追記
 
@@ -223,87 +223,79 @@ const App = () => {
   const [showBoysManualPopup, setShowBoysManualPopup] = useState(false);
 
   // ✅ 端末・表示領域に合わせて全画面のサイズを自動調整
-  // Chromeが固まりにくいように、連続実行を requestAnimationFrame で1回にまとめる
-  useEffect(() => {
-    let rafId: number | null = null;
+useEffect(() => {
+  const updateResponsiveVars = () => {
+    const vw = window.visualViewport?.width ?? window.innerWidth;
+    const vh = window.visualViewport?.height ?? window.innerHeight;
 
-    const updateResponsiveVarsNow = () => {
-      const vw = window.visualViewport?.width ?? window.innerWidth;
-      const vh = window.visualViewport?.height ?? window.innerHeight;
+    const isPortrait = window.matchMedia("(orientation: portrait)").matches;
 
-      const isPortrait = window.matchMedia("(orientation: portrait)").matches;
+    const isPhone = vw < 640;
 
-      const isPhone = vw < 640;
+    const isTabletPortrait =
+      vw >= 640 &&
+      vw < 1024 &&
+      isPortrait;
 
-      const isTabletPortrait =
-        vw >= 640 &&
-        vw < 1024 &&
-        isPortrait;
+    // 今回のような「幅はタブレット、実表示高さが低め」の端末
+    const isShortTablet =
+      isTabletPortrait &&
+      vw >= 760 &&
+      vw <= 850 &&
+      vh >= 780 &&
+      vh <= 900;
 
-      const isShortTablet =
-        isTabletPortrait &&
-        vw >= 760 &&
-        vw <= 850 &&
-        vh >= 780 &&
-        vh <= 900;
+    // 普通のタブレット
+    const isNormalTablet =
+      isTabletPortrait &&
+      !isShortTablet;
 
-      const isNormalTablet =
-        isTabletPortrait &&
-        !isShortTablet;
+    let rootFontSize = 16;
 
-      let rootFontSize = 16;
+    // スマホは変えない
+    if (isPhone) {
+      rootFontSize = 16;
+    }
 
-      if (isPhone) {
-        rootFontSize = 16;
-      } else if (isShortTablet) {
-        rootFontSize = 18;
-      } else if (isNormalTablet) {
-        rootFontSize = 17;
-      }
+    // 今回の端末 800 × 844 付近は少し大きくする
+    else if (isShortTablet) {
+      rootFontSize = 18;
+    }
 
-      const root = document.documentElement;
+    // 普通のタブレットも少しだけ大きくする
+    else if (isNormalTablet) {
+      rootFontSize = 17;
+    }
 
-      root.style.setProperty("--app-vvw", `${vw}px`);
-      root.style.setProperty("--app-vvh", `${vh}px`);
-      root.style.setProperty("--app-root-font-size", `${rootFontSize}px`);
+    document.documentElement.style.setProperty("--app-vvw", `${vw}px`);
+    document.documentElement.style.setProperty("--app-vvh", `${vh}px`);
+    document.documentElement.style.setProperty("--app-root-font-size", `${rootFontSize}px`);
 
-      root.dataset.deviceKind = isPhone
-        ? "phone"
-        : isTabletPortrait
-        ? "tablet"
-        : "desktop";
+    document.documentElement.dataset.deviceKind = isPhone
+      ? "phone"
+      : isTabletPortrait
+      ? "tablet"
+      : "desktop";
 
-      root.dataset.shortTablet = isShortTablet ? "true" : "false";
-    };
+    document.documentElement.dataset.shortTablet = isShortTablet
+      ? "true"
+      : "false";
+  };
 
-    const updateResponsiveVars = () => {
-      if (rafId !== null) return;
+  updateResponsiveVars();
 
-      rafId = window.requestAnimationFrame(() => {
-        rafId = null;
-        updateResponsiveVarsNow();
-      });
-    };
+  window.addEventListener("resize", updateResponsiveVars);
+  window.addEventListener("orientationchange", updateResponsiveVars);
+  window.visualViewport?.addEventListener("resize", updateResponsiveVars);
+  window.visualViewport?.addEventListener("scroll", updateResponsiveVars);
 
-    updateResponsiveVarsNow();
-
-    window.addEventListener("resize", updateResponsiveVars);
-    window.addEventListener("orientationchange", updateResponsiveVars);
-    window.visualViewport?.addEventListener("resize", updateResponsiveVars);
-
-    // ❌ visualViewport の scroll はChrome固まりの原因になりやすいので付けない
-    // window.visualViewport?.addEventListener("scroll", updateResponsiveVars);
-
-    return () => {
-      if (rafId !== null) {
-        window.cancelAnimationFrame(rafId);
-      }
-
-      window.removeEventListener("resize", updateResponsiveVars);
-      window.removeEventListener("orientationchange", updateResponsiveVars);
-      window.visualViewport?.removeEventListener("resize", updateResponsiveVars);
-    };
-  }, []);
+  return () => {
+    window.removeEventListener("resize", updateResponsiveVars);
+    window.removeEventListener("orientationchange", updateResponsiveVars);
+    window.visualViewport?.removeEventListener("resize", updateResponsiveVars);
+    window.visualViewport?.removeEventListener("scroll", updateResponsiveVars);
+  };
+}, []);
 
   const [offenseRestoreTrigger, setOffenseRestoreTrigger] = useState(0);
 
@@ -751,7 +743,7 @@ const handleSpeak = async () => {
   return map[n] ?? `だい${n}しあい`;
 };
 
-  //useKeepScreenAwake();
+  useKeepScreenAwake();
 
   const canResumeGame = async (): Promise<ScreenType | null> => {
     const saved = await localForage.getItem<string>("lastGameScreen");
@@ -909,40 +901,10 @@ return (
         leagueMode={leagueMode}
         iosKeepAwake={iosKeepAwake}
         onEnableIOSAwake={async () => {
-          const ua = navigator.userAgent || "";
-
-          const isStandalone =
-            window.matchMedia("(display-mode: standalone)").matches ||
-            (navigator as any).standalone === true;
-
-          const isChromeBrowser =
-            /Chrome/i.test(ua) &&
-            !/Edg|OPR|SamsungBrowser/i.test(ua) &&
-            !isStandalone;
-
-          // ✅ Chromeブラウザで直接開いている場合はWake Lockを使わない
-          // 一部端末で「Chromeが応答していません」が出るため
-          if (isChromeBrowser) {
-            alert(
-              "Chromeで直接開いている場合、この端末では待機機能が不安定です。\n\n" +
-              "ホーム画面に追加したアプリ、またはGoogle Play版で使用してください。\n" +
-              "もしくは端末の設定でスリープ時間を長めにしてください。"
-            );
-            setIosKeepAwake(false);
-            return;
-          }
-
           const ok = await acquireWakeLock();
-
           if (!ok) {
-            alert(
-              "この端末では画面常時点灯が使えません。\n" +
-              "端末の設定でスリープ時間を長めに設定してください。"
-            );
-            setIosKeepAwake(false);
-            return;
+            enableIOSAwake();
           }
-
           setIosKeepAwake(true);
         }}
         onDisableIOSAwake={async () => {
@@ -4031,10 +3993,20 @@ const NotImplemented = ({ onBack }: { onBack: () => void }) => (
  
 
 
+const isTouchDevice = () => typeof window !== "undefined" && "ontouchstart" in window;
+
 const AppWrapped = () => (
-  <DndProvider backend={HTML5Backend}>
+  <DndProvider
+    backend={isTouchDevice() ? TouchBackend : HTML5Backend}
+    options={
+      isTouchDevice()
+        ? {
+            enableMouseEvents: true, // これを必ず追加！
+          }
+        : undefined
+    }
+  >
     <App />
   </DndProvider>
 );
-
 export default AppWrapped;
