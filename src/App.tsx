@@ -223,79 +223,87 @@ const App = () => {
   const [showBoysManualPopup, setShowBoysManualPopup] = useState(false);
 
   // ✅ 端末・表示領域に合わせて全画面のサイズを自動調整
-useEffect(() => {
-  const updateResponsiveVars = () => {
-    const vw = window.visualViewport?.width ?? window.innerWidth;
-    const vh = window.visualViewport?.height ?? window.innerHeight;
+  // Chromeが固まりにくいように、連続実行を requestAnimationFrame で1回にまとめる
+  useEffect(() => {
+    let rafId: number | null = null;
 
-    const isPortrait = window.matchMedia("(orientation: portrait)").matches;
+    const updateResponsiveVarsNow = () => {
+      const vw = window.visualViewport?.width ?? window.innerWidth;
+      const vh = window.visualViewport?.height ?? window.innerHeight;
 
-    const isPhone = vw < 640;
+      const isPortrait = window.matchMedia("(orientation: portrait)").matches;
 
-    const isTabletPortrait =
-      vw >= 640 &&
-      vw < 1024 &&
-      isPortrait;
+      const isPhone = vw < 640;
 
-    // 今回のような「幅はタブレット、実表示高さが低め」の端末
-    const isShortTablet =
-      isTabletPortrait &&
-      vw >= 760 &&
-      vw <= 850 &&
-      vh >= 780 &&
-      vh <= 900;
+      const isTabletPortrait =
+        vw >= 640 &&
+        vw < 1024 &&
+        isPortrait;
 
-    // 普通のタブレット
-    const isNormalTablet =
-      isTabletPortrait &&
-      !isShortTablet;
+      const isShortTablet =
+        isTabletPortrait &&
+        vw >= 760 &&
+        vw <= 850 &&
+        vh >= 780 &&
+        vh <= 900;
 
-    let rootFontSize = 16;
+      const isNormalTablet =
+        isTabletPortrait &&
+        !isShortTablet;
 
-    // スマホは変えない
-    if (isPhone) {
-      rootFontSize = 16;
-    }
+      let rootFontSize = 16;
 
-    // 今回の端末 800 × 844 付近は少し大きくする
-    else if (isShortTablet) {
-      rootFontSize = 18;
-    }
+      if (isPhone) {
+        rootFontSize = 16;
+      } else if (isShortTablet) {
+        rootFontSize = 18;
+      } else if (isNormalTablet) {
+        rootFontSize = 17;
+      }
 
-    // 普通のタブレットも少しだけ大きくする
-    else if (isNormalTablet) {
-      rootFontSize = 17;
-    }
+      const root = document.documentElement;
 
-    document.documentElement.style.setProperty("--app-vvw", `${vw}px`);
-    document.documentElement.style.setProperty("--app-vvh", `${vh}px`);
-    document.documentElement.style.setProperty("--app-root-font-size", `${rootFontSize}px`);
+      root.style.setProperty("--app-vvw", `${vw}px`);
+      root.style.setProperty("--app-vvh", `${vh}px`);
+      root.style.setProperty("--app-root-font-size", `${rootFontSize}px`);
 
-    document.documentElement.dataset.deviceKind = isPhone
-      ? "phone"
-      : isTabletPortrait
-      ? "tablet"
-      : "desktop";
+      root.dataset.deviceKind = isPhone
+        ? "phone"
+        : isTabletPortrait
+        ? "tablet"
+        : "desktop";
 
-    document.documentElement.dataset.shortTablet = isShortTablet
-      ? "true"
-      : "false";
-  };
+      root.dataset.shortTablet = isShortTablet ? "true" : "false";
+    };
 
-  updateResponsiveVars();
+    const updateResponsiveVars = () => {
+      if (rafId !== null) return;
 
-  window.addEventListener("resize", updateResponsiveVars);
-  window.addEventListener("orientationchange", updateResponsiveVars);
-  window.visualViewport?.addEventListener("resize", updateResponsiveVars);
-  window.visualViewport?.addEventListener("scroll", updateResponsiveVars);
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        updateResponsiveVarsNow();
+      });
+    };
 
-  return () => {
-    window.removeEventListener("resize", updateResponsiveVars);
-    window.removeEventListener("orientationchange", updateResponsiveVars);
-    window.visualViewport?.removeEventListener("resize", updateResponsiveVars);
-    window.visualViewport?.removeEventListener("scroll", updateResponsiveVars);
-  };
-}, []);
+    updateResponsiveVarsNow();
+
+    window.addEventListener("resize", updateResponsiveVars);
+    window.addEventListener("orientationchange", updateResponsiveVars);
+    window.visualViewport?.addEventListener("resize", updateResponsiveVars);
+
+    // ❌ visualViewport の scroll はChrome固まりの原因になりやすいので付けない
+    // window.visualViewport?.addEventListener("scroll", updateResponsiveVars);
+
+    return () => {
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+
+      window.removeEventListener("resize", updateResponsiveVars);
+      window.removeEventListener("orientationchange", updateResponsiveVars);
+      window.visualViewport?.removeEventListener("resize", updateResponsiveVars);
+    };
+  }, []);
 
   const [offenseRestoreTrigger, setOffenseRestoreTrigger] = useState(0);
 
