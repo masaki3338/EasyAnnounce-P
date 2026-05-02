@@ -4031,43 +4031,8 @@ const NotImplemented = ({ onBack }: { onBack: () => void }) => (
  
 
 
-const isStandaloneApp = () => {
-  if (typeof window === "undefined") return false;
-
-  return (
-    window.matchMedia("(display-mode: standalone)").matches ||
-    (navigator as any).standalone === true
-  );
-};
-
-const isTouchDevice = () =>
-  typeof window !== "undefined" && "ontouchstart" in window;
-
-const shouldUseTouchBackend = () => {
-  const ua = navigator.userAgent || "";
-
-  const isChromeBrowser =
-    /Chrome/i.test(ua) &&
-    !/Edg|OPR|SamsungBrowser/i.test(ua) &&
-    !isStandaloneApp();
-
-  // Chromeブラウザ直開きでは TouchBackend を使わない
-  if (isChromeBrowser) return false;
-
-  return isTouchDevice();
-};
-
 const AppWrapped = () => (
-  <DndProvider
-    backend={shouldUseTouchBackend() ? TouchBackend : HTML5Backend}
-    options={
-      shouldUseTouchBackend()
-        ? {
-            enableMouseEvents: true,
-          }
-        : undefined
-    }
-  >
+  <DndProvider backend={HTML5Backend}>
     <App />
   </DndProvider>
 );
