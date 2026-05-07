@@ -2108,11 +2108,11 @@ const getPreviousDefenseInningLabel = () => {
 
   // 4回表の攻撃画面 → 3回裏の守備画面に戻す
   if (isTop) {
-    return `${inning - 1}回裏に戻す`;
+    return `${inning - 1}回裏の最後に戻す`;
   }
 
   // 4回裏の攻撃画面 → 4回表の守備画面に戻す
-  return `${inning}回表に戻す`;
+  return `${inning}回表の最後に戻す`;
 };
 
 const scoreModalTitle =

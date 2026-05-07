@@ -1445,12 +1445,12 @@ const getPreviousInningLabel = () => {
   // 現在が表の守備画面なら、前の攻撃回は「前の回の裏」
   // 例：4回表の守備画面 → 3回裏に戻す
   if (isTop) {
-    return `${inning - 1}回裏に戻す`;
+    return `${inning - 1}回裏の最後に戻す`;
   }
 
   // 現在が裏の守備画面なら、前の攻撃回は「同じ回の表」
   // 例：4回裏の守備画面 → 4回表に戻す
-  return `${inning}回表に戻す`;
+  return `${inning}回表の最後に戻す`;
 };
 
 const handleStop = () => { ttsStop(); };

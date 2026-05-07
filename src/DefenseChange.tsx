@@ -4055,7 +4055,14 @@ const hoverPosRef = React.useRef<string | null>(null);
 // 変更検知用
 const [isDirty, setIsDirty] = useState(false);
 const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+
+// ✅ 追加：アナウンス表示を押さずに交代確定した時の確認
+const [showUnannouncedConfirm, setShowUnannouncedConfirm] = useState(false);
+const [hasShownAnnouncement, setHasShownAnnouncement] = useState(false);
+const skipUnannouncedConfirmRef = useRef(false);
+
 const snapshotRef = useRef<string | null>(null);
+
 //非リエントリー時の確認モーダル
 type PendingNonReentryDrop = {
   toPos: string;      // 守備位置シンボル（"捕"など）
@@ -6257,6 +6264,15 @@ if (fromPos === BENCH && toPos !== BENCH) {
 const confirmChange = async () => {
   console.log("[DEBUG] confirm clicked", { assignments, battingReplacements });
 
+  // ✅ 交代が発生していて、アナウンス表示を一度も押していない場合は確認
+  if (isDirty && !hasShownAnnouncement && !skipUnannouncedConfirmRef.current) {
+    setShowUnannouncedConfirm(true);
+    return;
+  }
+
+  // YESで続行した後は、次回のために戻す
+  skipUnannouncedConfirmRef.current = false;
+
   await pushHistory(); // ★確定直前スナップショットを永続化まで行う
 
   let usedInfo: Record<
@@ -6728,6 +6744,7 @@ snapshotRef.current = JSON.stringify({
   dhEnabledAtStart: finalDhEnabledAtStart,
 });
 setIsDirty(false);
+setHasShownAnnouncement(false);
 
 // =========================================================
 // 1回表・先攻チームで、代打/代走/臨時代走が入っている場合は
@@ -6790,6 +6807,10 @@ const prevPitcherCountAnnouncement = didPitcherChange
   : "";
 
   setPitcherCountAnnouncement(prevPitcherCountAnnouncement);
+
+  // ✅ アナウンス表示ボタンを押した扱いにする
+  setHasShownAnnouncement(true);
+
   setShowSaveModal(true);
 };
 
@@ -9614,6 +9635,58 @@ const canDropHere =
             YES
           </button>
 
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* アナウンス未表示確認モーダル */}
+{showUnannouncedConfirm && (
+  <div
+    className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 px-6"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="unannounced-confirm-title"
+    onClick={() => setShowUnannouncedConfirm(false)}
+  >
+    <div
+      className="w-full max-w-sm rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+      onClick={(e) => e.stopPropagation()}
+      role="document"
+    >
+      <div className="bg-rose-600 text-white text-center font-bold py-3">
+        <h3 id="unannounced-confirm-title" className="text-base">確認</h3>
+      </div>
+
+      <div className="px-6 py-5 text-center">
+        <p className="whitespace-pre-line text-[15px] font-bold leading-relaxed">
+          アナウンス表示してませんが{"\n"}
+          よろしいですか？
+        </p>
+      </div>
+
+      <div className="px-5 pb-5">
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            className="w-full py-3 rounded-full bg-gray-500 text-white font-semibold hover:bg-gray-600 active:bg-gray-700"
+            onClick={() => setShowUnannouncedConfirm(false)}
+          >
+            NO
+          </button>
+
+          <button
+            type="button"
+            className="w-full py-3 rounded-full bg-emerald-600 text-white font-semibold hover:bg-emerald-700 active:bg-emerald-800"
+            onClick={async () => {
+              setShowUnannouncedConfirm(false);
+              skipUnannouncedConfirmRef.current = true;
+              await confirmChange();
+            }}
+          >
+            YES
+          </button>
         </div>
       </div>
     </div>
