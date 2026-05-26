@@ -37,61 +37,11 @@ type HistoryItem = {
 
 const historyData: HistoryItem[] = [
   {
-    date: "2026.03.05",
-    version: "Vesion 1.00 β",
-    details: ["Release"],
+    date: "2026.05.26",
+    version: "Vesion 1.00",
+    details: ["GooglePlay Release"],
   },
-  {
-    date: "2026.03.10",
-    version: "Vesion 2.00 β",
-    details: ["Boysリーグモード追加"],
-  },
-  {
-    date: "2026.03.17",
-    version: "Vesion 2.01 β",
-    details: ["リエントリー時の不具合修正 他"],
-  },
-  {
-    date: "2026.03.23",
-    version: "Vesion 2.02 β",
-    details: ["投球数の不具合修正 他"],
-  },
-  {
-    date: "2026.03.26",
-    version: "Vesion 2.03 β",
-    details: ["選手交代の不具合修正 他"],
-  },
-  {
-    date: "2026.03.31",
-    version: "Vesion 2.04 β",
-    details: ["不具合修正 他"],
-  },
-  {
-    date: "2026.04.02",
-    version: "Vesion 2.05 β",
-    details: ["使い方ボタン追加 他"],
-  },
-  {
-    date: "2026.04.13",
-    version: "Vesion 2.06 β",
-    details: ["不具合修正"],
-  },
-  {
-    date: "2026.04.16",
-    version: "Vesion 2.07 β",
-    details: ["複数チーム対応,守備番号で交代に「と」(守備位置交換)を追加"],
-  },
-  {
-    date: "2026.04.24",
-    version: "Vesion 2.08 β",
-    details: ["15人までのスタメン設定に対応"],
-  },
-  {
-    date: "2026.04.27",
-    version: "Vesion 2.09 β",
-    details: ["イニングを戻す対応"],
-  },
-];
+ ];
 
 export default function VersionInfo({ version, onBack }: Props) {
   const [openIndex, setOpenIndex] = useState<number | null>(0); // 最新を最初から開く
