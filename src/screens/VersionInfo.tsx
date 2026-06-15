@@ -41,6 +41,11 @@ const historyData: HistoryItem[] = [
     version: "Vesion 1.00",
     details: ["GooglePlay Release"],
   },
+  {
+    date: "2026.06.15",
+    version: "Vesion 1.01",
+    details: ["シートノック時間変更可能対応"],
+  },
  ];
 
 export default function VersionInfo({ version, onBack }: Props) {
