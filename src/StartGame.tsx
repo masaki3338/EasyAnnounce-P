@@ -1,5 +1,9 @@
 import React, { useEffect, useState } from "react";
 import localForage from "localforage";
+import {
+  getAnnouncementMode,
+  type AnnouncementMode,
+} from "./lib/announcementMode";
 
 type BattingEntry = {
   id: number;
@@ -61,6 +65,155 @@ async function clearUndoRedoHistory() {
     }
   });
 }
+async function clearBackSnapshotStateOnGameStart() {
+  const snapshotKeysToRemove: string[] = [];
+
+  await localForage.iterate((_value, key) => {
+    const k = String(key);
+    const lower = k.toLowerCase();
+
+    // 「戻る」「〇回の表/裏に戻す」「〇回の表/裏の最後に戻す」で使う保存領域は、
+    // matchKey 付きで複数残るため、試合開始時に全試合分を削除する。
+    if (
+      k.startsWith("onePersonFirstInningCheckInitialized::") ||
+      k.startsWith("offenseInningStartSnapshot::") ||
+      k.startsWith("previousInningEndSnapshot::") ||
+      k.startsWith("previousDefenseInningEndSnapshot::") ||
+      lower.includes("snapshot")
+    ) {
+      snapshotKeysToRemove.push(k);
+    }
+  });
+
+  await Promise.all(snapshotKeysToRemove.map((key) => localForage.removeItem(key)));
+}
+
+async function clearOnePersonGameStartState() {
+  const removeKeys = [
+    // 共通チェック状態
+    "checkedIds",
+    "announcedIds",
+
+    // 1人アナウンスモード：チーム別チェック状態
+    "onePerson.third.checkedIds",
+    "onePerson.third.announcedIds",
+    "onePerson.first.checkedIds",
+    "onePerson.first.announcedIds",
+
+    // 1人アナウンスモード：前試合の打順位置
+    "onePerson.third.lastBatterIndex",
+    "onePerson.first.lastBatterIndex",
+
+    // 代走・ランナー・交代系の前試合残りを消す
+    "runnerAssignments",
+    "replacedRunners",
+    "tempRunnerFlags",
+    "selectedRunnerByBase",
+    "tempRunnerByOrder",
+    "substitutionLogs",
+    "pairLocks",
+    "battingReplacements",
+    "benchPlayers",
+  ];
+
+  await Promise.all(removeKeys.map((key) => localForage.removeItem(key)));
+
+  // 試合キー付きの「戻る」用 snapshot は、専用関数で全削除する
+  await clearBackSnapshotStateOnGameStart();
+}
+
+
+async function clearUsedSubstitutionStateOnGameStart() {
+  const removeKeys = [
+    // 出場済み・リエントリー判定
+    "usedPlayerInfo",
+    "usedPlayerIds",
+    "usedPlayers",
+    "appearedPlayerIds",
+    "playedPlayerIds",
+    "substitutedPlayerIds",
+
+    // 代打・代走
+    "usedBatterIds",
+    "pinchHitterUsedIds",
+    "pinchRunnerUsedIds",
+    "battingReplacements",
+    "runnerAssignments",
+    "replacedRunners",
+    "tempRunnerFlags",
+    "selectedRunnerByBase",
+    "tempRunnerByOrder",
+
+    // 守備交代・交代ログ
+    "substitutionLogs",
+    "pairLocks",
+    "benchReactivatedIds",
+
+    // 1人アナウンスモード用に残る可能性があるもの
+    "onePerson.third.usedPlayerInfo",
+    "onePerson.first.usedPlayerInfo",
+    "onePerson.third.usedPlayerIds",
+    "onePerson.first.usedPlayerIds",
+    "onePerson.third.pinchHitterUsedIds",
+    "onePerson.first.pinchHitterUsedIds",
+    "onePerson.third.pinchRunnerUsedIds",
+    "onePerson.first.pinchRunnerUsedIds",
+    "onePerson.third.substitutionLogs",
+    "onePerson.first.substitutionLogs",
+    "onePerson.third.battingReplacements",
+    "onePerson.first.battingReplacements",
+    "onePerson.third.runnerAssignments",
+    "onePerson.first.runnerAssignments",
+  ];
+
+  await Promise.all(removeKeys.map((key) => localForage.removeItem(key)));
+
+  // 試合ID付き・チーム付きで保存されている出場済み系も削除
+  const dynamicKeysToRemove: string[] = [];
+
+  await localForage.iterate((_value, key) => {
+    const k = String(key);
+
+    if (
+      k.includes("usedPlayerInfo") ||
+      k.includes("usedPlayerIds") ||
+      k.includes("usedPlayers") ||
+      k.includes("appearedPlayerIds") ||
+      k.includes("playedPlayerIds") ||
+      k.includes("substitutedPlayerIds") ||
+      k.includes("pinchHitterUsedIds") ||
+      k.includes("pinchRunnerUsedIds") ||
+      k.includes("substitutionLogs") ||
+      k.includes("battingReplacements") ||
+      k.includes("runnerAssignments") ||
+      k.includes("replacedRunners")
+    ) {
+      dynamicKeysToRemove.push(k);
+    }
+  });
+
+  await Promise.all(dynamicKeysToRemove.map((key) => localForage.removeItem(key)));
+}
+
+
+// ✅ 試合開始時は、打順に残っている代打・代走・リエントリー等の理由を必ず消す
+// 前試合や「戻す」操作で startingBattingOrder / battingOrder に reason が残ると、
+// 試合開始直後の攻撃画面で守備位置が「代走」「代打」と表示されるため。
+function sanitizeGameStartBattingOrder(order: BattingEntry[] | null | undefined): BattingEntry[] {
+  if (!Array.isArray(order)) return [];
+
+  return order
+    .map((entry: any) => {
+      const id = Number(typeof entry === "number" ? entry : entry?.id);
+      if (!Number.isFinite(id)) return null;
+
+      // reason は持ち越さない。守備位置は lineupAssignments / startingExtraPositionMap から表示させる。
+      return { id };
+    })
+    .filter((entry): entry is BattingEntry => entry !== null)
+    .slice(0, MAX_BATTING_ORDER);
+}
+
 
 
 const StartGame = ({
@@ -81,17 +234,207 @@ const StartGame = ({
   const [battingOrder, setBattingOrder] = useState<BattingEntry[]>([]);
   const [extraPositionMap, setExtraPositionMap] = useState<ExtraPositionMap>({});
 
+  const [announcementMode, setAnnouncementMode] =
+  useState<"normal" | "single">("normal");
+
+  const [thirdTeamName, setThirdTeamName] = useState("");
+  const [firstTeamName, setFirstTeamName] = useState("");
+  const [onePersonFirstAttackSide, setOnePersonFirstAttackSide] =
+    useState<"first" | "third">("first");
+  
+  const [thirdPlayers, setThirdPlayers] = useState<any[]>([]);
+  const [firstPlayers, setFirstPlayers] = useState<any[]>([]);
+
+  const [thirdAssignments, setThirdAssignments] =
+    useState<Record<string, number | null>>({});
+
+  const [firstAssignments, setFirstAssignments] =
+    useState<Record<string, number | null>>({});
+
+  const [thirdBattingOrder, setThirdBattingOrder] =
+    useState<BattingEntry[]>([]);
+
+  const [firstBattingOrder, setFirstBattingOrder] =
+    useState<BattingEntry[]>([]);
+    
   const [benchOutIds, setBenchOutIds] = useState<number[]>([]); // 🆕
+  const [thirdBenchOutIds, setThirdBenchOutIds] = useState<number[]>([]);
+  const [firstBenchOutIds, setFirstBenchOutIds] = useState<number[]>([]);
 
   // 「試合開始」押下時に出す案内モーダルの表示フラグ
   const [showStartHint, setShowStartHint] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showLineupErrorModal, setShowLineupErrorModal] = useState(false);
 
+  const teamKey = (teamId: string, name: string) =>
+    `${name}_${teamId}`;
+
+  const loadTeamBenchOutIds = async (teamId: any) => {
+    if (!teamId) return [];
+
+    const raw =
+      (await localForage.getItem<number[]>(`startingBenchOutIds_${teamId}`)) ??
+      [];
+
+    return Array.from(
+      new Set(
+        (Array.isArray(raw) ? raw : [])
+          .map((v) => Number(v))
+          .filter(Number.isFinite)
+      )
+    );
+  };
+
+  const loadTeamFolder = async (teamId: string) => {
+    const store = await localForage.getItem<any>("teamRegisterStore");
+    return store?.teams?.find(
+      (t: any) => String(t.id) === String(teamId)
+    );
+  };
+
+  const getTeamDisplayName = (folder: any) => {
+    return (
+      folder?.team?.name ||
+      folder?.name ||
+      folder?.teamName ||
+      folder?.listName ||
+      ""
+    );
+  };
+
+  const normalizeOnePersonSide = (value: any): "first" | "third" | null => {
+  const s = String(value ?? "").trim().toLowerCase();
+
+  if (
+    s === "first" ||
+    s === "1" ||
+    s === "1塁側" ||
+    s.includes("1塁") ||
+    s.includes("一塁")
+  ) {
+    return "first";
+  }
+
+  if (
+    s === "third" ||
+    s === "3" ||
+    s === "3塁側" ||
+    s.includes("3塁") ||
+    s.includes("三塁")
+  ) {
+    return "third";
+  }
+
+  return null;
+};
+
+  const oppositeOnePersonSide = (side: "first" | "third"): "first" | "third" =>
+    side === "first" ? "third" : "first";
+
+  const sideText = (side: "first" | "third") =>
+    side === "first" ? "1塁側" : "3塁側";
+
+  const toDisplayPlayers = (players: any[] = []) =>
+    players.map((p: any) => ({
+      id: Number(p.id),
+      number: p.number,
+      name: `${p.lastName ?? ""}${p.firstName ?? ""}`,
+    }));
 
 useEffect(() => {
   const loadData = async () => {
-    const matchInfo = await localForage.getItem("matchInfo");
+  const matchInfo = await localForage.getItem("matchInfo");
+  const mi = matchInfo as any;
+
+  // ✅ アナウンスモード画面で保存した設定を優先する
+  const savedMode = await getAnnouncementMode();
+
+  const mode: AnnouncementMode =
+    savedMode === "single" ? "single" : "normal";
+
+  setAnnouncementMode(mode);
+
+  // ✅ matchInfo 側にも現在のモードを同期して、古い single が残らないようにする
+  await localForage.setItem("matchInfo", {
+    ...(mi || {}),
+    announcementMode: mode,
+  });
+
+  if (mode === "single") {
+      const thirdTeamId = mi?.thirdBaseTeamId;
+      const firstTeamId = mi?.firstBaseTeamId;
+
+const benchSide: "first" | "third" =
+  mi?.benchSide === "3塁側" ? "third" : "first";
+
+const explicitFirstAttackSide =
+  normalizeOnePersonSide(mi?.onePersonFirstAttackSide) ??
+  normalizeOnePersonSide(mi?.firstAttackSide) ??
+  normalizeOnePersonSide(mi?.firstBattingSide) ??
+  normalizeOnePersonSide(mi?.topSide) ??
+  normalizeOnePersonSide(mi?.offenseFirstSide) ??
+  normalizeOnePersonSide(mi?.firstAttackBaseSide) ??
+  normalizeOnePersonSide(mi?.battingFirstSide);
+
+const derivedFirstAttackSide: "first" | "third" =
+  typeof mi?.isHome === "boolean"
+    ? mi.isHome
+      ? oppositeOnePersonSide(benchSide)
+      : benchSide
+    : benchSide;
+
+setOnePersonFirstAttackSide(
+  explicitFirstAttackSide ?? derivedFirstAttackSide
+);
+
+      const thirdFolder = thirdTeamId ? await loadTeamFolder(thirdTeamId) : null;
+      const firstFolder = firstTeamId ? await loadTeamFolder(firstTeamId) : null;
+
+      setThirdTeamName(getTeamDisplayName(thirdFolder));
+      setFirstTeamName(getTeamDisplayName(firstFolder));
+
+      setThirdPlayers(toDisplayPlayers(thirdFolder?.team?.players || []));
+      setFirstPlayers(toDisplayPlayers(firstFolder?.team?.players || []));
+      setThirdBenchOutIds(await loadTeamBenchOutIds(thirdTeamId));
+      setFirstBenchOutIds(await loadTeamBenchOutIds(firstTeamId));
+
+      const thirdA =
+        (await localForage.getItem<Record<string, number | null>>(
+          teamKey(thirdTeamId, "startingassignments")
+        )) ?? {};
+
+      const firstA =
+        (await localForage.getItem<Record<string, number | null>>(
+          teamKey(firstTeamId, "startingassignments")
+        )) ?? {};
+
+      const thirdO =
+        (await localForage.getItem<BattingEntry[]>(
+          teamKey(thirdTeamId, "startingBattingOrder")
+        )) ?? [];
+
+      const firstO =
+        (await localForage.getItem<BattingEntry[]>(
+          teamKey(firstTeamId, "startingBattingOrder")
+        )) ?? [];
+
+      setThirdAssignments(thirdA);
+      setFirstAssignments(firstA);
+      setThirdBattingOrder(thirdO);
+      setFirstBattingOrder(firstO);
+
+      setIsTwoUmpires(Boolean(mi.twoUmpires));
+
+      if (Array.isArray(mi.umpires)) {
+        const umpireMap: { [key: string]: string } = {};
+        mi.umpires.forEach((u: { role: string; name: string }) => {
+          umpireMap[u.role] = u.name || "";
+        });
+        setUmpires(umpireMap);
+      }
+
+      return;
+    }
 
     // ▼▼▼ ここから置換：assign / order / benchOutIds を draft 優先で取得 ▼▼▼
     const assign =
@@ -176,10 +519,63 @@ useEffect(() => {
     return players.find((p) => Number(p.id) === id);
   };
 
+  const getPlayerFrom = (list: any[], id: number | null) => {
+    if (id == null || isNaN(Number(id))) return undefined;
+    return list.find((p) => Number(p.id) === Number(id));
+  };
+
+  const getDisplayPosFrom = (
+    assign: Record<string, number | null>,
+    playerId: number | null | undefined
+  ) => {
+    const n = Number(playerId);
+    if (!Number.isFinite(n)) return "—";
+
+    const pos = Object.keys(assign || {}).find(
+      (p) => Number(assign[p]) === n
+    );
+
+    return pos || "—";
+  };
+
+  const getBenchPlayersFrom = (
+    playerList: any[],
+    order: BattingEntry[],
+    assign: Record<string, number | null>,
+    benchOut: number[] = []
+  ) => {
+    const orderIds = order
+      .map((e) => Number(e.id))
+      .filter(Number.isFinite);
+
+    const assignIds = Object.values(assign || {})
+      .filter((v) => v !== null && v !== undefined)
+      .map(Number)
+      .filter(Number.isFinite);
+
+    const benchOutIds = (Array.isArray(benchOut) ? benchOut : [])
+      .map(Number)
+      .filter(Number.isFinite);
+
+    return playerList.filter((p) => {
+      const id = Number(p.id);
+      if (!Number.isFinite(id)) return false;
+
+      return (
+        !orderIds.includes(id) &&
+        !assignIds.includes(id) &&
+        !benchOutIds.includes(id)
+      );
+    });
+  };
+
   // スタメン人数を判定するヘルパー（開始条件は9人以上）
-const getStartingMemberCount = () => {
-  const idsFromOrder = Array.isArray(battingOrder)
-    ? battingOrder
+const countStartingMembers = (
+  order: any[],
+  assign: Record<string, number | null>
+) => {
+  const idsFromOrder = Array.isArray(order)
+    ? order
         .map((e: any) => Number(e?.id ?? e))
         .filter((id: number) => Number.isFinite(id))
     : [];
@@ -188,16 +584,34 @@ const getStartingMemberCount = () => {
   if (uniqOrder.length > 0) return uniqOrder.length;
 
   const pos9 = ["投", "捕", "一", "二", "三", "遊", "左", "中", "右"];
-  const hasDH = assignments && assignments["指"] != null;
+  const hasDH = assign && assign["指"] != null;
   const orderPos = hasDH ? [...pos9.filter((p) => p !== "投"), "指"] : pos9;
 
   const idsFromAssign = orderPos
-    .map((p) => assignments?.[p])
+    .map((p) => assign?.[p])
     .filter((v) => v != null)
     .map((v) => Number(v))
     .filter((id) => Number.isFinite(id));
 
   return [...new Set(idsFromAssign)].length;
+};
+
+const getStartingMemberCount = () => {
+  if (announcementMode === "single") {
+    const thirdCount = countStartingMembers(
+      thirdBattingOrder,
+      thirdAssignments
+    );
+
+    const firstCount = countStartingMembers(
+      firstBattingOrder,
+      firstAssignments
+    );
+
+    return Math.min(thirdCount, firstCount);
+  }
+
+  return countStartingMembers(battingOrder, assignments);
 };
 
 // 1) ボタン押下時はモーダルを開くだけ
@@ -234,14 +648,173 @@ const proceedStart = async () => {
   await localForage.removeItem("startTime");
   await localForage.removeItem("gameStartTime");
 
-  // 打順チェックボックスをクリア
-  await localForage.removeItem("checkedIds");
-  // アナウンス済みチェックをクリア
-  await localForage.removeItem("announcedIds");
-  // 出場済み（リエントリー判定などに使う）をクリア
-  await localForage.removeItem("usedPlayerInfo");
+  // ✅ 攻撃画面側にも「新しい試合開始」を通知して、画面内 state の残骸を消す
+  await localForage.setItem("gameStartToken", Date.now());
+
+  // ✅ 試合開始時に1人アナウンスモードの前試合状態も完全クリア
+  // ここで消しておかないと、1回表・1回裏で前試合のチェック状態やsnapshotが残ることがある
+  await clearOnePersonGameStartState();
+
+  // ✅ 試合開始時に代打・代走・出場済み選手の前試合状態を完全クリア
+  // usedPlayerInfo だけでは、代打・代走画面に残る出場済み判定を消し切れないためまとめて削除する
+  await clearUsedSubstitutionStateOnGameStart();
+
    // 🧹 守備交代の取消／やり直し履歴も完全クリア（前試合の残骸を消す）
   await clearUndoRedoHistory();
+
+  // ✅ 1人アナウンスモード専用：両チームの試合開始データを保存
+  if (announcementMode === "single") {
+    const matchInfo = ((await localForage.getItem("matchInfo")) as any) || {};
+
+    const thirdTeamId = matchInfo?.thirdBaseTeamId;
+    const firstTeamId = matchInfo?.firstBaseTeamId;
+
+    const thirdFolder = thirdTeamId ? await loadTeamFolder(thirdTeamId) : null;
+    const firstFolder = firstTeamId ? await loadTeamFolder(firstTeamId) : null;
+
+    const thirdA =
+      (await localForage.getItem<Record<string, number | null>>(
+        teamKey(thirdTeamId, "startingassignments")
+      )) ?? {};
+
+    const firstA =
+      (await localForage.getItem<Record<string, number | null>>(
+        teamKey(firstTeamId, "startingassignments")
+      )) ?? {};
+
+    const thirdO = sanitizeGameStartBattingOrder(
+      (await localForage.getItem<BattingEntry[]>(
+        teamKey(thirdTeamId, "startingBattingOrder")
+      )) ?? []
+    );
+
+    const firstO = sanitizeGameStartBattingOrder(
+      (await localForage.getItem<BattingEntry[]>(
+        teamKey(firstTeamId, "startingBattingOrder")
+      )) ?? []
+    );
+
+    const thirdPlayers = thirdFolder?.team?.players || [];
+    const firstPlayers = firstFolder?.team?.players || [];
+
+    // ✅ 1人モード専用キーに保存
+    await localForage.setItem("onePerson.third.team", {
+      id: thirdTeamId,
+      name: getTeamDisplayName(thirdFolder),
+      players: thirdPlayers,
+    });
+
+    await localForage.setItem("onePerson.first.team", {
+      id: firstTeamId,
+      name: getTeamDisplayName(firstFolder),
+      players: firstPlayers,
+    });
+
+    await localForage.setItem("onePerson.third.lineupAssignments", thirdA);
+    await localForage.setItem("onePerson.first.lineupAssignments", firstA);
+
+    await localForage.setItem("onePerson.third.battingOrder", thirdO);
+    await localForage.setItem("onePerson.first.battingOrder", firstO);
+
+    // ✅ 試合開始直後は1回表・1回裏とも必ず未チェックから始める
+    await localForage.setItem("onePerson.third.checkedIds", []);
+    await localForage.setItem("onePerson.third.announcedIds", []);
+    await localForage.setItem("onePerson.first.checkedIds", []);
+    await localForage.setItem("onePerson.first.announcedIds", []);
+    await localForage.setItem("checkedIds", []);
+    await localForage.setItem("announcedIds", []);
+
+    // ✅ 試合開始時は必ず両チームとも1番から
+    await localForage.setItem("onePerson.third.lastBatterIndex", 0);
+    await localForage.setItem("onePerson.first.lastBatterIndex", 0);
+
+    await localForage.setItem("onePerson.third.pitchCounts", {
+      current: 0,
+      total: 0,
+      pitcherId: thirdA?.["投"] ?? null,
+    });
+
+    await localForage.setItem("onePerson.first.pitchCounts", {
+      current: 0,
+      total: 0,
+      pitcherId: firstA?.["投"] ?? null,
+    });
+
+    await localForage.setItem("onePerson.third.pitcherTotals", {});
+    await localForage.setItem("onePerson.first.pitcherTotals", {});
+
+// ✅ 試合情報入力画面で選んだ「先攻の塁側」を保存する
+const normalizeOnePersonSide = (value: any): "first" | "third" | null => {
+  const s = String(value ?? "").trim().toLowerCase();
+
+  if (
+    s === "first" ||
+    s === "1" ||
+    s === "1塁側" ||
+    s.includes("1塁") ||
+    s.includes("一塁")
+  ) {
+    return "first";
+  }
+
+  if (
+    s === "third" ||
+    s === "3" ||
+    s === "3塁側" ||
+    s.includes("3塁") ||
+    s.includes("三塁")
+  ) {
+    return "third";
+  }
+
+  return null;
+};
+
+const oppositeSide = (side: "first" | "third"): "first" | "third" =>
+  side === "first" ? "third" : "first";
+
+const explicitFirstAttackSide =
+  normalizeOnePersonSide(matchInfo?.onePersonFirstAttackSide) ??
+  normalizeOnePersonSide(matchInfo?.firstAttackSide) ??
+  normalizeOnePersonSide(matchInfo?.firstBattingSide) ??
+  normalizeOnePersonSide(matchInfo?.topSide) ??
+  normalizeOnePersonSide(matchInfo?.offenseFirstSide) ??
+  normalizeOnePersonSide(matchInfo?.firstAttackBaseSide) ??
+  normalizeOnePersonSide(matchInfo?.battingFirstSide);
+
+const benchSide: "first" | "third" =
+  matchInfo?.benchSide === "3塁側" ? "third" : "first";
+
+const derivedFirstAttackSide: "first" | "third" =
+  typeof matchInfo?.isHome === "boolean"
+    ? matchInfo.isHome
+      ? oppositeSide(benchSide)
+      : benchSide
+    : benchSide;
+
+// ✅ ここが重要：explicitFirstAttackSide を優先する
+const firstAttackSide: "first" | "third" =
+  explicitFirstAttackSide ?? derivedFirstAttackSide;
+
+await localForage.setItem("onePerson.firstAttackSide", firstAttackSide);
+
+    // ✅ 1人モードでは常に専用画面を使う
+    await localForage.setItem("matchInfo", {
+      ...matchInfo,
+      announcementMode: "single",
+      inning: 1,
+      isTop: true,
+      isDefense: false,
+      onePersonFirstAttackSide: firstAttackSide,
+      isHome: firstAttackSide === "first" ? false : true,
+    });
+    
+    await localForage.setItem("lastGameScreen", "onePersonAnnounce");
+
+    onStart(true);
+    setShowStartHint(false);
+    return;
+  }
 
 // === スタメンを「保存した状態」にする（StartingLineupの保存と同等） ===
 
@@ -268,7 +841,7 @@ const draftO = await localForage.getItem<BattingEntry[]>("startingBattingOrder_d
 const savedO = await localForage.getItem<BattingEntry[]>("startingBattingOrder");
 const stateO = battingOrder; // ← StartGame画面に表示されている打順
 const oldO   = await localForage.getItem<BattingEntry[]>("battingOrder");
-let adoptO = draftO ?? savedO ?? stateO ?? oldO ?? [];
+let adoptO = sanitizeGameStartBattingOrder(draftO ?? savedO ?? stateO ?? oldO ?? []);
 
 const draftExtraPos = await localForage.getItem<ExtraPositionMap>("startingExtraPositionMap_draft");
 const savedExtraPos = await localForage.getItem<ExtraPositionMap>("startingExtraPositionMap");
@@ -288,7 +861,7 @@ if (!Array.isArray(adoptO) || adoptO.length === 0) {
   const ids = orderPositions
     .map(p => normA[p])
     .filter((id): id is number => typeof id === "number");
-  adoptO = ids.slice(0, MAX_BATTING_ORDER).map(id => ({ id, reason: "スタメン" }));
+  adoptO = ids.slice(0, MAX_BATTING_ORDER).map(id => ({ id }));
 }
 
 // ベンチ外
@@ -387,6 +960,25 @@ await localForage.removeItem("startingBenchOutIds_draft");
     return "—";
   };
 
+const normalOwnSide = firstBaseSide;
+const normalOpponentSide = firstBaseSide === "1塁側" ? "3塁側" : "1塁側";
+
+const normalFirstAttackName = isFirstAttack ? teamName : opponentName;
+const normalSecondAttackName = isFirstAttack ? opponentName : teamName;
+
+const normalFirstAttackSide = isFirstAttack ? normalOwnSide : normalOpponentSide;
+const normalSecondAttackSide = isFirstAttack ? normalOpponentSide : normalOwnSide;
+
+const singleFirstAttackName =
+  onePersonFirstAttackSide === "first" ? firstTeamName : thirdTeamName;
+
+const singleSecondAttackName =
+  onePersonFirstAttackSide === "first" ? thirdTeamName : firstTeamName;
+
+const singleSecondAttackSide =
+  oppositeOnePersonSide(onePersonFirstAttackSide);
+
+
 return (
     <div
       className="min-h-[100dvh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
@@ -401,6 +993,7 @@ return (
 {/* ヘッダー：中央大タイトル＋細ライン */}
 <header className="w-full max-w-md text-center select-none mt-1">
   <div className="inline-flex items-center gap-2">
+
     <h1 className="inline-flex items-center gap-2 text-3xl md:text-4xl font-extrabold tracking-wide leading-tight">
       <span className="text-2xl md:text-3xl">🏁</span>
       <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-blue-100 to-blue-400 drop-shadow">
@@ -430,20 +1023,56 @@ return (
             <IconInfo />
             <div className="font-semibold">試合情報</div>
           </div>
-          <div className="text-sm md:text-base font-semibold text-white px-2 py-0.5 bg-blue-800/30 rounded">
-            {isFirstAttack ? "先攻" : "後攻"} / ベンチ：{firstBaseSide}
-          </div>
+<div className="text-sm md:text-base font-semibold text-white px-2 py-0.5 bg-blue-800/30 rounded">
+  {announcementMode === "single" ? (
+    <>
+      先攻：{singleFirstAttackName || "未設定"}（{sideText(onePersonFirstAttackSide)}）
+    </>
+  ) : (
+    <>
+      先攻：{normalFirstAttackName || "未設定"}（{normalFirstAttackSide}）
+    </>
+  )}
+</div>
 
         </div>
 
         <div className="mt-3 grid grid-cols-1 gap-2 text-sm">
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10">
-              <span className="font-medium truncate max-w-[12rem]">{teamName || "未設定"}</span>
-            </span>
-            <IconVs />
-            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10">
-              <span className="font-medium truncate max-w-[12rem]">{opponentName || "未設定"}</span>
+              {announcementMode === "single" ? (
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10">
+                    <span className="font-medium truncate max-w-[12rem]">
+                      {thirdTeamName || "未設定"}
+                    </span>
+                  </span>
+
+                  <IconVs />
+
+                  <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10">
+                    <span className="font-medium truncate max-w-[12rem]">
+                      {firstTeamName || "未設定"}
+                    </span>
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10">
+                    <span className="font-medium truncate max-w-[12rem]">
+                      {teamName || "未設定"}
+                    </span>
+                  </span>
+
+                  <IconVs />
+
+                  <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10">
+                    <span className="font-medium truncate max-w-[12rem]">
+                      {opponentName || "未設定"}
+                    </span>
+                  </span>
+                </div>
+              )}
             </span>
           </div>
         </div>
@@ -476,72 +1105,184 @@ return (
       </section>
 
       {/* スタメン */}
-      <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
-        <div className="flex items-center gap-2 mb-2">
-          <IconUsers />
-          <div className="font-semibold">スターティングメンバー</div>
-        </div>
-
-        <div className="text-sm leading-tight space-y-1">
-          {battingOrder.slice(0, MAX_BATTING_ORDER).map((entry, index) => {
-            const pos = getDisplayPos(entry?.id);
-            const player = getPlayer(entry.id);
-            return (
-              <div key={entry.id ?? index} className="flex items-center gap-2">
-                <span className="inline-flex items-center justify-center w-9 h-6 rounded-full bg-white/10 border border-white/10">
-                  {index + 1}番
-                </span>
-                <span className="w-10 text-white/90">{pos}</span>
-                <span className="flex-1 font-medium truncate">{player?.name ?? "未設定"}</span>
-                <span className="opacity-90">#{player?.number ?? "-"}</span>
-              </div>
-            );
-          })}
-
-          {/* DH時の投手名を追記（元コード踏襲） */}
-          {dhId && pitcher && (
-            <div className="flex items-center gap-2 mt-1">
-              <span className="inline-flex items-center justify-center w-9 h-6 rounded-full bg-white/10 border border-white/10">
-                投
-              </span>
-              <span className="flex-1 font-medium truncate">{pitcher.name}</span>
-              <span className="opacity-90">#{(pitcher as any).number}</span>
+      {announcementMode === "single" ? (
+        <>
+          <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
+            <div className="font-semibold mb-2">
+              {thirdTeamName || "未設定"}　スターティングメンバー
             </div>
-          )}
-        </div>
-      </section>
+
+            <div className="text-sm leading-tight space-y-1">
+              {thirdBattingOrder.map((entry, index) => {
+                const pos = getDisplayPosFrom(thirdAssignments, entry.id);
+                const player = getPlayerFrom(thirdPlayers, entry.id);
+
+                return (
+                  <div key={entry.id ?? index} className="flex items-center gap-2">
+                    <span className="w-9">{index + 1}番</span>
+                    <span className="w-10">{pos}</span>
+                    <span className="flex-1 truncate">{player?.name ?? "未設定"}</span>
+                    <span>#{player?.number ?? "-"}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
+            <div className="font-semibold mb-2">
+              {firstTeamName || "未設定"}　スターティングメンバー
+            </div>
+
+            <div className="text-sm leading-tight space-y-1">
+              {firstBattingOrder.map((entry, index) => {
+                const pos = getDisplayPosFrom(firstAssignments, entry.id);
+                const player = getPlayerFrom(firstPlayers, entry.id);
+
+                return (
+                  <div key={entry.id ?? index} className="flex items-center gap-2">
+                    <span className="w-9">{index + 1}番</span>
+                    <span className="w-10">{pos}</span>
+                    <span className="flex-1 truncate">{player?.name ?? "未設定"}</span>
+                    <span>#{player?.number ?? "-"}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        </>
+) : (
+  <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
+    <div className="font-semibold mb-2">スターティングメンバー</div>
+
+    <div className="text-sm leading-tight space-y-1">
+      {battingOrder.map((entry, index) => {
+        const pos = getDisplayPos(entry.id);
+        const player = getPlayer(entry.id);
+
+        return (
+          <div key={entry.id ?? index} className="flex items-center gap-2">
+            <span className="w-9">{index + 1}番</span>
+            <span className="w-10">{pos}</span>
+            <span className="flex-1 truncate">
+              {player?.name ?? "未設定"}
+            </span>
+            <span>#{player?.number ?? "-"}</span>
+          </div>
+        );
+      })}
+
+      {battingOrder.length === 0 && (
+        <div className="text-white/70">（未設定）</div>
+      )}
+    </div>
+  </section>
+)}
 
       {/* 控え選手 */}
-      <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
-        <div className="flex items-center gap-2 mb-2">
-          <IconUsers />
-          <div className="font-semibold">控え選手</div>
-        </div>
-        <div className="text-sm leading-tight grid grid-cols-1 gap-1">
-          {players
-            .filter(
+      {announcementMode === "single" ? (
+        <>
+          <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <IconUsers />
+              <div className="font-semibold">
+                {thirdTeamName || "未設定"}　控え選手
+              </div>
+            </div>
+
+            <div className="text-sm leading-tight grid grid-cols-1 gap-1">
+                {getBenchPlayersFrom(
+                  thirdPlayers,
+                  thirdBattingOrder,
+                  thirdAssignments,
+                  thirdBenchOutIds
+                ).map((p) => (
+                <div key={p.id} className="flex items-center gap-2">
+                  <span className="flex-1 truncate">{p.name}</span>
+                  <span className="opacity-90">#{p.number}</span>
+                </div>
+              ))}
+
+              {getBenchPlayersFrom(
+                thirdPlayers,
+                thirdBattingOrder,
+                thirdAssignments,
+                thirdBenchOutIds
+              ).length === 0 && (
+                <div className="text-white/70">（該当なし）</div>
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <IconUsers />
+              <div className="font-semibold">
+                {firstTeamName || "未設定"}　控え選手
+              </div>
+            </div>
+
+            <div className="text-sm leading-tight grid grid-cols-1 gap-1">
+              {getBenchPlayersFrom(
+                firstPlayers,
+                firstBattingOrder,
+                firstAssignments,
+                firstBenchOutIds
+              ).map((p) => (
+                <div key={p.id} className="flex items-center gap-2">
+                  <span className="flex-1 truncate">{p.name}</span>
+                  <span className="opacity-90">#{p.number}</span>
+                </div>
+              ))}
+
+              {getBenchPlayersFrom(
+                firstPlayers,
+                firstBattingOrder,
+                firstAssignments,
+                firstBenchOutIds
+              ).length === 0 && (
+                <div className="text-white/70">（該当なし）</div>
+              )}
+            </div>
+          </section>
+        </>
+      ) : (
+        <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
+          <div className="flex items-center gap-2 mb-2">
+            <IconUsers />
+            <div className="font-semibold">控え選手</div>
+          </div>
+
+          <div className="text-sm leading-tight grid grid-cols-1 gap-1">
+            {players
+              .filter(
+                (p) =>
+                  !battingOrder.some((e) => e.id === p.id) &&
+                  !Object.values(assignments)
+                    .filter((v) => v !== null)
+                    .map(Number)
+                    .includes(p.id) &&
+                  !benchOutIds.includes(p.id)
+              )
+              .map((p) => (
+                <div key={p.id} className="flex items-center gap-2">
+                  <span className="flex-1 truncate">{p.name}</span>
+                  <span className="opacity-90">#{p.number}</span>
+                </div>
+              ))}
+
+            {players.filter(
               (p) =>
                 !battingOrder.some((e) => e.id === p.id) &&
-                !Object.values(assignments).filter((v) => v !== null).map(Number).includes(p.id) &&
+                !Object.values(assignments)
+                  .filter((v) => v !== null)
+                  .map(Number)
+                  .includes(p.id) &&
                 !benchOutIds.includes(p.id)
-            )
-            .map((p) => (
-              <div key={p.id} className="flex items-center gap-2">
-                <span className="flex-1 truncate">{p.name}</span>
-                <span className="opacity-90">#{p.number}</span>
-              </div>
-            ))}
-          {/* 0人のとき */}
-          {players.filter(
-            (p) =>
-              !battingOrder.some((e) => e.id === p.id) &&
-              !Object.values(assignments).filter((v) => v !== null).map(Number).includes(p.id) &&
-              !benchOutIds.includes(p.id)
-          ).length === 0 && (
-            <div className="text-white/70">（該当なし）</div>
-          )}
-        </div>
-      </section>
+            ).length === 0 && <div className="text-white/70">（該当なし）</div>}
+          </div>
+        </section>
+      )}
 
     </main>
 

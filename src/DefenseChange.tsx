@@ -3814,6 +3814,11 @@ const isForcedNormalSubId = (id: number) => forcedNormalSubIds.has(Number(id));
 const startingOrderRef = useRef<{ id: number; reason?: string }[]>([]);
 
   const [benchPlayers, setBenchPlayers] = useState<Player[]>([]);
+  // 出場済み選手をフィールドへ戻したときに、
+  // その位置から外れた選手を「出場済み選手」欄へ残すための補正ID。
+  // 代打/代走で入った選手は startingBenchOutIds 側に含まれることがあり、
+  // assignments 変更後の benchPlayers 再計算で消えるため、このIDだけ再追加対象にする。
+  const [forcedReturnedUsedBenchIds, setForcedReturnedUsedBenchIds] = useState<Set<number>>(new Set());
   const [draggingFrom, setDraggingFrom] = useState<string | null>(null);
   const [hoverPos, setHoverPos] = useState<string | null>(null);
 
@@ -4056,6 +4061,10 @@ const hoverPosRef = React.useRef<string | null>(null);
 const [isDirty, setIsDirty] = useState(false);
 const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
+// ✅ 代打・代走後に強制表示された守備交代画面では、未確定のまま戻さない
+const [isForcedDefenseChangeByPinch, setIsForcedDefenseChangeByPinch] = useState(false);
+const [showForcedCommitMessage, setShowForcedCommitMessage] = useState(false);
+
 // ✅ 追加：アナウンス表示を押さずに交代確定した時の確認
 const [showUnannouncedConfirm, setShowUnannouncedConfirm] = useState(false);
 const [hasShownAnnouncement, setHasShownAnnouncement] = useState(false);
@@ -4262,6 +4271,63 @@ const restoreSnapshot = async (s: DefenseSnapshot) => {
     setUsedPlayerInfo(s.usedPlayerInfo || {});
     await localForage.setItem("usedPlayerInfo", s.usedPlayerInfo || {});
   }
+};
+
+const normalizeIdList = (raw: unknown): number[] => {
+  if (!Array.isArray(raw)) return [];
+
+  return Array.from(
+    new Set(
+      raw
+        .map((v) => Number(v))
+        .filter(Number.isFinite)
+    )
+  );
+};
+
+const getCurrentDefenseTeamId = async () => {
+  const team = await localForage.getItem<any>("team");
+  const matchInfo = await localForage.getItem<any>("matchInfo");
+  const onePersonCtx = await localForage.getItem<any>("onePersonDefenseChangeContext");
+
+  const normalTeamId =
+    team?.id ||
+    team?.teamId ||
+    team?.team?.id ||
+    team?.originalTeamId ||
+    null;
+
+  // 1人用モードでは localForage の "team" が自チーム固定になることがあるため、
+  // 守備交代対象のベンチ側からチームIDを補完して、ベンチ外選手を正しく除外する。
+  const defenseSide =
+    onePersonCtx?.defenseSide ||
+    onePersonCtx?.side ||
+    onePersonCtx?.benchSide ||
+    null;
+
+  const onePersonTeamId =
+    defenseSide === "first" || defenseSide === "1塁側"
+      ? matchInfo?.firstBaseTeamId
+      : defenseSide === "third" || defenseSide === "3塁側"
+        ? matchInfo?.thirdBaseTeamId
+        : null;
+
+  return onePersonTeamId || normalTeamId;
+};
+
+const loadCurrentDefenseBenchOutIds = async () => {
+  const teamId = await getCurrentDefenseTeamId();
+
+  const rawByTeam = teamId
+    ? await localForage.getItem<number[]>(`startingBenchOutIds_${teamId}`)
+    : null;
+
+  // OnePersonAnnounceScreen 側から守備交代画面を開く直前に保存する保険キー。
+  // チームID解決に失敗しても、対象チームのベンチ外選手を除外できるようにする。
+  const rawFallback = await localForage.getItem<number[]>("defenseChangeBenchOutIds");
+
+  const byTeam = normalizeIdList(rawByTeam);
+  return byTeam.length > 0 ? byTeam : normalizeIdList(rawFallback);
 };
 
 // 新しい操作の前に履歴へ積む（永続化対応）
@@ -4592,6 +4658,8 @@ const hasPinchAtLoad = Object.values(usedInfo || {}).some((info: any) => {
   );
 });
 
+setIsForcedDefenseChangeByPinch(hasPinchAtLoad);
+
 setShouldGoSeatIntroductionAfterConfirm(
   isVisitor && inning === 1 && hasPinchAtLoad
 );
@@ -4730,8 +4798,22 @@ useEffect(() => {
 }, []);
 
 const benchPlayedOut = React.useMemo(
-  () => benchPlayers.filter((p) => playedIds.has(p.id) && !onFieldIds.has(p.id) && !dhListIds.has(p.id)),
-  [benchPlayers, playedIds, onFieldIds, dhListIds]
+  () =>
+    benchPlayers.filter((p) => {
+      const id = Number(p.id);
+
+      // 出場済み選手をフィールド図へ戻した時に、その位置から外れた選手。
+      // usedPlayerInfo の代打/代走チェーンが残っている間は deriveCurrentGameState 側で
+      // まだ「フィールド上」と判定されることがあるため、このIDだけは表示を優先する。
+      const forceShowAsPlayedOut = forcedReturnedUsedBenchIds.has(id);
+
+      return (
+        (playedIds.has(id) || forceShowAsPlayedOut) &&
+        (!onFieldIds.has(id) || forceShowAsPlayedOut) &&
+        !dhListIds.has(id)
+      );
+    }),
+  [benchPlayers, playedIds, onFieldIds, dhListIds, forcedReturnedUsedBenchIds]
 );
 
 const benchCandidates = React.useMemo(() => {
@@ -5214,25 +5296,27 @@ useEffect(() => {
   if (!teamPlayers || teamPlayers.length === 0) return;
 
   const assignedIdsNow = Object.values(assignments)
-    .filter((id): id is number => typeof id === "number");
+    .map((id) => Number(id))
+    .filter(Number.isFinite);
 
   (async () => {
-    // スタメン設定画面で指定したベンチ外のみを唯一の情報源にする
-    const startingBenchOut =
-      (await localForage.getItem<number[]>("startingBenchOutIds")) ?? [];
+    // ✅ スタメン設定画面でチーム別に保存した「出場しない選手」を読む
+    const benchOutIds = await loadCurrentDefenseBenchOutIds();
 
-    const benchOutIds = Array.from(
-      new Set(startingBenchOut.map(Number).filter(Number.isFinite))
-    );
-
-    // 控え候補＝「未割当の選手」−「ベンチ外（スタメン指定）」
+    // 控え候補＝全選手 − 守備中の選手 − 出場しない選手
+    // ただし、出場済み選手をフィールド図へ戻して外れた選手は、
+    // startingBenchOutIds に含まれていても「出場済み選手」欄へ表示させる。
     setBenchPlayers(
-      teamPlayers.filter(
-        (p) => !assignedIdsNow.includes(p.id) && !benchOutIds.includes(p.id)
-      )
+      teamPlayers.filter((p) => {
+        const id = Number(p.id);
+        if (!Number.isFinite(id)) return false;
+        if (assignedIdsNow.includes(id)) return false;
+
+        return !benchOutIds.includes(id) || forcedReturnedUsedBenchIds.has(id);
+      })
     );
   })();
-}, [assignments, teamPlayers]);
+}, [assignments, teamPlayers, forcedReturnedUsedBenchIds]);
 
 
 
@@ -5517,6 +5601,28 @@ newAssignments = normalizeFieldAssignments(newAssignments, {
       if (rep && !next.some((p) => p.id === rep.id)) {
         next = [...next, rep];
       }
+    }
+
+    return next;
+  });
+
+  // 出場済み選手(A)をフィールド図へ戻した場合、
+  // そこにいた選手(B)を出場済み選手欄へ表示できるようにする。
+  // Bは元控え選手のため benchOutIds で再計算時に消えることがあるので、
+  // このケースだけ明示的に bench 候補へ残す。
+  const incomingIsPlayedOut =
+    playedIds.has(Number(playerId)) && !onFieldIds.has(Number(playerId));
+
+  setForcedReturnedUsedBenchIds((prev) => {
+    const next = new Set(prev);
+    next.delete(Number(playerId));
+
+    if (
+      incomingIsPlayedOut &&
+      typeof replacedId === "number" &&
+      Number(replacedId) !== Number(playerId)
+    ) {
+      next.add(Number(replacedId));
     }
 
     return next;
@@ -6823,8 +6929,52 @@ const handleBackClick = () => {
   }
 };
 
+// ✅ 1人用モードで守備交代画面から「確定せず戻る」場合、
+// DefenseChange を開くために通常キーへ一時コピーしたチーム/打順の影響で
+// 攻撃画面の打順チェックが消えないよう、開く直前の攻撃側状態を復元する。
+const restoreOnePersonBackSnapshotIfNeeded = async () => {
+  const ctx = await localForage.getItem<any>("onePersonDefenseChangeContext");
+  if (!ctx?.enabled) return;
+
+  const snap = await localForage.getItem<any>("onePersonDefenseChangeBackSnapshot");
+  if (!snap?.offenseSide) return;
+
+  const side = snap.offenseSide as "first" | "third";
+  const checkedIds = normalizeIdList(snap.checkedIds);
+  const announcedIds = normalizeIdList(snap.announcedIds);
+  const currentBatterIndex = Number.isFinite(Number(snap.currentBatterIndex))
+    ? Number(snap.currentBatterIndex)
+    : 0;
+
+  if (snap.team) {
+    await localForage.setItem("team", snap.team);
+    await localForage.setItem(`onePerson.${side}.team`, snap.team);
+  }
+  if (Array.isArray(snap.battingOrder)) {
+    await localForage.setItem("battingOrder", snap.battingOrder);
+    await localForage.setItem(`onePerson.${side}.battingOrder`, snap.battingOrder);
+    localStorage.setItem("battingOrderVersion", String(Date.now()));
+  }
+  if (snap.lineupAssignments && typeof snap.lineupAssignments === "object") {
+    await localForage.setItem("lineupAssignments", snap.lineupAssignments);
+    await localForage.setItem(`onePerson.${side}.lineupAssignments`, snap.lineupAssignments);
+    localStorage.setItem("assignmentsVersion", String(Date.now()));
+  }
+  if (Array.isArray(snap.benchPlayers)) {
+    await localForage.setItem("benchPlayers", snap.benchPlayers);
+    await localForage.setItem(`onePerson.${side}.benchPlayers`, snap.benchPlayers);
+  }
+
+  await localForage.setItem("checkedIds", checkedIds);
+  await localForage.setItem(`onePerson.${side}.checkedIds`, checkedIds);
+  await localForage.setItem("announcedIds", announcedIds);
+  await localForage.setItem(`onePerson.${side}.announcedIds`, announcedIds);
+  await localForage.setItem("lastBatterIndex", currentBatterIndex);
+  await localForage.setItem(`onePerson.${side}.lastBatterIndex`, currentBatterIndex);
+};
+
 // DefenseChange.tsx 内
-const handleBackToDefense = () => {
+const handleBackToDefense = async () => {
   console.log("[DefenseChange] back to defense (no commit)");
 
   // 「確定せずに戻る」場合は、画面オープン時点の大谷ルールへ戻す（storage も復元）
@@ -6835,8 +6985,10 @@ const handleBackToDefense = () => {
       .catch((e) => console.warn("failed to restore ohtaniRule on back", e));
   }
 
+  await restoreOnePersonBackSnapshotIfNeeded();
+
   // ✅ 守備画面へ戻すのは App.tsx 側の画面遷移（setScreen）で行う
-  onConfirmed();
+  await onConfirmed();
 };
 
 const checkReentryForBenchToField = ({
@@ -6878,7 +7030,16 @@ const checkReentryForBenchToField = ({
     return true;
   }
 
-  const isOffField = !Object.values(assignments || {}).includes(Number(toId));
+  // ✅ assignments だけでなく、フィールド図で実際に表示されている選手IDも見て
+  // 「戻そうとしている元スタメンが今フィールドにいるか」を判定する。
+  // 代打/代走直後は assignments に元スタメンIDが残り、表示上は代打/代走選手というケースがある。
+  const displayedFieldIds = Object.keys(assignments || {})
+    .map((pos) => getDisplayedPlayerIdForPos(pos))
+    .filter((id): id is number => typeof id === "number");
+
+  const isOffField =
+    !Object.values(assignments || {}).includes(Number(toId)) ||
+    !displayedFieldIds.includes(Number(toId));
 
   // ★ 元の打順：スタメン時点の打順を使う
   const originalOrderSource =
@@ -6892,13 +7053,61 @@ const checkReentryForBenchToField = ({
       ? battingOrderDraft
       : battingOrder;
 
+  const usedInfoForOriginal =
+    wasStarter && origIdForTo != null
+      ? ((usedPlayerInfo as any)?.[String(origIdForTo)] ?? (usedPlayerInfo as any)?.[Number(origIdForTo)])
+      : undefined;
+
+  const toNumberOrNull = (v: any): number | null => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
   // ★ 戻そうとしている元スタメンの「当初の打順」
-  const originalOrderIndex =
+  // startingOrder に見つからない場合でも、usedPlayerInfo.order を正として使う。
+  const originalOrderIndexFromStarting =
     wasStarter && origIdForTo != null
       ? originalOrderSource.findIndex(
           (e) => Number(e.id) === Number(origIdForTo)
         )
       : -1;
+
+  const originalOrderNumberFromInfo = toNumberOrNull(usedInfoForOriginal?.order);
+
+  const originalOrderIndex =
+    originalOrderIndexFromStarting >= 0
+      ? originalOrderIndexFromStarting
+      : originalOrderNumberFromInfo != null && originalOrderNumberFromInfo > 0
+        ? originalOrderNumberFromInfo - 1
+        : -1;
+
+  const getCurrentOrderNumberForPlayer = (playerId: number | null | undefined): number | null => {
+    if (typeof playerId !== "number") return null;
+
+    const directIdx = currentOrderSource.findIndex(
+      (e) => Number(e.id) === Number(playerId)
+    );
+    if (directIdx >= 0) return directIdx + 1;
+
+    // usedPlayerInfo の「元スタメン → subId」から、今その打順にいる選手を補完する。
+    for (const [origIdStr, info] of Object.entries(usedPlayerInfo || {})) {
+      if (!info) continue;
+      const origId = Number(origIdStr);
+      const subId = typeof (info as any).subId === "number" ? Number((info as any).subId) : null;
+      const latestId = resolveLatestSubId(origId, usedPlayerInfo as any);
+      const orderNo = toNumberOrNull((info as any).order);
+
+      if (
+        orderNo != null &&
+        orderNo > 0 &&
+        (Number(playerId) === origId || Number(playerId) === subId || Number(playerId) === Number(latestId))
+      ) {
+        return orderNo;
+      }
+    }
+
+    return null;
+  };
 
   // ★ 今、交代される選手(fromId)が入っている「現在の打順」
   const currentOrderIndexOfFrom =
@@ -6908,12 +7117,43 @@ const checkReentryForBenchToField = ({
         )
       : -1;
 
+  const fromOrderNumber = getCurrentOrderNumberForPlayer(fromId);
+  const sameOriginalOrderByUsedInfo =
+    originalOrderNumberFromInfo != null &&
+    fromOrderNumber != null &&
+    Number(originalOrderNumberFromInfo) === Number(fromOrderNumber);
+
+  // ✅ 元スタメンに紐づく最新の代打・代走選手IDを取得
+  // 代打・代走直後は currentOrderSource 側の index が元打順と一致しないことがあるため、
+  // 「戻す元スタメン」と「外される代打/代走選手」の紐づきも直接判定する。
+  const latestSubIdForOriginal =
+    wasStarter && origIdForTo != null
+      ? resolveLatestSubId(Number(origIdForTo), usedPlayerInfo as any)
+      : null;
+
+  const replacingOwnLatestSub =
+    typeof latestSubIdForOriginal === "number" &&
+    typeof fromId === "number" &&
+    Number(latestSubIdForOriginal) !== Number(origIdForTo) &&
+    Number(fromId) === Number(latestSubIdForOriginal);
+
   const isReentryNow =
     wasStarter &&
     isOffField &&
-    originalOrderIndex >= 0 &&
-    currentOrderIndexOfFrom >= 0 &&
-    originalOrderIndex === currentOrderIndexOfFrom;
+    (
+      (
+        originalOrderIndex >= 0 &&
+        currentOrderIndexOfFrom >= 0 &&
+        originalOrderIndex === currentOrderIndexOfFrom
+      ) ||
+      // ✅ 出場済みの元スタメンが、自分の元打順に現在入っている選手と交代する場合は
+      // フィールド図配置時もリエントリーとして許可する。
+      sameOriginalOrderByUsedInfo ||
+      // ログ上、originalOrderIndex が -1 でも usedPlayerInfo から
+      // 「戻す元スタメン ↔ 外される最新代打/代走」が特定できるケースがある。
+      // この場合は打順indexに依存せずリエントリーとして許可する。
+      replacingOwnLatestSub
+    );
 
   console.log("[REENTRY CHECK same-order][modal/common]", {
     toId,
@@ -6924,7 +7164,14 @@ const checkReentryForBenchToField = ({
     isUsedAlready,
     isOffField,
     originalOrderIndex,
+    originalOrderIndexFromStarting,
+    originalOrderNumberFromInfo,
     currentOrderIndexOfFrom,
+    fromOrderNumber,
+    sameOriginalOrderByUsedInfo,
+    latestSubIdForOriginal,
+    replacingOwnLatestSub,
+    displayedFieldIds,
     originalOrderSource,
     currentOrderSource,
     isReentryNow,
@@ -7707,7 +7954,7 @@ normalReplaceRows.forEach(({ benchPlayerId }) => {
 });
 
 // replace の from 側で退く選手だけベンチへ戻す
-normalReplaceRows.forEach(({ from }) => {
+normalReplaceRows.forEach(({ from, benchPlayerId }) => {
   const outgoingId = currentByNum.get(Number(from));
   if (typeof outgoingId !== "number") return;
 
@@ -7723,6 +7970,24 @@ normalReplaceRows.forEach(({ from }) => {
     !nextBenchPlayers.some((p) => Number(p.id) === Number(outgoingPlayer.id))
   ) {
     nextBenchPlayers = [...nextBenchPlayers, outgoingPlayer];
+  }
+
+  // 「守備番号で交代」から出場済み選手を起用した場合も、
+  // フィールド図から外れた選手を出場済み選手欄へ表示させる。
+  // 代打/代走チェーンが残っていると onFieldIds 側でまだフィールド上扱いになり、
+  // 表示条件から弾かれることがあるため、このケースだけ表示補正IDに追加する。
+  const incomingId = Number(benchPlayerId);
+  const incomingIsPlayedOut =
+    Number.isFinite(incomingId) &&
+    (playedIds.has(incomingId) || forcedReturnedUsedBenchIds.has(incomingId));
+
+  if (incomingIsPlayedOut && !stillOnField) {
+    setForcedReturnedUsedBenchIds((prev) => {
+      const next = new Set(prev);
+      next.delete(incomingId);
+      next.add(Number(outgoingId));
+      return next;
+    });
   }
 });
 
@@ -9033,6 +9298,15 @@ const canDropHere =
           <p className="mt-2 text-sm text-slate-600 text-center px-2">
             「1 が 9」「1 に代わり ○○」のように入力できます
           </p>
+          <p className="mt-2 text-sm text-slate-600 text-Left px-2">
+            「が」＝同じ選手が別の守備へ移動
+          </p>
+          <p className="mt-2 text-sm text-slate-600 text-Left px-2">
+            「と」＝出場中の2人が守備を入れ替え
+          </p>
+          <p className="mt-2 text-sm text-slate-600 text-Left px-2">
+            「に代わり」＝控え選手との交代
+          </p>
         </div>
 
         {/* error */}
@@ -9628,6 +9902,14 @@ const canDropHere =
             className="col-span-1 py-3 font-semibold bg-green-600 text-white rounded-br-2xl hover:bg-green-700"
             onClick={() => {
               setShowLeaveConfirm(false);
+
+              // 代打・代走後に強制表示された守備交代画面では、
+              // YESでも画面遷移させず「交代確定」を促す。
+              if (isForcedDefenseChangeByPinch) {
+                setShowForcedCommitMessage(true);
+                return;
+              }
+
               handleBackToDefense();
             }}
 
@@ -9636,6 +9918,43 @@ const canDropHere =
           </button>
 
         </div>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* 強制守備交代 未確定メッセージ */}
+{showForcedCommitMessage && (
+  <div
+    className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 px-6"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="forced-commit-message-title"
+    onClick={() => setShowForcedCommitMessage(false)}
+  >
+    <div
+      className="w-full max-w-sm rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+      onClick={(e) => e.stopPropagation()}
+      role="document"
+    >
+      <div className="bg-green-600 text-white text-center font-bold py-3">
+        <h3 id="forced-commit-message-title" className="text-base">確認</h3>
+      </div>
+
+      <div className="px-6 py-5 text-center">
+        <p className="whitespace-pre-line text-[15px] font-bold leading-relaxed">
+          代打・代走後の守備交代が未確定です。{"\n"}
+          「交代確定」をしてください。
+        </p>
+      </div>
+
+      <div className="px-5 pb-5">
+        <button
+          className="w-full py-3 rounded-full bg-green-600 text-white font-semibold hover:bg-green-700 active:bg-green-800"
+          onClick={() => setShowForcedCommitMessage(false)}
+        >
+          OK
+        </button>
       </div>
     </div>
   </div>

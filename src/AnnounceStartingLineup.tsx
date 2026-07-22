@@ -79,6 +79,15 @@ const AnnounceStartingLineup: React.FC<{
   const [homeTeamName, setHomeTeamName] = useState<string>("");
   const [homeTeamFurigana, setHomeTeamFurigana] = useState<string>("");
   const [awayTeamName, setAwayTeamName] = useState<string>("");
+  const [firstBaseTeamName, setFirstBaseTeamName] = useState("");
+  const [thirdBaseTeamName, setThirdBaseTeamName] = useState("");
+  const [firstBaseTeamFurigana, setFirstBaseTeamFurigana] = useState("");
+  const [thirdBaseTeamFurigana, setThirdBaseTeamFurigana] = useState("");
+  const [announcementMode, setAnnouncementMode] =
+  useState<"normal" | "single">("normal");
+  const [startingLineupSide, setStartingLineupSide] =
+    useState<"home" | "visitor">("visitor");
+
   const [opponentTeamFurigana, setOpponentTeamFurigana] = useState<string>("");
   const [isHomeTeamFirstAttack, setIsHomeTeamFirstAttack] = useState<boolean>(true);
   const [benchSide, setBenchSide] = useState<"1塁側" | "3塁側">("1塁側");
@@ -122,6 +131,23 @@ const AnnounceStartingLineup: React.FC<{
   // 初回だけ VOICEVOX を温める
   useEffect(() => { void prewarmTTS(); }, []);
 
+  const loadTeamBenchOutIds = async (teamId: any) => {
+    if (!teamId) return [];
+
+    const raw =
+      (await localForage.getItem<number[]>(
+        `startingBenchOutIds_${teamId}`
+      )) ?? [];
+
+    return Array.from(
+      new Set(
+        (Array.isArray(raw) ? raw : [])
+          .map((v) => Number(v))
+          .filter(Number.isFinite)
+      )
+    );
+  };
+
   /* === データロード === */
   useEffect(() => {
     const loadA = async () => {
@@ -144,16 +170,153 @@ const AnnounceStartingLineup: React.FC<{
         localForage.getItem<boolean>("ohtaniRule"),
       ]);
 
+      const mi = matchInfo as any;
+
+      if (mi?.announcementMode === "single") {
+        setAnnouncementMode("single");
+        setStartingLineupSide(mi?.startingLineupSide ?? "visitor");
+      }
 
       setOhtaniRule(!!ohtani);
 
 
-      const assignRaw =
-        (await localForage.getItem<Record<string, number | null>>("startingassignments")) ??
-        (await localForage.getItem<Record<string, number | null>>("lineupAssignments")) ?? {};
-      const orderRaw =
-        (await localForage.getItem<Array<{ id?: number; playerId?: number; reason?: string }>>("startingBattingOrder")) ??
-        (await localForage.getItem<Array<{ id?: number; playerId?: number; reason?: string }>>("battingOrder")) ?? [];
+let assignRaw: Record<string, number | null> = {};
+let orderRaw: Array<{ id?: number; playerId?: number; reason?: string }> = [];
+
+if (mi?.announcementMode === "single") {
+  const store =
+    await localForage.getItem<any>("teamRegisterStore");
+    const firstFolder = store?.teams?.find(
+      (t: any) => String(t.id) === String(mi.firstBaseTeamId)
+    );
+
+    const thirdFolder = store?.teams?.find(
+      (t: any) => String(t.id) === String(mi.thirdBaseTeamId)
+    );
+
+const firstName =
+  firstFolder?.team?.name ||
+  firstFolder?.teamName ||
+  firstFolder?.name ||
+  mi.firstBaseTeamName ||
+  firstFolder?.listName ||
+  "";
+
+const thirdName =
+  thirdFolder?.team?.name ||
+  thirdFolder?.teamName ||
+  thirdFolder?.name ||
+  mi.thirdBaseTeamName ||
+  thirdFolder?.listName ||
+  "";
+
+const firstFurigana =
+  firstFolder?.team?.furigana ||
+  firstFolder?.team?.nameKana ||
+  firstFolder?.furigana ||
+  firstFolder?.nameKana ||
+  "";
+
+const thirdFurigana =
+  thirdFolder?.team?.furigana ||
+  thirdFolder?.team?.nameKana ||
+  thirdFolder?.furigana ||
+  thirdFolder?.nameKana ||
+  "";
+
+setFirstBaseTeamName(firstName);
+setThirdBaseTeamName(thirdName);
+
+setFirstBaseTeamFurigana(firstFurigana);
+setThirdBaseTeamFurigana(thirdFurigana);
+
+  const teamId =
+    mi.startingLineupSide === "visitor"
+      ? (
+          mi.battingFirstSide === "third"
+            ? mi.thirdBaseTeamId
+            : mi.firstBaseTeamId
+        )
+      : (
+          mi.battingFirstSide === "third"
+            ? mi.firstBaseTeamId
+            : mi.thirdBaseTeamId
+        );
+
+  assignRaw =
+    (await localForage.getItem(
+      `startingassignments_${teamId}`
+    )) ?? {};
+
+  orderRaw =
+    (await localForage.getItem(
+      `startingBattingOrder_${teamId}`
+    )) ?? [];
+
+  const folder = store?.teams?.find(
+    (t: any) => String(t.id) === String(teamId)
+  );
+
+const selectedTeamName =
+  folder?.team?.name ||
+  folder?.teamName ||
+  folder?.name ||
+  folder?.listName ||
+  "";
+
+const selectedTeamFurigana =
+  folder?.team?.furigana ||
+  folder?.team?.nameKana ||
+  folder?.furigana ||
+  folder?.nameKana ||
+  "";
+
+setTeamPlayers(folder?.team?.players ?? []);
+setHomeTeamName(selectedTeamName);
+setHomeTeamFurigana(selectedTeamFurigana);
+// ✅ スタメン設定画面で設定した「出場しない選手」を読む
+setBenchOutIds(await loadTeamBenchOutIds(teamId));
+
+  // visitorなら先攻、homeなら後攻として表示
+  setIsHomeTeamFirstAttack(mi.startingLineupSide === "visitor");
+
+} else {
+  assignRaw =
+    (await localForage.getItem("startingassignments")) ??
+    (await localForage.getItem("lineupAssignments")) ??
+    {};
+
+  orderRaw =
+    (await localForage.getItem("startingBattingOrder")) ??
+    (await localForage.getItem("battingOrder")) ??
+  [];
+}
+
+if (mi?.announcementMode !== "single") {
+  if (team) {
+    setTeamPlayers((team as any).players || []);
+    setHomeTeamName((team as any).name || "");
+    setHomeTeamFurigana(
+      (team as any).furigana ??
+      (team as any).nameKana ??
+      ""
+    );
+  }
+
+  setAwayTeamName(mi.opponentTeam || "");
+  setIsHomeTeamFirstAttack(!mi.isHome);
+  setOpponentTeamFurigana(mi.opponentTeamFurigana || "");
+  setBenchSide(mi.benchSide || "1塁側");
+}
+
+if (Array.isArray(mi.umpires)) {
+  setUmpires(mi.umpires);
+}
+
+setIsTwoUmpires(Boolean(mi.twoUmpires));
+setTournamentName(mi.tournamentName || "");
+setGameNumber(String(mi.matchNumber || ""));
+
       const extraPosRaw =
         (await localForage.getItem<ExtraPositionMap>("startingExtraPositionMap")) ??
         (await localForage.getItem<ExtraPositionMap>("startingExtraPositionMap_draft")) ??
@@ -180,23 +343,7 @@ const AnnounceStartingLineup: React.FC<{
       });
       setExtraPositionMap(normalizedExtraPos);
 
-      if (team) {
-        setTeamPlayers((team as any).players || []);
-        setHomeTeamName((team as any).name || "");
-        setHomeTeamFurigana((team as any).furigana ?? (team as any).nameKana ?? "");
-      }
-      if (matchInfo && typeof matchInfo === "object") {
-        const mi = matchInfo as any;
-        setAwayTeamName(mi.opponentTeam || "");
-        setIsHomeTeamFirstAttack(!mi.isHome);
-        if (Array.isArray(mi.umpires)) setUmpires(mi.umpires);
-        setOpponentTeamFurigana(mi.opponentTeamFurigana || "");
-        setIsTwoUmpires(Boolean(mi.twoUmpires));
-        setBenchSide(mi.benchSide || "1塁側");
 
-        setTournamentName(mi.tournamentName || "");
-        setGameNumber(String(mi.matchNumber || ""));
-      }
     };
     
     loadB();
@@ -235,11 +382,33 @@ const AnnounceStartingLineup: React.FC<{
     return `${last}${getHonorific(p)}`;
   };
 
-  const team1stBaseName = benchSide === "1塁側" ? homeTeamName : awayTeamName;
-  const team3rdBaseName = benchSide === "3塁側" ? homeTeamName : awayTeamName;
+  const team1stBaseName =
+    announcementMode === "single"
+      ? firstBaseTeamName
+      : benchSide === "1塁側"
+        ? homeTeamName
+        : awayTeamName;
 
-  const team1stBaseFurigana = benchSide === "1塁側" ? homeTeamFurigana : opponentTeamFurigana;
-  const team3rdBaseFurigana = benchSide === "3塁側" ? homeTeamFurigana : opponentTeamFurigana;
+  const team3rdBaseName =
+    announcementMode === "single"
+      ? thirdBaseTeamName
+      : benchSide === "3塁側"
+        ? homeTeamName
+        : awayTeamName;
+
+const team1stBaseFurigana =
+  announcementMode === "single"
+    ? firstBaseTeamFurigana
+    : benchSide === "1塁側"
+      ? homeTeamFurigana
+      : opponentTeamFurigana;
+
+const team3rdBaseFurigana =
+  announcementMode === "single"
+    ? thirdBaseTeamFurigana
+    : benchSide === "3塁側"
+      ? homeTeamFurigana
+      : opponentTeamFurigana;
 
   const renderTeam1stBase = () =>
     team1stBaseFurigana
@@ -255,12 +424,29 @@ const AnnounceStartingLineup: React.FC<{
   const lineupEntries = battingOrder.slice(0, MAX_BATTING_ORDER);
   const myBenchSide = benchSide || "1塁側";
 
-  const benchPlayers = teamPlayers.filter(
-    (p) =>
-      !startingIds.includes(p.id) &&
-      !benchOutIds.includes(p.id) &&
-      !(shouldAnnouncePitcher && p.id === pitcherId)
-  );
+const assignmentIds = Object.values(assignments || {})
+  .filter((v) => v !== null && v !== undefined)
+  .map((v) => Number(v))
+  .filter((v) => Number.isFinite(v));
+
+const benchOutIdNumbers = (Array.isArray(benchOutIds) ? benchOutIds : [])
+  .map((v) => Number(v))
+  .filter(Number.isFinite);
+
+const battingOrderIds = startingIds
+  .map((v) => Number(v))
+  .filter(Number.isFinite);
+
+const benchPlayers = teamPlayers.filter((p) => {
+  const id = Number(p.id);
+  if (!Number.isFinite(id)) return false;
+
+  const isInBattingOrder = battingOrderIds.includes(id);
+  const isInDefense = assignmentIds.includes(id);
+  const isBenchOut = benchOutIdNumbers.includes(id);
+
+  return !isInBattingOrder && !isInDefense && !isBenchOut;
+});
 
   /* === 画面に見えている文言をそのまま読む（rubyはrtを採用） === */
   const getVisibleAnnounceText = (): string => {

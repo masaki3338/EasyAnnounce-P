@@ -224,6 +224,8 @@ useEffect(() => {
   const [showRestoreCompleteModal, setShowRestoreCompleteModal] = useState(false);
   const [restoreCompleteMessage, setRestoreCompleteMessage] =
   useState("この回の最初に戻しました。");
+  const [moveToOffenseAfterRestoreComplete, setMoveToOffenseAfterRestoreComplete] =
+    useState(false);
 
   const synthRef = useRef(window.speechSynthesis);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -437,17 +439,31 @@ const buildPitchAnnouncementMessages = (
   const suffix = pitcher.isFemale ? "さん" : "くん";
   const pitcherRuby = nameRubyHTML(pitcher);
 
+  // ✅ ボーイズリーグ専用文言
+  // 1回：「投球数は〇球です。」
+  // 2回以降：「投球数は〇球です。」
+  //          「○○投手の合計投球数は〇球です。」
+  if (isBoys) {
+    const msgs: string[] = [
+      `投球数は${current}球です。`,
+    ];
+
+    if (Number(inning) >= 2) {
+      msgs.push(
+        `${pitcherRuby}投手の合計投球数は${total}球です。`
+      );
+    }
+
+    return msgs;
+  }
+
   const msgs: string[] = [];
   msgs.push(
     `${pitcherCall(pitcherRuby, suffix)}、この回の投球数は${current}球です`
   );
 
   if (current !== total) {
-    msgs.push(
-      isBoys
-        ? `合計投球数は${total}球です`
-        : `トータル ${total}球です`
-    );
+    msgs.push(`トータル ${total}球です`);
   }
 
   return msgs;
@@ -1354,6 +1370,17 @@ const restorePreviousInningEndSnapshot = async () => {
   const matchInfo =
     (await localForage.getItem<MatchInfo>("matchInfo")) || {};
 
+  // ✅ 守備画面の表示ラベルと同じ戻り先を、先に固定する。
+  // 例：2回表の守備画面 → 1回裏の最後に戻す
+  // 例：2回裏の守備画面 → 2回表の最後に戻す
+  const targetInning = isTop ? inning - 1 : inning;
+  const targetIsTop = isTop ? false : true;
+
+  if (targetInning <= 0) {
+    alert("前のイニングがありません。");
+    return;
+  }
+
   const matchKey = buildDefenseMatchKey(matchInfo);
   const storageKey = getPreviousInningEndSnapshotKey(matchKey);
 
@@ -1368,6 +1395,13 @@ const restorePreviousInningEndSnapshot = async () => {
   if (snapshot.matchKey !== matchKey) {
     alert("別の試合の保存データです。復元を中止しました。");
     return;
+  }
+
+  if (snapshot.inning !== targetInning || snapshot.isTop !== targetIsTop) {
+    console.warn("[PREV INNING SNAPSHOT] half mismatch. Use button target.", {
+      buttonTarget: { inning: targetInning, isTop: targetIsTop },
+      snapshot: { inning: snapshot.inning, isTop: snapshot.isTop },
+    });
   }
 
   const safeAssignments = { ...(snapshot.lineupAssignments || {}) };
@@ -1389,8 +1423,10 @@ const restorePreviousInningEndSnapshot = async () => {
   setCurrentPitchCount(snapshot.pitchCounts.current ?? 0);
   setTotalPitchCount(snapshot.pitchCounts.total ?? 0);
   setPitcherTotals(structuredClone(snapshot.pitcherTotals ?? {}));
-  setInning(snapshot.inning);
-  setIsTop(snapshot.isTop);
+
+  // ✅ snapshot 側の inning/isTop ではなく、ボタン表示と同じ target を使う。
+  setInning(targetInning);
+  setIsTop(targetIsTop);
 
   await localForage.setItem("lineupAssignments", safeAssignments);
   localStorage.setItem("assignmentsVersion", String(Date.now()));
@@ -1413,8 +1449,8 @@ const restorePreviousInningEndSnapshot = async () => {
 
   await saveMatchInfo({
     ...(snapshot.matchInfo || {}),
-    inning: snapshot.inning,
-    isTop: snapshot.isTop,
+    inning: targetInning,
+    isTop: targetIsTop,
     isDefense: false,
     isHome,
   });
@@ -1427,10 +1463,8 @@ const restorePreviousInningEndSnapshot = async () => {
   ttsStop();
 
   setRestoreCompleteMessage("前のイニング終了直前に戻しました。");
+  setMoveToOffenseAfterRestoreComplete(true);
   setShowRestoreCompleteModal(true);
-
-  // 攻撃画面へ戻す
-  onSwitchToOffense();
 };
 
 const hasPreviousInning = () => {
@@ -1451,6 +1485,15 @@ const getPreviousInningLabel = () => {
   // 現在が裏の守備画面なら、前の攻撃回は「同じ回の表」
   // 例：4回裏の守備画面 → 4回表に戻す
   return `${inning}回表の最後に戻す`;
+};
+
+const handleRestoreCompleteOk = () => {
+  setShowRestoreCompleteModal(false);
+
+  if (moveToOffenseAfterRestoreComplete) {
+    setMoveToOffenseAfterRestoreComplete(false);
+    onSwitchToOffense();
+  }
 };
 
 const handleStop = () => { ttsStop(); };
@@ -2820,14 +2863,14 @@ if (typeof reEntryTarget?.index === "number") {
             const pitcher = teamPlayers.find((p) => p.id === pitcherId);
 
             if (pitcher) {
-              const suffix = pitcher.isFemale ? "さん" : "くん";
-              const pitcherRuby = nameRubyHTML(pitcher); // ふりがなルビ（名なしなら姓だけになる実装にしている前提）
-
-              const msgs: string[] = [];
-              msgs.push(`${pitcherCall(pitcherRuby, suffix)}、この回の投球数は${currentPitchCount}球です`);
-              msgs.push(`トータル ${safe}球です`);
-
-              setAnnounceMessages(msgs);
+              setAnnounceMessages(
+                buildPitchAnnouncementMessages(
+                  pitcherId,
+                  currentPitchCount,
+                  safe,
+                  teamPlayers
+                )
+              );
             }
 
             setShowTotalPitchModal(false);
@@ -2982,7 +3025,7 @@ if (typeof reEntryTarget?.index === "number") {
   <div className="fixed inset-0 z-50">
     <div
       className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-      onClick={() => setShowRestoreCompleteModal(false)}
+      onClick={handleRestoreCompleteOk}
     />
 
     <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
@@ -3015,7 +3058,7 @@ if (typeof reEntryTarget?.index === "number") {
         <div className="px-5 pb-5">
           <button
             className="w-full py-3 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 active:bg-emerald-800"
-            onClick={() => setShowRestoreCompleteModal(false)}
+            onClick={handleRestoreCompleteOk}
           >
             OK
           </button>

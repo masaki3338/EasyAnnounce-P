@@ -4,6 +4,7 @@ import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { TouchBackend } from "react-dnd-touch-backend";
 import { useNavigate } from "react-router-dom";
+import { getAnnouncementMode } from "./lib/announcementMode";
 
 /* =========================================================
  *  見た目だけのミニSVG（UIは変えない）
@@ -231,6 +232,15 @@ const StartingLineup = () => {
   const [showHelp, setShowHelp] = useState(false);
   const [showSaveComplete, setShowSaveComplete] = useState(false);
   const [showClearComplete, setShowClearComplete] = useState(false);
+  const [announcementMode, setAnnouncementMode] =
+  useState<"loading" | "normal" | "single">("loading");
+
+  const [activeTeamTab, setActiveTeamTab] =
+  useState<"third" | "first">("third");
+  const [matchInfoForSingle, setMatchInfoForSingle] = useState<any>(null);
+  const [thirdBaseTeamName, setThirdBaseTeamName] = useState("");
+  const [firstBaseTeamName, setFirstBaseTeamName] = useState("");
+
   const [showLineupError, setShowLineupError] = useState(false);
   const [deleteTargetIndex, setDeleteTargetIndex] = useState<number | null>(null);
 
@@ -248,6 +258,128 @@ const StartingLineup = () => {
    *  保存・クリア（LocalForage）
    * ======================================================= */
 
+  const teamKey = (teamId: string, name: string) =>
+    `${name}_${teamId}`;
+
+  const getTeamNameById = (store: any, teamId: string) => {
+    const folder = store?.teams?.find(
+      (t: any) => String(t.id) === String(teamId)
+    );
+
+    return (
+      folder?.team?.name ||
+      folder?.teamName ||
+      folder?.name ||
+      folder?.listName ||
+      ""
+    );
+  };
+
+const loadSingleTeamSide = async (side: "third" | "first") => {
+  const matchInfo = await localForage.getItem<any>("matchInfo");
+  console.log("StartingLineup matchInfo", matchInfo);
+  setMatchInfoForSingle(matchInfo);
+
+  const teamId =
+    side === "third"
+      ? matchInfo?.thirdBaseTeamId
+      : matchInfo?.firstBaseTeamId;
+
+  console.log("side", side, "teamId", teamId);
+
+const store = await localForage.getItem<any>("teamRegisterStore");
+
+// タブ名は両方とも毎回セットする
+setThirdBaseTeamName(
+  getTeamNameById(store, matchInfo?.thirdBaseTeamId)
+);
+
+setFirstBaseTeamName(
+  getTeamNameById(store, matchInfo?.firstBaseTeamId)
+);
+
+// 今開いているタブのチームを取得
+const folder = store?.teams?.find(
+  (t: any) => String(t.id) === String(teamId)
+);
+
+  const players = folder?.team?.players ?? [];
+  setTeamPlayers(players);
+
+const savedAssignments =
+  await localForage.getItem<Assignments>(
+    teamKey(teamId, "startingassignments")
+  );
+
+const savedBattingOrder =
+  await localForage.getItem<BattingEntry[]>(
+    teamKey(teamId, "startingBattingOrder")
+  );
+
+const savedBenchOutIds =
+  await localForage.getItem<number[]>(
+    teamKey(teamId, "startingBenchOutIds")
+  );
+
+const savedExtraBattingSlots =
+  await localForage.getItem<number>(
+    teamKey(teamId, "startingExtraBattingSlots")
+  );
+
+const savedExtraPositionMap =
+  await localForage.getItem<ExtraPositionMap>(
+    teamKey(teamId, "startingExtraPositionMap")
+  );
+
+  if (savedAssignments) {
+    setAssignments(savedAssignments);
+  } else {
+    setAssignments(createEmptyAssignments());
+  }
+
+  if (savedBattingOrder) {
+    setBattingOrder(savedBattingOrder);
+  } else {
+    setBattingOrder([]);
+  }
+
+  if (savedBenchOutIds) {
+    setBenchOutIds(savedBenchOutIds);
+  } else {
+    setBenchOutIds(players.map((p: Player) => p.id));
+  }
+
+  setExtraBattingSlots(savedExtraBattingSlots ?? 0);
+  setExtraPositionMap(savedExtraPositionMap ?? {});
+};
+
+const saveSingleTeamSide = async (side: "third" | "first") => {
+  const matchInfo = await localForage.getItem<any>("matchInfo");
+
+  const teamId =
+    side === "third"
+      ? matchInfo?.thirdBaseTeamId
+      : matchInfo?.firstBaseTeamId;
+
+  if (!teamId) return;
+
+  await localForage.setItem(teamKey(teamId, "startingassignments"), assignments);
+  await localForage.setItem(teamKey(teamId, "startingBattingOrder"), battingOrder);
+  await localForage.setItem(teamKey(teamId, "startingBenchOutIds"), benchOutIds);
+  await localForage.setItem(teamKey(teamId, "startingExtraBattingSlots"), extraBattingSlots);
+  await localForage.setItem(teamKey(teamId, "startingExtraPositionMap"), extraPositionMap);
+};
+
+const handleChangeTeamTab = async (nextSide: "third" | "first") => {
+  if (announcementMode === "single") {
+    await saveSingleTeamSide(activeTeamTab);
+    setActiveTeamTab(nextSide);
+    await loadSingleTeamSide(nextSide);
+  } else {
+    setActiveTeamTab(nextSide);
+  }
+};
+
   /**
    * スタメン保存
    * - 9人そろっていない場合は保存しない（元仕様）
@@ -260,6 +392,15 @@ const StartingLineup = () => {
     if (uniqueIds.length < MIN_STARTERS) {
       //alert("スタメンを9人以上設定して下さい");
       setShowLineupError(true);
+      return;
+    }
+
+    if (announcementMode === "single") {
+      await saveSingleTeamSide(activeTeamTab);
+
+      snapshotRef.current = buildSnapshot();
+      setIsDirty(false);
+      setShowSaveComplete(true);
       return;
     }
 
@@ -1533,7 +1674,17 @@ const requestDeleteBattingSlot = (targetIndex: number) => {
    *  useEffect群（副作用は上から「意味順」に整理）
    * ======================================================= */
 
+// アナウンスモード読込
+useEffect(() => {
+  (async () => {
+    const mode = await getAnnouncementMode();
+    setAnnouncementMode(mode);
 
+    if (mode === "single") {
+      await loadSingleTeamSide("third");
+    }
+  })();
+}, []);
 
   // 透明1x1ゴースト画像（初回だけ生成）
   useEffect(() => {
@@ -1638,6 +1789,7 @@ useEffect(() => {
 
   // 保存先キー：startingassignments / startingBattingOrder を正として扱う（元仕様）
   useEffect(() => {
+    if (announcementMode !== "normal") return;
     (async () => {
       // ① 専用領域から読む
       const a = await localForage.getItem<Record<string, number | null>>("startingassignments");
@@ -1686,14 +1838,16 @@ useEffect(() => {
       await localForage.setItem("startingExtraBattingSlots", Math.max(0, Math.min(baseO.length, MAX_BATTING_ORDER) - MIN_STARTERS));
       await localForage.setItem("startingExtraPositionMap", {});
     })();
-  }, []);
+  }, [announcementMode]);
 
-  // teamPlayersロード（元仕様）
+  // teamPlayersロード（通常モードのみ）
   useEffect(() => {
+    if (announcementMode !== "normal") return;
+
     localForage.getItem<{ players: Player[] }>("team").then((team) => {
       setTeamPlayers(team?.players || []);
     });
-  }, []);
+  }, [announcementMode]);
 
   // 初回ロード後にdirty判定の基準を固定（元仕様）
   useEffect(() => {
@@ -1815,6 +1969,8 @@ useEffect(() => {
    * - benchOutIdsは保存が無ければ「全員ベンチ外」に初期化（元仕様）
    */
   useEffect(() => {
+    if (announcementMode !== "normal") return;
+
     const loadInitialData = async () => {
       const team = await localForage.getItem<{ players: Player[] }>("team");
       setTeamPlayers(team?.players || []);
@@ -1869,7 +2025,7 @@ useEffect(() => {
     };
 
     loadInitialData();
-  }, []);
+  }, [announcementMode]);
 
   // 右クリック等を抑止（スマホ誤操作防止：元仕様）
   useEffect(() => {
@@ -1980,6 +2136,45 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
           </button>
         </div>
         <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
+        
+        {announcementMode === "single" && (
+          <div className="mt-2 w-full grid grid-cols-2 gap-1">
+            <button
+              type="button"
+              onClick={() => handleChangeTeamTab("third")}
+              className={`py-2 rounded-lg font-extrabold shadow border ${
+                activeTeamTab === "third"
+                  ? "bg-emerald-500 text-white border-emerald-300"
+                  : "bg-white text-gray-800 border-white/30"
+              }`}
+            >
+              <div>
+                <div>3塁側チーム</div>
+                <div className="text-xs font-semibold opacity-80 mt-1">
+                  {thirdBaseTeamName || "未選択"}
+                </div>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleChangeTeamTab("first")}
+              className={`py-2 rounded-lg font-extrabold shadow border ${
+                activeTeamTab === "first"
+                  ? "bg-emerald-500 text-white border-emerald-300"
+                  : "bg-white text-gray-800 border-white/30"
+              }`}
+            >
+              <div>
+                <div>1塁側チーム</div>
+                <div className="text-xs font-semibold opacity-80 mt-1">
+                  {firstBaseTeamName || "未選択"}
+                </div>
+              </div>
+            </button>
+          </div>
+        )}
+
         <div className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-red-100 border border-red-300">
           <span className="text-sm font-extrabold text-red-600">
             選手を長押しして打順通り配置してください

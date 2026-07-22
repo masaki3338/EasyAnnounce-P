@@ -43,6 +43,11 @@ const Gather: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
   const [benchSide, setBenchSide] = useState<"1塁側" | "3塁側">("1塁側");
   const [teamFurigana, setTeamFurigana] = useState("");
   const [opponentFurigana, setOpponentFurigana] = useState("");
+  const [announcementMode, setAnnouncementMode] =
+    useState<"normal" | "single">("normal");
+
+  const [firstBaseTeamName, setFirstBaseTeamName] = useState("");
+  const [thirdBaseTeamName, setThirdBaseTeamName] = useState("");
 
   useEffect(() => {
     const load = async () => {
@@ -55,6 +60,37 @@ const Gather: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
       }
 
       if (matchInfo) {
+        if (matchInfo.announcementMode === "single") {
+          setAnnouncementMode("single");
+
+          const store = await localForage.getItem<any>("teamRegisterStore");
+
+          const firstFolder = store?.teams?.find(
+            (t: any) => String(t.id) === String(matchInfo.firstBaseTeamId)
+          );
+
+          const thirdFolder = store?.teams?.find(
+            (t: any) => String(t.id) === String(matchInfo.thirdBaseTeamId)
+          );
+
+          setFirstBaseTeamName(
+            matchInfo.firstBaseTeamName ||
+              firstFolder?.team?.name ||
+              firstFolder?.name ||
+              firstFolder?.teamName ||
+              firstFolder?.listName ||
+              ""
+          );
+
+          setThirdBaseTeamName(
+            matchInfo.thirdBaseTeamName ||
+              thirdFolder?.team?.name ||
+              thirdFolder?.name ||
+              thirdFolder?.teamName ||
+              thirdFolder?.listName ||
+              ""
+          );
+        }
         setTournamentName(matchInfo.tournamentName || "");
         setMatchNumber(matchInfo.matchNumber || "〇");
         setOpponentName(matchInfo.opponentTeam || "");
@@ -77,13 +113,33 @@ const Gather: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
     };
   }, []);
 
-  const team1st = benchSide === "1塁側" ? teamName : opponentName;
-  const team3rd = benchSide === "3塁側" ? teamName : opponentName;
+  const team1st =
+    announcementMode === "single"
+      ? firstBaseTeamName
+      : benchSide === "1塁側"
+        ? teamName
+        : opponentName;
+
+  const team3rd =
+    announcementMode === "single"
+      ? thirdBaseTeamName
+      : benchSide === "3塁側"
+        ? teamName
+        : opponentName;
 
   const team1stRead =
-    benchSide === "1塁側" ? (teamFurigana || teamName) : (opponentFurigana || opponentName);
+    announcementMode === "single"
+      ? firstBaseTeamName
+      : benchSide === "1塁側"
+        ? (teamFurigana || teamName)
+        : (opponentFurigana || opponentName);
+
   const team3rdRead =
-    benchSide === "3塁側" ? (teamFurigana || teamName) : (opponentFurigana || opponentName);
+    announcementMode === "single"
+      ? thirdBaseTeamName
+      : benchSide === "3塁側"
+        ? (teamFurigana || teamName)
+        : (opponentFurigana || opponentName);
 
   const isBoys = leagueMode === "boys";
 
@@ -121,10 +177,10 @@ const Gather: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
 
   return (
     <div
-      className="min-h-[100dvh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-4"
+      className="min-h-[100dvh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
       style={{
-        paddingTop: "max(10px, env(safe-area-inset-top))",
-        paddingBottom: "max(10px, env(safe-area-inset-bottom))",
+        paddingTop: "max(16px, env(safe-area-inset-top))",
+        paddingBottom: "max(16px, env(safe-area-inset-bottom))",
         WebkitTouchCallout: "none",
         WebkitUserSelect: "none",
         userSelect: "none",
@@ -132,7 +188,7 @@ const Gather: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
     >
       <header className="w-full max-w-md md:max-w-none">
         <div className="mt-1 text-center select-none">
-          <h1 className="inline-flex items-center gap-2 text-2xl md:text-3xl font-extrabold tracking-wide leading-tight">
+          <h1 className="inline-flex items-center gap-2 text-3xl md:text-4xl font-extrabold tracking-wide leading-tight">
             <span className="text-2xl md:text-3xl">👥</span>
             <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-sky-100 to-sky-400 drop-shadow">
               集合 / 試合開始挨拶
@@ -146,10 +202,10 @@ const Gather: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
         </div>
       </header>
 
-<main className="w-full max-w-md md:max-w-none mt-4 space-y-3">
+<main className="w-full max-w-md md:max-w-none mt-6 space-y-5">
   {/* 集合セット */}
   <div className="space-y-0">
-    <section className="rounded-t-2xl rounded-b-none p-3 shadow-lg text-left bg-gradient-to-br from-amber-400/20 via-amber-300/15 to-amber-200/10 border border-amber-300/60 ring-1 ring-inset ring-amber-300/30">
+    <section className="rounded-t-2xl rounded-b-none p-4 shadow-lg text-left bg-gradient-to-br from-amber-400/20 via-amber-300/15 to-amber-200/10 border border-amber-300/60 ring-1 ring-inset ring-amber-300/30">
       <div className="flex items-center gap-2 mb-1">
         <div className="w-11 h-11 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center">
           <IconAlert />
@@ -173,7 +229,7 @@ const Gather: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
         ring-1 ring-inset ring-rose-600/50
       "
     >
-      <p className="text-white whitespace-pre-wrap leading-relaxed drop-shadow">
+      <p className="text-white text-base whitespace-pre-wrap leading-relaxed drop-shadow">
         {gatherMessage}
       </p>
 
@@ -181,14 +237,14 @@ const Gather: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
         <button
           onClick={handleSpeakGather}
           disabled={speaking}
-          className="w-full px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow active:scale-95 disabled:opacity-60 inline-flex items-center justify-center gap-2"
+          className="w-full px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-base font-semibold shadow active:scale-95 disabled:opacity-60 inline-flex items-center justify-center gap-2"
         >
           <IconMic /> 読み上げ
         </button>
         <button
           onClick={handleStop}
           disabled={!speaking}
-          className="w-full px-4 py-3 rounded-xl bg-gray-600 hover:bg-gray-700 text-white font-semibold shadow active:scale-95 inline-flex items-center justify-center disabled:opacity-60"
+          className="w-full px-4 py-3 rounded-xl bg-gray-600 hover:bg-gray-700 text-white text-base font-semibold shadow active:scale-95 inline-flex items-center justify-center disabled:opacity-60"
         >
           停止
         </button>
@@ -205,7 +261,7 @@ const Gather: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
         </div>
         <h2 className="font-semibold">試合開始挨拶</h2>
       </div>
-      <p className="text-amber-50/90 text-[13px] leading-5">
+      <p className="text-amber-50/90 text-sm leading-relaxed">
         挨拶終了後（後攻チームが守備につく時）
       </p>
     </section>
@@ -218,7 +274,7 @@ const Gather: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
         ring-1 ring-inset ring-rose-600/50
       "
     >
-      <p className="text-white whitespace-pre-wrap leading-relaxed drop-shadow">
+      <p className="text-white text-base whitespace-pre-wrap leading-relaxed drop-shadow">
         {startGreetingText}
       </p>
 
@@ -226,14 +282,14 @@ const Gather: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
         <button
           onClick={handleSpeakGreeting}
           disabled={speaking}
-          className="w-full px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow active:scale-95 disabled:opacity-60 inline-flex items-center justify-center gap-2"
+          className="w-full px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-base font-semibold shadow active:scale-95 disabled:opacity-60 inline-flex items-center justify-center gap-2"
         >
           <IconMic /> 読み上げ
         </button>
         <button
           onClick={handleStop}
           disabled={!speaking}
-          className="w-full px-4 py-3 rounded-xl bg-gray-600 hover:bg-gray-700 text-white font-semibold shadow active:scale-95 inline-flex items-center justify-center disabled:opacity-60"
+          className="w-full px-4 py-3 rounded-xl bg-gray-600 hover:bg-gray-700 text-white text-base font-semibold shadow active:scale-95 inline-flex items-center justify-center disabled:opacity-60"
         >
           停止
         </button>

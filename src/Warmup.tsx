@@ -156,18 +156,91 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
       const matchInfo = await localForage.getItem("matchInfo");
       const team = await localForage.getItem("team");
 
-      if (matchInfo && typeof matchInfo === "object") {
-        const mi = matchInfo as any;
-        setOpponentName(mi.opponentTeam || "");
-        setBenchSide(mi.benchSide || "1塁側");
-        setOpponentFurigana(mi.opponentTeamFurigana || "");
+      if (!matchInfo || typeof matchInfo !== "object") {
+        if (team && typeof team === "object") {
+          const t = team as any;
+          setTeamName(t.name || "");
+          setTeamFurigana(t.furigana ?? t.nameFurigana ?? t.nameKana ?? "");
+        }
+        return;
       }
+
+      const mi = matchInfo as any;
+
+      setBenchSide(mi.benchSide || "1塁側");
+
+      // 1人アナウンスモード：1塁側・3塁側のチームIDから取得
+      if (mi.announcementMode === "single") {
+        const store = await localForage.getItem<any>("teamRegisterStore");
+
+        const firstFolder = store?.teams?.find(
+          (t: any) => String(t.id) === String(mi.firstBaseTeamId)
+        );
+
+        const thirdFolder = store?.teams?.find(
+          (t: any) => String(t.id) === String(mi.thirdBaseTeamId)
+        );
+
+        const firstName =
+          firstFolder?.team?.name ||
+          firstFolder?.teamName ||
+          firstFolder?.name ||
+          mi.firstBaseTeamName ||
+          firstFolder?.listName ||
+          "";
+
+        const thirdName =
+          thirdFolder?.team?.name ||
+          thirdFolder?.teamName ||
+          thirdFolder?.name ||
+          mi.thirdBaseTeamName ||
+          thirdFolder?.listName ||
+          "";
+
+        const firstFurigana =
+          firstFolder?.team?.furigana ||
+          firstFolder?.team?.nameKana ||
+          firstFolder?.team?.nameFurigana ||
+          firstFolder?.furigana ||
+          firstFolder?.nameKana ||
+          "";
+
+        const thirdFurigana =
+          thirdFolder?.team?.furigana ||
+          thirdFolder?.team?.nameKana ||
+          thirdFolder?.team?.nameFurigana ||
+          thirdFolder?.furigana ||
+          thirdFolder?.nameKana ||
+          "";
+
+        // この画面では teamName = 自チーム側、opponentName = 相手側として使う
+        // benchSide が 1塁側なら自チームは1塁側、相手は3塁側
+        if ((mi.benchSide || "1塁側") === "1塁側") {
+          setTeamName(firstName);
+          setTeamFurigana(firstFurigana);
+          setOpponentName(thirdName);
+          setOpponentFurigana(thirdFurigana);
+        } else {
+          setTeamName(thirdName);
+          setTeamFurigana(thirdFurigana);
+          setOpponentName(firstName);
+          setOpponentFurigana(firstFurigana);
+        }
+
+        return;
+      }
+
+      // 通常モード
+      setOpponentName(mi.opponentTeam || "");
+      setOpponentFurigana(mi.opponentTeamFurigana || "");
+
       if (team && typeof team === "object") {
         const t = team as any;
         setTeamName(t.name || "");
         setTeamFurigana(t.furigana ?? t.nameFurigana ?? t.nameKana ?? "");
       }
     };
+
     load();
   }, []);
 

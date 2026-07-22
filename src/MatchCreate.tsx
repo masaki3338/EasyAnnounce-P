@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import localForage from "localforage";
 import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
 import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
+import { getAnnouncementMode } from "./lib/announcementMode";
 
 // --- ミニSVGアイコン（外部依存なし） ---
 const IconBack = () => (
@@ -87,6 +88,12 @@ const MatchCreate: React.FC<MatchCreateProps> = ({ onBack, onGoToLineup }) => {
   const [matchNumber, setMatchNumber] = useState(1);
   const [opponentTeam, setOpponentTeam] = useState("");
 
+  const [registeredTeams, setRegisteredTeams] = useState<any[]>([]);
+  const [thirdBaseTeamId, setThirdBaseTeamId] = useState("");
+  const [firstBaseTeamId, setFirstBaseTeamId] = useState("");
+  const [battingFirstSide, setBattingFirstSide] =
+    useState<"third" | "first">("third");
+
   const [leagueMode] = useState<LeagueMode>(getLeagueMode());
   const isBoys = leagueMode === "boys";
 
@@ -101,6 +108,55 @@ const MatchCreate: React.FC<MatchCreateProps> = ({ onBack, onGoToLineup }) => {
 
   // 追加：初期ロード完了フラグ
 const [loaded, setLoaded] = useState(false);
+
+const getRegisteredTeamName = (folder: any) => {
+  return (
+    folder?.team?.name ||
+    folder?.name ||
+    folder?.teamName ||
+    folder?.listName ||
+    "チーム名未設定"
+  );
+};
+
+const getSelectedTeamName = (id: string) => {
+  const folder = registeredTeams.find((t: any) => String(t.id) === String(id));
+  return folder ? getRegisteredTeamName(folder) : "";
+};
+
+const getRegisteredTeamFurigana = (folder: any) => {
+  return (
+    folder?.team?.furigana ||
+    folder?.team?.nameKana ||
+    folder?.team?.kana ||
+    folder?.furigana ||
+    folder?.kana ||
+    folder?.reading ||
+    getRegisteredTeamName(folder)
+  );
+};
+
+const getOwnTeamFolder = () => {
+  // 通常モードでは、自チームのベンチ側で判定する
+  // 1人アナウンスモードでは "team" は主に通常モード用なので、
+  // ここでは同じく benchSide に合わせて保存する
+  return benchSide === "3塁側"
+    ? registeredTeams.find((t: any) => String(t.id) === String(thirdBaseTeamId))
+    : registeredTeams.find((t: any) => String(t.id) === String(firstBaseTeamId));
+};
+
+const saveOwnTeamToLocalForage = async () => {
+  const ownTeamFolder = getOwnTeamFolder();
+  if (!ownTeamFolder) return;
+
+  await localForage.setItem("team", {
+    ...(ownTeamFolder.team || {}),
+    id: ownTeamFolder.id,
+    name: getRegisteredTeamName(ownTeamFolder),
+    furigana: getRegisteredTeamFurigana(ownTeamFolder),
+    players: ownTeamFolder.team?.players || ownTeamFolder.players || [],
+  });
+};
 
   const [umpires, setUmpires] = useState([
     { role: "球審", name: "", furigana: "" },
@@ -131,11 +187,24 @@ const [loaded, setLoaded] = useState(false);
       umpires,
       isTwoUmp,
       noNextGame,
+      thirdBaseTeamId,
+      firstBaseTeamId,
+      battingFirstSide,
     });
+
+  const [announcementMode, setAnnouncementMode] =
+  useState<"normal" | "single">("normal");
 
 
 useEffect(() => {
   const loadMatchInfo = async () => {
+
+    const mode = await getAnnouncementMode();
+    setAnnouncementMode(mode);
+    const teamStore = await localForage.getItem<any>("teamRegisterStore");
+    setRegisteredTeams(Array.isArray(teamStore?.teams) ? teamStore.teams : []);
+
+
     // 大会名リスト
     const savedList = await localForage.getItem<string[]>("recentTournaments");
     if (savedList && Array.isArray(savedList) && savedList.length > 0) {
@@ -160,6 +229,9 @@ useEffect(() => {
       setMatchNumber(Number(saved.matchNumber ?? 1));
       setOpponentTeam(saved.opponentTeam ?? "");
       setOpponentTeamFurigana((saved as any).opponentTeamFurigana ?? "");
+      setThirdBaseTeamId((saved as any).thirdBaseTeamId ?? "");
+      setFirstBaseTeamId((saved as any).firstBaseTeamId ?? "");
+      setBattingFirstSide((saved as any).battingFirstSide ?? "third");
       const homeSrc = (saved as any).isHome;
       const normalizedIsHome =
         typeof homeSrc === "boolean" ? (homeSrc ? "後攻" : "先攻") : (homeSrc === "後攻" ? "後攻" : "先攻");
@@ -214,6 +286,9 @@ useEffect(() => {
   umpires,
   isTwoUmp,
   noNextGame,
+  thirdBaseTeamId,
+  firstBaseTeamId,
+  battingFirstSide,
 ]);
 
 
@@ -308,6 +383,28 @@ const handleSave = async () => {
  // 進行中なら inning/isTop は絶対に触らない
  const base = hasProgress ? (existing || {}) : { inning: 1, isTop: true };
 
+ if (announcementMode === "single") {
+  if (!thirdBaseTeamId || !firstBaseTeamId) {
+    alert("1塁側チームと3塁側チームを選択してください");
+    return;
+  }
+
+  if (thirdBaseTeamId === firstBaseTeamId) {
+    alert("1塁側チームと3塁側チームは別のチームを選択してください");
+    return;
+  }
+}
+
+await saveOwnTeamToLocalForage();
+
+const thirdTeamFolder = registeredTeams.find(
+  (t: any) => String(t.id) === String(thirdBaseTeamId)
+);
+
+const firstTeamFolder = registeredTeams.find(
+  (t: any) => String(t.id) === String(firstBaseTeamId)
+);
+
  const matchInfo = {
    ...base,
    tournamentName,
@@ -318,8 +415,21 @@ const handleSave = async () => {
    benchSide,
    umpires,
    twoUmpires: isBoys ? false : isTwoUmp,
-   teamName: (base as any)?.teamName ?? team?.name ?? "",
+   teamName:
+     announcementMode === "single"
+       ? (battingFirstSide === "third"
+           ? getRegisteredTeamName(thirdTeamFolder)
+           : getRegisteredTeamName(firstTeamFolder))
+       : ((base as any)?.teamName ?? team?.name ?? ""),
    noNextGame, 
+   announcementMode,
+   thirdBaseTeamId,
+   firstBaseTeamId,
+   thirdBaseTeamName: getRegisteredTeamName(thirdTeamFolder),
+   firstBaseTeamName: getRegisteredTeamName(firstTeamFolder),
+   thirdBaseTeamFurigana: getRegisteredTeamFurigana(thirdTeamFolder),
+   firstBaseTeamFurigana: getRegisteredTeamFurigana(firstTeamFolder),
+   battingFirstSide,
  };
 
  await localForage.setItem("matchInfo", matchInfo);
@@ -333,7 +443,8 @@ const handleSave = async () => {
   setShowSaveComplete(true);
 };
 
-return (
+return (  
+  
   <div
     className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-5"
     style={{
@@ -394,379 +505,473 @@ return (
     {/* 本体：カード群 */}
     <main className="w-full max-w-3xl mt-3 space-y-3">
 
-{/* 大会名（1行目） */}
-<div className="space-y-2">
-  {/* 大会名ラベル */}
-  <label className="block text-xs text-white/70 mb-1">大会名</label>
+  {/* 大会名（1行目） */}
+  <div className="space-y-2">
+    {/* 大会名ラベル */}
+    <label className="block text-xs text-white/70 mb-1">大会名</label>
 
-  {/* 入力 + トグルボタン + 自前ドロップダウン */}
-  <div className="relative">
-    <input
-      type="text"
-      value={tournamentName}
-      onChange={(e) => {
-        const v = e.target.value;
-        setTournamentName(v);
-        setLastPickedName(v);
-      }}
-      onFocus={() => setShowTList(true)}
-      className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
-      placeholder="大会名を入力（候補から選択可）"
-      autoComplete="off"
-      inputMode="text"
-    />
+    {/* 入力 + トグルボタン + 自前ドロップダウン */}
+    <div className="relative">
+      <input
+        type="text"
+        value={tournamentName}
+        onChange={(e) => {
+          const v = e.target.value;
+          setTournamentName(v);
+          setLastPickedName(v);
+        }}
+        onFocus={() => setShowTList(true)}
+        className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
+        placeholder="大会名を入力（候補から選択可）"
+        autoComplete="off"
+        inputMode="text"
+      />
 
-    {/* ▼トグルボタン（タップで開閉） */}
-    <button
-      type="button"
-      onMouseDown={(e) => e.preventDefault()} // フォーカス外れ防止
-      onClick={() => setShowTList((v) => !v)}
-      className="absolute inset-y-0 right-0 px-3 text-gray-600 hover:text-gray-800"
-      aria-label="候補を開く"
-    >
-      ▼
-    </button>
-
-    {/* 自前ドロップダウン（Android対応） */}
-    {showTList && (
-      <div
-        className="absolute z-50 mt-1 w-full max-h-56 overflow-auto rounded-xl bg-white text-gray-900 shadow-lg border border-gray-200"
-        onMouseDown={(e) => e.preventDefault()} // クリックでblurさせない
+      {/* ▼トグルボタン（タップで開閉） */}
+      <button
+        type="button"
+        onMouseDown={(e) => e.preventDefault()} // フォーカス外れ防止
+        onClick={() => setShowTList((v) => !v)}
+        className="absolute inset-y-0 right-0 px-3 text-gray-600 hover:text-gray-800"
+        aria-label="候補を開く"
       >
-        {recentTournaments.filter(Boolean).length > 0 ? (
-          recentTournaments
-            .filter(Boolean)
-            .map((name, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => {
-                  setTournamentName(name);
-                  setLastPickedName(name);
-                  setShowTList(false);
-                }}
-                className={`w-full text-left px-3 py-2 hover:bg-gray-100 ${
-                  name === tournamentName ? "bg-gray-50 font-semibold" : ""
-                }`}
-              >
-                {name}
-              </button>
-            ))
-        ) : (
-          <div className="px-3 py-2 text-sm text-gray-500">候補はまだありません</div>
-        )}
-      </div>
-    )}
-  </div>
+        ▼
+      </button>
 
-  {/* よく使う候補チップ */}
-  <div className="mt-2 flex flex-wrap gap-2">
-    <button
-      type="button"
-      onClick={() => {
-        setTournamentName("練習試合");
-        setLastPickedName("練習試合");
-        setShowTList(false);
-      }}
-      className="px-3 py-1.5 rounded-full bg-blue-600 text-white text-xs hover:bg-blue-700"
-    >
-      練習試合
-    </button>
-    <button
-      type="button"
-      onClick={() => {
-        setTournamentName("");
-        setLastPickedName("");
-        setShowTList(false);
-      }}
-      className="px-3 py-1.5 rounded-full bg-gray-600 text-white text-xs hover:bg-gray-700"
-    >
-      クリア
-    </button>
-  </div>
-</div>
-
-{/* 本日の試合 + 次の試合（2行目） */}
-{/* 本日の試合 + 次の試合（2行目） */}
-<div className="mt-2 grid grid-cols-[140px_1fr] gap-3 items-end">
-  {/* 左：本日の 第n試合 */}
-  <div className="w-full">
-    <label className="block text-xs text-white/70 mb-1">本日の試合</label>
-    <select
-      value={matchNumber}
-      onChange={async (e) => {
-        const num = Number(e.target.value);
-        setMatchNumber(num);
-        const existing = await localForage.getItem<any>("matchInfo");
-        await localForage.setItem("matchInfo", { ...(existing || {}), matchNumber: num });
-        await localForage.setItem("matchNumberStash", num);
-        console.log("[MC:change] matchNumber saved →", num);
-      }}
-      className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 border border-white/20"
-    >
-      {[1, 2, 3, 4, 5].map((num) => (
-        <option key={num} value={num}>
-          第{num}試合
-        </option>
-      ))}
-    </select>
-  </div>
-
-  {!isBoys && (
-    <fieldset className="min-w-0 flex items-center gap-4 px-3 py-2 rounded-xl bg-white/10 border border-white/10">
-      <legend className="text-xs text-white/70 px-1">次の試合</legend>
-      <label className="inline-flex items-center gap-2 text-sm whitespace-nowrap">
-        <input
-          type="radio"
-          name="nextGame"
-          className="w-4 h-4 accent-rose-600"
-          checked={!noNextGame}
-          onChange={() => setNoNextGame(false)}
-        />
-        あり
-      </label>
-      <label className="inline-flex items-center gap-2 text-sm whitespace-nowrap">
-        <input
-          type="radio"
-          name="nextGame"
-          className="w-4 h-4 accent-rose-600"
-          checked={noNextGame}
-          onChange={() => setNoNextGame(true)}
-        />
-        なし
-      </label>
-    </fieldset>
-  )}
-</div>
-
-
-
-
-
-
-      {/* 相手チーム名＋ふりがな */}
-<section className="rounded-2xl bg-white/10 border border-white/10 p-3 shadow-lg">
-  <div className="flex items-center gap-3 mb-2">
-    <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
-      <IconVs />
+      {/* 自前ドロップダウン（Android対応） */}
+      {showTList && (
+        <div
+          className="absolute z-50 mt-1 w-full max-h-56 overflow-auto rounded-xl bg-white text-gray-900 shadow-lg border border-gray-200"
+          onMouseDown={(e) => e.preventDefault()} // クリックでblurさせない
+        >
+          {recentTournaments.filter(Boolean).length > 0 ? (
+            recentTournaments
+              .filter(Boolean)
+              .map((name, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => {
+                    setTournamentName(name);
+                    setLastPickedName(name);
+                    setShowTList(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 hover:bg-gray-100 ${
+                    name === tournamentName ? "bg-gray-50 font-semibold" : ""
+                  }`}
+                >
+                  {name}
+                </button>
+              ))
+          ) : (
+            <div className="px-3 py-2 text-sm text-gray-500">候補はまだありません</div>
+          )}
+        </div>
+      )}
     </div>
-    <div className="font-semibold">相手チーム</div>
+
+    {/* よく使う候補チップ */}
+    <div className="mt-2 flex flex-wrap gap-2">
+      <button
+        type="button"
+        onClick={() => {
+          setTournamentName("練習試合");
+          setLastPickedName("練習試合");
+          setShowTList(false);
+        }}
+        className="px-3 py-1.5 rounded-full bg-blue-600 text-white text-xs hover:bg-blue-700"
+      >
+        練習試合
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setTournamentName("");
+          setLastPickedName("");
+          setShowTList(false);
+        }}
+        className="px-3 py-1.5 rounded-full bg-gray-600 text-white text-xs hover:bg-gray-700"
+      >
+        クリア
+      </button>
+    </div>
   </div>
 
-  {/* チーム名ラベル */}
-  <label className="block text-xs text-white/70 mb-1">チーム名</label>
-  <input
-    type="text"
-    value={opponentTeam}
-    onChange={(e) => setOpponentTeam(e.target.value)}
-    className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
-    placeholder="相手チーム名を入力"
-  />
-
-  {/* ふりがなラベル */}
-  <label className="block text-xs text-white/70 mt-3 mb-1">ふりがな</label>
-  <input
-    type="text"
-    value={opponentTeamFurigana}
-    onChange={(e) => setOpponentTeamFurigana(e.target.value)}
-    className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
-    placeholder="相手チーム名のふりがな"
-  />
-</section>
-
-
-      {/* 自チーム情報（先攻/後攻・ベンチ側） */}
-      <section className="rounded-2xl bg-white/10 border border-white/10 p-3 shadow-lg">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
-            <IconHomeAway />
-          </div>
-          <div className="font-semibold">自チーム情報</div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <select
-            value={isHome}
-            onChange={(e) => setIsHome(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 border border-white/20"
-          >
-            <option>先攻</option>
-            <option>後攻</option>
-          </select>
-
-          <div className="flex items-center gap-2">
-            <IconBench />
-            <select
-              value={benchSide}
-              onChange={(e) => setBenchSide(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 border border-white/20"
-            >
-              <option>1塁側</option>
-              <option>3塁側</option>
-            </select>
-          </div>
-        </div>
-
-        {/* メンバー交換ボタン（条件一致時のみ） */}
-        {!isBoys && matchNumber === 1 && benchSide === "1塁側" && (
-          <div className="mt-2">
-            <button
-              onClick={() => setShowExchangeModal(true)}
-              className="px-4 py-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded-xl text-base active:scale-95"
-            >
-              メンバー交換（読み上げ案内）
-            </button>
-          </div>
-        )}
-      </section>
-
-{/* 審判 */}
-<section className="rounded-2xl bg-white/10 border border-white/10 p-3 shadow-lg">
-<div className="mb-2">
-  <div className="flex items-center gap-4 mb-2">
-    <div className="flex items-center gap-3 shrink-0">
-      <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
-        <IconUmpire />
-      </div>
-      <div className="font-semibold">審判</div>
+  {/* 本日の試合 + 次の試合（2行目） */}
+  <div className="mt-2 grid grid-cols-[140px_1fr] gap-3 items-end">
+    {/* 左：本日の 第n試合 */}
+    <div className="w-full">
+      <label className="block text-xs text-white/70 mb-1">本日の試合</label>
+      <select
+        value={matchNumber}
+        onChange={async (e) => {
+          const num = Number(e.target.value);
+          setMatchNumber(num);
+          const existing = await localForage.getItem<any>("matchInfo");
+          await localForage.setItem("matchInfo", { ...(existing || {}), matchNumber: num });
+          await localForage.setItem("matchNumberStash", num);
+          console.log("[MC:change] matchNumber saved →", num);
+        }}
+        className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 border border-white/20"
+      >
+        {[1, 2, 3, 4, 5].map((num) => (
+          <option key={num} value={num}>
+            第{num}試合
+          </option>
+        ))}
+      </select>
     </div>
 
     {!isBoys && (
-      <div
-        className="flex items-center gap-3 text-sm select-none flex-wrap"
-        role="radiogroup"
-        aria-label="審判人数"
-      >
-        <label className="inline-flex items-center gap-1 whitespace-nowrap">
+      <fieldset className="min-w-0 flex items-center gap-4 px-3 py-2 rounded-xl bg-white/10 border border-white/10">
+        <legend className="text-xs text-white/70 px-1">次の試合</legend>
+        <label className="inline-flex items-center gap-2 text-sm whitespace-nowrap">
           <input
             type="radio"
-            name="umpireMode"
-            className="w-4 h-4 accent-emerald-600"
-            checked={isTwoUmp === true}
-            onChange={() => setIsTwoUmp(true)}
+            name="nextGame"
+            className="w-4 h-4 accent-rose-600"
+            checked={!noNextGame}
+            onChange={() => setNoNextGame(false)}
           />
-          2審
+          あり
         </label>
-
-        <label className="inline-flex items-center gap-1 whitespace-nowrap">
+        <label className="inline-flex items-center gap-2 text-sm whitespace-nowrap">
           <input
             type="radio"
-            name="umpireMode"
-            className="w-4 h-4 accent-emerald-600"
-            checked={isTwoUmp === false}
-            onChange={() => setIsTwoUmp(false)}
+            name="nextGame"
+            className="w-4 h-4 accent-rose-600"
+            checked={noNextGame}
+            onChange={() => setNoNextGame(true)}
           />
-          4審
+          なし
         </label>
-
-        <span className="text-xs text-white/70 whitespace-nowrap">
-          後攻チームのみ使用
-        </span>
-      </div>
+      </fieldset>
     )}
   </div>
-</div>
 
+{announcementMode === "single" ? (
+  <>
+    <section className="rounded-2xl bg-white/10 border border-white/10 p-3 shadow-lg">
+      <div className="font-bold text-emerald-400 mb-3">
+        両チームを1人でアナウンス
+      </div>
 
-  <div className="space-y-2">
-    {umpires.slice(0, isTwoUmp ? 2 : 4).map((umpire, index) => (
-      <div
-        key={index}
-        className="grid grid-cols-[64px_1fr_1fr] gap-2 items-center"
+      <div className="space-y-3">
+        <div>
+          <label className="block text-xs text-white/70 mb-1">
+            1塁側チーム
+          </label>
+            <select
+              value={firstBaseTeamId}
+              onChange={(e) => setFirstBaseTeamId(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl bg-white text-gray-900"
+            >
+            <option value="">選択してください</option>
+              {registeredTeams.map((folder: any) => (
+                <option key={folder.id} value={folder.id}>
+                  {getRegisteredTeamName(folder)}
+                </option>
+              ))}
+            </select>
+        </div>
+
+        <div>
+          <label className="block text-xs text-white/70 mb-1">
+            3塁側チーム
+          </label>
+            <select
+              value={thirdBaseTeamId}
+              onChange={(e) => setThirdBaseTeamId(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl bg-white text-gray-900"
+            >
+            <option value="">選択してください</option>
+              {registeredTeams.map((folder: any) => (
+                <option key={folder.id} value={folder.id}>
+                  {getRegisteredTeamName(folder)}
+                </option>
+              ))}
+            </select>
+        </div>
+
+        <div>
+          <label className="block text-xs text-white/70 mb-1">
+            先攻チーム
+          </label>
+            <select
+              value={battingFirstSide}
+              onChange={(e) =>
+                setBattingFirstSide(e.target.value as "third" | "first")
+              }
+              className="w-full px-3 py-2 rounded-xl bg-white text-gray-900"
+            >
+              <option value="third">
+                3塁側：{getSelectedTeamName(thirdBaseTeamId) || "チーム未選択"}
+              </option>
+              <option value="first">
+                1塁側：{getSelectedTeamName(firstBaseTeamId) || "チーム未選択"}
+              </option>
+            </select>
+        </div>
+      </div>
+    </section>
+  </>
+) : (
+  <>
+
+  {/* 相手チーム名＋ふりがな */}
+  <section className="rounded-2xl bg-white/10 border border-white/10 p-3 shadow-lg">
+    <div className="flex items-center gap-3 mb-2">
+      <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
+        <IconVs />
+      </div>
+      <div className="font-semibold">相手チーム</div>
+    </div>
+
+    {/* チーム名ラベル */}
+    <label className="block text-xs text-white/70 mb-1">チーム名</label>
+    <input
+      type="text"
+      value={opponentTeam}
+      onChange={(e) => setOpponentTeam(e.target.value)}
+      className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
+      placeholder="相手チーム名を入力"
+    />
+
+    {/* ふりがなラベル */}
+    <label className="block text-xs text-white/70 mt-3 mb-1">ふりがな</label>
+    <input
+      type="text"
+      value={opponentTeamFurigana}
+      onChange={(e) => setOpponentTeamFurigana(e.target.value)}
+      className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
+      placeholder="相手チーム名のふりがな"
+    />
+  </section>
+
+  {/* 自チーム情報（先攻/後攻・ベンチ側） */}
+  <section className="rounded-2xl bg-white/10 border border-white/10 p-3 shadow-lg">
+    <div className="flex items-center gap-3 mb-2">
+      <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
+        <IconHomeAway />
+      </div>
+      <div className="font-semibold">自チーム情報</div>
+    </div>
+
+    <div className="grid grid-cols-2 gap-3">
+      <select
+        value={isHome}
+        onChange={(e) => setIsHome(e.target.value)}
+        className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 border border-white/20"
       >
-        <span className="font-medium text-sm">
-          {umpire.role}
-        </span>
+        <option>先攻</option>
+        <option>後攻</option>
+      </select>
 
-        <input
-          type="text"
-          placeholder="氏名"
-          value={umpire.name}
-          onChange={(e) => handleUmpireChange(index, "name", e.target.value)}
-          className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
-        />
-
-        <input
-          type="text"
-          placeholder="ふりがな"
-          value={umpire.furigana}
-          onChange={(e) => handleUmpireChange(index, "furigana", e.target.value)}
-          className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
-        />
-      </div>
-    ))}
-  </div>
-</section>
-
-
-      {/* アクションボタン */}
-      <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <button
-          onClick={handleSave}
-          className="w-full px-6 py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl text-lg font-semibold active:scale-95"
+      <div className="flex items-center gap-2">
+        <IconBench />
+        <select
+          value={benchSide}
+          onChange={(e) => setBenchSide(e.target.value)}
+          className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 border border-white/20"
         >
-          💾 保存する
-        </button>
-
-        <button
-          onClick={async () => {
-            await upsertRecentTournaments(tournamentName);
-            const team = await localForage.getItem<any>("team");
-            const existing = await localForage.getItem<any>("matchInfo");
-            const scores   = await localForage.getItem<any>("scores");
-
-            const hasProgress =
-              (scores && Object.keys(scores).length > 0) ||
-              (existing && (
-                Number(existing?.inning) > 1 ||
-                (Number(existing?.inning) === 1 && existing?.isTop === false)
-              ));
-            const base = hasProgress ? (existing || {}) : { inning: 1, isTop: true };
-
-            const matchInfo = {
-              ...base,
-              tournamentName,
-              matchNumber,
-              opponentTeam,
-              opponentTeamFurigana,
-              isHome: isHome === "後攻",
-              benchSide,
-              umpires,
-              twoUmpires: isBoys ? false : isTwoUmp,         // ✅ 2審制を記憶
-              teamName: (base as any)?.teamName ?? team?.name ?? "",    
-              noNextGame,// ✅ 追加：次の試合なし
-            };
-            await localForage.setItem("matchInfo", matchInfo);
- 
-            await localForage.setItem("matchNumberStash", matchNumber);
-            onGoToLineup();
-          }}
-          className="w-full px-6 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-lg font-semibold active:scale-95"
-        >
-          ▶ スタメン設定
-        </button>
+          <option>1塁側</option>
+          <option>3塁側</option>
+        </select>
       </div>
-      {/* ← スタメン設定の直下：横いっぱいの戻るボタン */}
+    </div>
+
+    {/* メンバー交換ボタン（条件一致時のみ） */}
+    {!isBoys && matchNumber === 1 && benchSide === "1塁側" && (
       <div className="mt-2">
         <button
-          onClick={() => {
-            if (isDirty) setShowLeaveConfirm(true);
-            else onBack();
-          }}
-
-          className="w-full px-6 py-4 rounded-2xl text-white text-lg font-semibold
-                    bg-white/10 hover:bg-white/15 border border-white/15
-                    shadow active:scale-95 inline-flex items-center justify-center gap-2"
-          aria-label="戻る"
+          onClick={() => setShowExchangeModal(true)}
+          className="px-4 py-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded-xl text-base active:scale-95"
         >
-          <span>← 戻る</span>
+          メンバー交換（読み上げ案内）
         </button>
       </div>
-    </main>
+    )}
+  </section>
+  </>
+)}
+  {/* 審判 */}
+  <section className="rounded-2xl bg-white/10 border border-white/10 p-3 shadow-lg">
+  <div className="mb-2">
+    <div className="flex items-center gap-4 mb-2">
+      <div className="flex items-center gap-3 shrink-0">
+        <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
+          <IconUmpire />
+        </div>
+        <div className="font-semibold">審判</div>
+      </div>
+
+      {!isBoys && (
+        <div
+          className="flex items-center gap-3 text-sm select-none flex-wrap"
+          role="radiogroup"
+          aria-label="審判人数"
+        >
+          <label className="inline-flex items-center gap-1 whitespace-nowrap">
+            <input
+              type="radio"
+              name="umpireMode"
+              className="w-4 h-4 accent-emerald-600"
+              checked={isTwoUmp === true}
+              onChange={() => setIsTwoUmp(true)}
+            />
+            2審
+          </label>
+
+          <label className="inline-flex items-center gap-1 whitespace-nowrap">
+            <input
+              type="radio"
+              name="umpireMode"
+              className="w-4 h-4 accent-emerald-600"
+              checked={isTwoUmp === false}
+              onChange={() => setIsTwoUmp(false)}
+            />
+            4審
+          </label>
+
+          <span className="text-xs text-white/70 whitespace-nowrap">
+            後攻チームのみ使用
+          </span>
+        </div>
+      )}
+    </div>
+  </div>
+
+
+    <div className="space-y-2">
+      {umpires.slice(0, isTwoUmp ? 2 : 4).map((umpire, index) => (
+        <div
+          key={index}
+          className="grid grid-cols-[64px_1fr_1fr] gap-2 items-center"
+        >
+          <span className="font-medium text-sm">
+            {umpire.role}
+          </span>
+
+          <input
+            type="text"
+            placeholder="氏名"
+            value={umpire.name}
+            onChange={(e) => handleUmpireChange(index, "name", e.target.value)}
+            className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
+          />
+
+          <input
+            type="text"
+            placeholder="ふりがな"
+            value={umpire.furigana}
+            onChange={(e) => handleUmpireChange(index, "furigana", e.target.value)}
+            className="w-full px-3 py-2 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
+          />
+        </div>
+      ))}
+    </div>
+  </section>
+
+
+  {/* アクションボタン */}
+  <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <button
+      onClick={handleSave}
+      className="w-full px-6 py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl text-lg font-semibold active:scale-95"
+    >
+      💾 保存する
+    </button>
+
+    <button
+      onClick={async () => {
+        await upsertRecentTournaments(tournamentName);
+        const team = await localForage.getItem<any>("team");
+        const existing = await localForage.getItem<any>("matchInfo");
+        const scores   = await localForage.getItem<any>("scores");
+
+        const hasProgress =
+          (scores && Object.keys(scores).length > 0) ||
+          (existing && (
+            Number(existing?.inning) > 1 ||
+            (Number(existing?.inning) === 1 && existing?.isTop === false)
+          ));
+        const base = hasProgress ? (existing || {}) : { inning: 1, isTop: true };
+
+        if (announcementMode === "single") {
+          if (!thirdBaseTeamId || !firstBaseTeamId) {
+            alert("1塁側チームと3塁側チームを選択してください");
+            return;
+          }
+
+          if (thirdBaseTeamId === firstBaseTeamId) {
+            alert("1塁側チームと3塁側チームは別のチームを選択してください");
+            return;
+          }
+        }
+
+        await saveOwnTeamToLocalForage();
+
+        const thirdTeamFolder = registeredTeams.find(
+          (t: any) => String(t.id) === String(thirdBaseTeamId)
+        );
+
+        const firstTeamFolder = registeredTeams.find(
+          (t: any) => String(t.id) === String(firstBaseTeamId)
+        );
+
+        const matchInfo = {
+          ...base,
+          tournamentName,
+          matchNumber,
+          opponentTeam,
+          opponentTeamFurigana,
+          isHome: isHome === "後攻",
+          benchSide,
+          umpires,
+          twoUmpires: isBoys ? false : isTwoUmp,         // ✅ 2審制を記憶
+          teamName: getRegisteredTeamName(getOwnTeamFolder()) || (base as any)?.teamName || team?.name || "",
+          noNextGame,
+          announcementMode,
+          thirdBaseTeamId,
+          firstBaseTeamId,
+          thirdBaseTeamName: getRegisteredTeamName(thirdTeamFolder),
+          firstBaseTeamName: getRegisteredTeamName(firstTeamFolder),
+          thirdBaseTeamFurigana: getRegisteredTeamFurigana(thirdTeamFolder),
+          firstBaseTeamFurigana: getRegisteredTeamFurigana(firstTeamFolder),
+          battingFirstSide,
+        };
+        console.log("保存するmatchInfo", matchInfo);
+        await localForage.setItem("matchInfo", matchInfo);
+
+        await localForage.setItem("matchNumberStash", matchNumber);
+        onGoToLineup();
+      }}
+      className="w-full px-6 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-lg font-semibold active:scale-95"
+    >
+      ▶ スタメン設定
+    </button>
+  </div>
+  {/* ← スタメン設定の直下：横いっぱいの戻るボタン */}
+  <div className="mt-2">
+    <button
+      onClick={() => {
+        if (isDirty) setShowLeaveConfirm(true);
+        else onBack();
+      }}
+
+      className="w-full px-6 py-4 rounded-2xl text-white text-lg font-semibold
+                bg-white/10 hover:bg-white/15 border border-white/15
+                shadow active:scale-95 inline-flex items-center justify-center gap-2"
+      aria-label="戻る"
+    >
+      <span>← 戻る</span>
+    </button>
+  </div>
+</main>
 
     {/* 既存のモーダルはそのまま下に（読み上げ/停止/OK） */}
-{showExchangeModal && (
-  <div
+    {showExchangeModal && (
+    <div
     className="fixed inset-0 z-50 flex items-center justify-center px-4"
     role="dialog"
     aria-modal="true"
@@ -850,7 +1055,7 @@ return (
           </div>
 
         </div>
-      </div>
+    </div>
     )}
 
     {showLeaveConfirm && (

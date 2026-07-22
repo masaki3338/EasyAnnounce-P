@@ -150,18 +150,63 @@ const StepRow: React.FC<{
 
 const BoysPreGameAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
   const [attackLabel, setAttackLabel] = useState<"先攻" | "後攻">("先攻");
+  const [announcementMode, setAnnouncementMode] =
+    useState<"normal" | "single">("normal");
+
+  const [visitorTeamName, setVisitorTeamName] = useState("");
+  const [homeTeamName, setHomeTeamName] = useState("");
 
   useEffect(() => {
     const load = async () => {
       const matchInfo = await localForage.getItem("matchInfo");
       if (matchInfo && typeof matchInfo === "object") {
-        const v: any = (matchInfo as any).isHome;
+        const mi = matchInfo as any;
+
+        if (mi.announcementMode === "single") {
+          setAnnouncementMode("single");
+
+          const store = await localForage.getItem<any>("teamRegisterStore");
+
+          const thirdFolder = store?.teams?.find(
+            (t: any) => String(t.id) === String(mi.thirdBaseTeamId)
+          );
+
+          const firstFolder = store?.teams?.find(
+            (t: any) => String(t.id) === String(mi.firstBaseTeamId)
+          );
+
+          const thirdName =
+            mi.thirdBaseTeamName ||
+            thirdFolder?.team?.name ||
+            thirdFolder?.name ||
+            thirdFolder?.teamName ||
+            thirdFolder?.listName ||
+            "";
+
+          const firstName =
+            mi.firstBaseTeamName ||
+            firstFolder?.team?.name ||
+            firstFolder?.name ||
+            firstFolder?.teamName ||
+            firstFolder?.listName ||
+            "";
+
+          if (mi.battingFirstSide === "third") {
+            setVisitorTeamName(thirdName);
+            setHomeTeamName(firstName);
+          } else {
+            setVisitorTeamName(firstName);
+            setHomeTeamName(thirdName);
+          }
+        }
+
+        const v: any = mi.isHome;
         let label: "先攻" | "後攻" = "先攻";
 
         if (typeof v === "boolean") label = v ? "後攻" : "先攻";
         else if (v === "先攻" || v === "後攻") label = v;
-        else if (typeof (matchInfo as any).isFirst === "boolean") {
-          label = (matchInfo as any).isFirst ? "先攻" : "後攻";
+        else if (typeof mi.isFirst === "boolean") {
+          label = mi.isFirst ? "先攻" : "後攻";
         }
 
         setAttackLabel(label);
@@ -172,43 +217,228 @@ const BoysPreGameAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
 
   const isFirst = attackLabel === "先攻";
 
-  const steps = [
-    {
-      key: "startTimeAnnouncement" as const,
-      title: "開始時間案内",
-      note: "後攻チーム 🎤",
-      icon: <IconInfo />,
-      enabled: !isFirst,
-    },
-    {
-      key: "boysSheetKnock" as const,
-      title: "シートノック",
-      note: "両チーム 🎤",
-      icon: <IconKnock />,
-      enabled: true,
-    },
-    {
-      key: "announceStartingLineup" as const,
-      title: "スタメン発表",
-      note: "両チーム 🎤",
-      icon: <IconMegaphone />,
-      enabled: true,
-    },
-    {
-      key: "startGreeting" as const,
-      title: "試合開始挨拶",
-      note: "後攻チーム 🎤",
-      icon: <Greeting />,
-      enabled: !isFirst,
-    },
-    {
-      key: "seatIntroduction" as const,
-      title: "シート紹介",
-      note: "後攻チーム 🎤",
-      icon: <IconMic />,
-      enabled: !isFirst,
-    },
-  ];
+  const steps =
+    announcementMode === "single"
+      ? [
+          {
+            key: "startTimeAnnouncement" as const,
+            title: "開始時間案内",
+            note: "両チーム 🎤",
+            icon: <IconInfo />,
+            enabled: true,
+          },
+          {
+            key: "boysSheetKnock" as const,
+            title: `シートノック　後攻 ${homeTeamName || "未設定"}`,
+            icon: <IconKnock />,
+            enabled: true,
+            sheetKnockSide: "home" as const,
+          },
+          {
+            key: "boysSheetKnock" as const,
+            title: `シートノック　先攻 ${visitorTeamName || "未設定"}`,
+            icon: <IconKnock />,
+            enabled: true,
+            sheetKnockSide: "visitor" as const,
+          },
+          {
+            key: "announceStartingLineup" as const,
+            title: `スタメン発表　先攻 ${visitorTeamName || "未設定"}`,
+            icon: <IconMegaphone />,
+            enabled: true,
+            startingLineupSide: "visitor" as const,
+          },
+          {
+            key: "announceStartingLineup" as const,
+            title: `スタメン発表　後攻 ${homeTeamName || "未設定"}`,
+            icon: <IconMegaphone />,
+            enabled: true,
+            startingLineupSide: "home" as const,
+          },
+          {
+            key: "startGreeting" as const,
+            title: "試合開始挨拶",
+            note: "両チーム 🎤",
+            icon: <Greeting />,
+            enabled: true,
+          },
+          {
+            key: "seatIntroduction" as const,
+            title: `シート紹介　後攻 ${homeTeamName || "未設定"}`,
+            icon: <IconMic />,
+            enabled: true,
+          },
+        ]
+      : [
+          {
+            key: "startTimeAnnouncement" as const,
+            title: "開始時間案内",
+            note: "後攻チーム 🎤",
+            icon: <IconInfo />,
+            enabled: !isFirst,
+          },
+          {
+            key: "boysSheetKnock" as const,
+            title: "シートノック",
+            note: "両チーム 🎤",
+            icon: <IconKnock />,
+            enabled: true,
+          },
+          {
+            key: "announceStartingLineup" as const,
+            title: "スタメン発表",
+            note: "両チーム 🎤",
+            icon: <IconMegaphone />,
+            enabled: true,
+          },
+          {
+            key: "startGreeting" as const,
+            title: "試合開始挨拶",
+            note: "後攻チーム 🎤",
+            icon: <Greeting />,
+            enabled: !isFirst,
+          },
+          {
+            key: "seatIntroduction" as const,
+            title: "シート紹介",
+            note: "後攻チーム 🎤",
+            icon: <IconMic />,
+            enabled: !isFirst,
+          },
+        ];
+
+  const setHomeTeamForSeatIntroduction = async () => {
+    const matchInfo = await localForage.getItem<any>("matchInfo");
+    const mi = matchInfo || {};
+
+    const store = await localForage.getItem<any>("teamRegisterStore");
+
+    // battingFirstSide が third なら、3塁側が先攻 → 1塁側が後攻
+    // battingFirstSide が first なら、1塁側が先攻 → 3塁側が後攻
+    const homeSide = mi.battingFirstSide === "third" ? "first" : "third";
+    const homeTeamId =
+      homeSide === "third" ? mi.thirdBaseTeamId : mi.firstBaseTeamId;
+
+    const homeFolder = store?.teams?.find(
+      (t: any) => String(t.id) === String(homeTeamId)
+    );
+
+    const savedHomeTeamName =
+      homeSide === "third" ? mi.thirdBaseTeamName : mi.firstBaseTeamName;
+
+    const name =
+      savedHomeTeamName ||
+      homeFolder?.team?.name ||
+      homeFolder?.name ||
+      homeFolder?.teamName ||
+      homeFolder?.listName ||
+      "";
+
+    const furigana =
+      homeFolder?.team?.furigana ||
+      homeFolder?.team?.nameKana ||
+      homeFolder?.team?.kana ||
+      homeFolder?.furigana ||
+      homeFolder?.kana ||
+      homeFolder?.reading ||
+      name;
+
+    const players = homeFolder?.team?.players || homeFolder?.players || [];
+
+    const assignments =
+      (await localForage.getItem<Record<string, number | null>>(
+        `startingassignments_${homeTeamId}`
+      )) ??
+      (await localForage.getItem<Record<string, number | null>>(
+        homeSide === "third"
+          ? "onePerson.third.lineupAssignments"
+          : "onePerson.first.lineupAssignments"
+      )) ??
+      {};
+
+    await localForage.setItem("team", {
+      ...(homeFolder?.team || {}),
+      id: homeTeamId,
+      name,
+      furigana,
+      players,
+    });
+
+    await localForage.setItem("startingassignments", assignments);
+    await localForage.setItem("lineupAssignments", assignments);
+
+    await localForage.setItem("matchInfo", {
+      ...mi,
+      isHome: true,
+      seatIntroductionSide: "home",
+    });
+
+    const counter = new Map<string, number>();
+    for (const p of players) {
+      const ln = String(p?.lastName ?? "").trim();
+      if (!ln) continue;
+      counter.set(ln, (counter.get(ln) ?? 0) + 1);
+    }
+
+    const duplicateLastNames = [...counter.entries()]
+      .filter(([, count]) => count >= 2)
+      .map(([ln]) => ln);
+
+    await localForage.setItem("duplicateLastNames", duplicateLastNames);
+  };
+
+  const goToStep = async (s: {
+    key: ScreenType;
+    title: string;
+    sheetKnockSide?: "home" | "visitor";
+    startingLineupSide?: "home" | "visitor";
+  }) => {
+    if (s.key === "seatIntroduction") {
+      await localForage.setItem("lastScreen", "announcement");
+
+      if (announcementMode === "single") {
+        await setHomeTeamForSeatIntroduction();
+      }
+    }
+
+    if (s.key === "boysSheetKnock") {
+      await localForage.setItem("boysSheetKnockStep", "knock");
+
+      if (announcementMode === "single") {
+        const side = s.sheetKnockSide ?? "home";
+        const matchInfo = await localForage.getItem<any>("matchInfo");
+
+        await localForage.setItem("boysSheetKnockSide", side);
+        await localForage.setItem("matchInfo", {
+          ...(matchInfo || {}),
+          sheetKnockSide: side,
+        });
+      }
+    }
+
+    if (
+      announcementMode === "single" &&
+      (s.key === "startTimeAnnouncement" || s.key === "startGreeting")
+    ) {
+      const matchInfo = await localForage.getItem<any>("matchInfo");
+
+      await localForage.setItem("matchInfo", {
+        ...(matchInfo || {}),
+        isHome: true,
+      });
+    }
+
+    if (s.key === "announceStartingLineup" && announcementMode === "single") {
+      const matchInfo = await localForage.getItem<any>("matchInfo");
+
+      await localForage.setItem("matchInfo", {
+        ...(matchInfo || {}),
+        startingLineupSide: s.startingLineupSide ?? "visitor",
+      });
+    }
+
+    onNavigate(s.key);
+  };
 
   const handleStepClick = async (s: typeof steps[number]) => {
     if (!s.enabled) {
@@ -216,15 +446,12 @@ const BoysPreGameAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
       if (!ok) return;
     }
 
-    if (s.key === "seatIntroduction") {
-      await localForage.setItem("lastScreen", "announcement");
-    }
-
-    if (s.key === "boysSheetKnock") {
-      await localForage.setItem("boysSheetKnockStep", "knock");
-    }
-
-    onNavigate(s.key);
+    await goToStep({
+      key: s.key,
+      title: s.title,
+      sheetKnockSide: (s as any).sheetKnockSide,
+      startingLineupSide: (s as any).startingLineupSide,
+    });
   };
 
   return (
@@ -251,7 +478,7 @@ const BoysPreGameAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
         <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs">
           <span>上から順番に実施</span>
           <span className="opacity-70">／</span>
-          <span>現在の担当: {isFirst ? "先攻" : "後攻"}</span>
+          <span>現在の担当：{announcementMode === "single" ? "両方" : isFirst ? "先攻" : "後攻"}</span>
         </div>
       </header>
 

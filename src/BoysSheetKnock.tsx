@@ -177,6 +177,7 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
   const [teamName, setTeamName] = useState("");
   const [opponentTeamName, setOpponentTeamName] = useState("");
   const [isHome, setIsHome] = useState<"先攻" | "後攻">("先攻");
+  const [announcementMode, setAnnouncementMode] = useState<"normal" | "single">("normal");
   const [timeLeft, setTimeLeft] = useState(0);
   const [timerActive, setTimerActive] = useState(false);
   const [knockMinutes, setKnockMinutes] = useState(DEFAULT_KNOCK_MINUTES);
@@ -190,14 +191,28 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const warned1Min = useRef(false);
 
-  const normalizeBoysName = (name: string) => {
-    const trimmed = (name || "").trim();
-    if (!trimmed) return "";
-    return trimmed.includes("") ? trimmed : `${trimmed}`;
+  const normalizeBoysName = (name: string) => (name || "").trim();
+
+  const getTeamNameFromFolder = (folder: any) =>
+    folder?.team?.name ||
+    folder?.name ||
+    folder?.teamName ||
+    folder?.listName ||
+    "";
+
+  const getRegisteredTeamName = (store: any, teamId: unknown) => {
+    if (!teamId) return "";
+
+    const folder = store?.teams?.find(
+      (t: any) => String(t.id) === String(teamId)
+    );
+
+    return getTeamNameFromFolder(folder);
   };
 
   const selfTeamLabel = normalizeBoysName(teamName);
   const opponentTeamLabel = normalizeBoysName(opponentTeamName);
+  const currentRoleLabel = isHome === "後攻" ? "後攻チーム" : "先攻チーム";
 
   const playBeeps = async (
     count = 3,
@@ -253,10 +268,41 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
 
       if (matchInfo && typeof matchInfo === "object") {
         const info = matchInfo as any;
-        setIsHome(info.isHome === true ? "後攻" : "先攻");
-        setOpponentTeamName(
-          info.opponentTeamName || info.opponentTeam || info.visitorTeam || info.homeTeam || ""
-        );
+
+        if (info.announcementMode === "single") {
+          setAnnouncementMode("single");
+
+          const store = await localForage.getItem<any>("teamRegisterStore");
+          const savedSide = await localForage.getItem<"home" | "visitor">("boysSheetKnockSide");
+          const sheetKnockSide = info.sheetKnockSide || savedSide || "home";
+
+          const thirdTeamName =
+            info.thirdBaseTeamName ||
+            getRegisteredTeamName(store, info.thirdBaseTeamId);
+
+          const firstTeamName =
+            info.firstBaseTeamName ||
+            getRegisteredTeamName(store, info.firstBaseTeamId);
+
+          const visitorTeamName =
+            info.battingFirstSide === "third" ? thirdTeamName : firstTeamName;
+          const homeTeamName =
+            info.battingFirstSide === "third" ? firstTeamName : thirdTeamName;
+
+          const selectedTeamName =
+            sheetKnockSide === "visitor" ? visitorTeamName : homeTeamName;
+          const otherTeamName =
+            sheetKnockSide === "visitor" ? homeTeamName : visitorTeamName;
+
+          setTeamName(selectedTeamName || "");
+          setOpponentTeamName(otherTeamName || "");
+          setIsHome(sheetKnockSide === "visitor" ? "先攻" : "後攻");
+        } else {
+          setIsHome(info.isHome === true ? "後攻" : "先攻");
+          setOpponentTeamName(
+            info.opponentTeamName || info.opponentTeam || info.visitorTeam || info.homeTeam || ""
+          );
+        }
       }
 
       const savedSettings = await localForage.getItem<SheetKnockTimeSettings>(
@@ -435,8 +481,13 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
           <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs">
             <span>上から順に進行</span>
             <span className="opacity-70">／</span>
-            <span>現在: {isHome === "後攻" ? "後攻チーム" : "先攻チーム"}</span>
+            <span>現在: {currentRoleLabel}</span>
           </div>
+          {announcementMode === "single" && selfTeamLabel && (
+            <div className="mt-2 text-sm font-semibold text-sky-100">
+              {currentRoleLabel}: {selfTeamLabel}
+            </div>
+          )}
         </div>
       </header>
 
