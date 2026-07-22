@@ -103,7 +103,12 @@ export default function OperationSettings({ onNavigate }: Props) {
           desc="ポニーリーグ / ボーイズリーグ"
           onClick={() => onNavigate("league-settings")}
         />
-
+        <TileButton
+          icon={<span className="text-2xl">🎤</span>}
+          title="アナウンスモード"
+          desc="自チームのみ / 両チームを1人でアナウンス"
+          onClick={() => onNavigate("announcement-mode")}
+        />
         <TileButton
           icon={<span className="text-2xl">📔</span>}
           title="チュートリアル"
