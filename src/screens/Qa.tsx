@@ -58,38 +58,44 @@ export default function Qa({ onBack }: Props) {
         <div className="space-y-3 pb-6">
           <QAItem q="Q. インストール方法がわかりません" defaultOpen>
             <p>
-              本アプリは、通常のApp Store／Google Playからダウンロードするアプリではありません。
+              端末によってインストール方法が異なります。
               <br />
-              WEBアプリ（PWA）形式のため、ブラウザから開いて「ホーム画面に追加」して使用します。
+              Android端末はGoogle Playからインストールできます。
               <br />
-              一度追加すると、通常のアプリと同じように使用できます。
+              iPhone／iPadはSafariでWEBアプリを開き、ホーム画面に追加して使用します。
             </p>
 
             <div className="mt-3">
-              <div className="font-semibold">📱 アプリをホーム画面に追加する方法</div>
+              <div className="font-semibold">📱 端末別のインストール方法</div>
 
               <div className="mt-2 space-y-3">
                 <Card>
-                  <div className="font-semibold">▼ Androidの場合（Chrome）</div>
+                  <div className="font-semibold">▼ Androidの場合（Google Play）</div>
                   <ol className="list-decimal pl-5 mt-2 space-y-1">
-                    <li>画面右上の「︙」メニューを開く</li>
-                    <li>「アプリをインストール」または「ホーム画面に追加」を選択</li>
+                    <li>Google Playで「Easyアナウンス」を検索</li>
+                    <li>アプリのページを開く</li>
                     <li>「インストール」をタップ</li>
                   </ol>
-                  <div className="mt-2 text-xs opacity-80">
-                    ホーム画面にアイコンが追加されます。
-                  </div>
+                  <a
+                    href="https://play.google.com/store/apps/details?id=com.easyannounce.pony"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 inline-flex items-center justify-center rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-500 transition"
+                  >
+                    Google Playで開く
+                  </a>
                 </Card>
 
                 <Card>
                   <div className="font-semibold">▼ iPhone／iPadの場合（Safari）</div>
                   <ol className="list-decimal pl-5 mt-2 space-y-1">
+                    <li>Safariで本アプリを開く</li>
                     <li>画面下の「共有」ボタン（⬆️）をタップ</li>
                     <li>「ホーム画面に追加」を選択</li>
                     <li>名前を確認して「追加」をタップ</li>
                   </ol>
                   <div className="mt-2 text-xs opacity-80">
-                    ホーム画面にアイコンが追加されます。
+                    ホーム画面にアイコンが追加され、通常のアプリと同じように使用できます。
                   </div>
                 </Card>
               </div>
