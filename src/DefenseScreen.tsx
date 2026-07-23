@@ -127,6 +127,66 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({
   const [pitchLimitSelected, setPitchLimitSelected] = useState<number>(75);
   const [showTotalPitchModal, setShowTotalPitchModal] = useState(false);
   const [totalPitchInput, setTotalPitchInput] = useState<string>(""); // 入力中の文字列
+
+  // 投球数±1ボタン専用の押下フィードバック
+  const [pressedPitchButton, setPressedPitchButton] =
+    useState<"add" | "subtract" | null>(null);
+  const [pitchRipple, setPitchRipple] = useState<{
+    target: "add" | "subtract";
+    id: number;
+  } | null>(null);
+  const [pitchFlash, setPitchFlash] =
+    useState<"add" | "subtract" | null>(null);
+
+  const pitchFeedbackTimerRef = useRef<number | null>(null);
+
+  const handlePitchButtonPress = (target: "add" | "subtract") => {
+    // 連打時は前回の解除タイマーをキャンセル
+    if (pitchFeedbackTimerRef.current !== null) {
+      window.clearTimeout(pitchFeedbackTimerRef.current);
+    }
+
+    const effectId = Date.now();
+    setPressedPitchButton(target);
+    setPitchRipple({ target, id: effectId });
+    setPitchFlash(target);
+
+    // 短押しでも必ず見えるように、最低250msは色変化を維持する
+    pitchFeedbackTimerRef.current = window.setTimeout(() => {
+      setPressedPitchButton((current) =>
+        current === target ? null : current
+      );
+      setPitchFlash((current) =>
+        current === target ? null : current
+      );
+      pitchFeedbackTimerRef.current = null;
+    }, 250);
+
+    // Android Chrome / Android PWAで振動
+    try {
+      if (
+        typeof navigator !== "undefined" &&
+        typeof navigator.vibrate === "function"
+      ) {
+        navigator.vibrate(50);
+      }
+    } catch (error) {
+      console.warn("vibration unavailable", error);
+    }
+  };
+
+  // 指を離しても即解除しない。
+  // handlePitchButtonPress 内の250msタイマーで解除する。
+  const handlePitchButtonRelease = () => {};
+
+  useEffect(() => {
+    return () => {
+      if (pitchFeedbackTimerRef.current !== null) {
+        window.clearTimeout(pitchFeedbackTimerRef.current);
+      }
+    };
+  }, []);
+
   const openTotalPitchModal = (currentTotal: number) => {
     setTotalPitchInput(String(currentTotal ?? 0));
     setShowTotalPitchModal(true);
@@ -1532,7 +1592,7 @@ const handleStop = () => { ttsStop(); };
   };
     return (    
       <div
-        className="max-w-4xl mx-auto px-2 pt-1 pb-2 select-none"
+        className="easy-defense-screen max-w-4xl mx-auto px-2 pt-1 pb-2 select-none"
         onContextMenu={(e) => e.preventDefault()}        // 右クリック/長押しのメニュー抑止
         onSelectStart={(e) => e.preventDefault()}         // テキスト選択開始を抑止
         style={{
@@ -1541,6 +1601,112 @@ const handleStop = () => { ttsStop(); };
           userSelect: "none",
         }}
       >
+      {/* 全ボタン共通の押下フィードバック
+          ・0.08秒で96%に縮小
+          ・押下中は少し濃く表示
+          ・中央からリップルを表示
+          Androidのバイブレーション処理とは独立して動作します。 */}
+      <style>{`
+        .easy-defense-screen button:not(:disabled) {
+          -webkit-tap-highlight-color: transparent;
+          touch-action: manipulation;
+          transition:
+            transform 80ms ease,
+            filter 80ms ease,
+            background-color 80ms ease;
+        }
+
+        .easy-defense-screen button:not(.absolute):not(:disabled) {
+          position: relative;
+          overflow: hidden;
+          isolation: isolate;
+        }
+
+        .easy-defense-screen button:not(.absolute):not(:disabled)::after {
+          content: "";
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          width: 12px;
+          height: 12px;
+          border-radius: 9999px;
+          background: rgba(255, 255, 255, 0.42);
+          pointer-events: none;
+          opacity: 0;
+          transform: translate(-50%, -50%) scale(0);
+          z-index: 0;
+        }
+
+        .easy-defense-screen button:not(.absolute):not(:disabled) > * {
+          position: relative;
+          z-index: 1;
+        }
+
+        .easy-defense-screen button:not(:disabled):active {
+          transform: scale(0.96) !important;
+          filter: brightness(0.86);
+        }
+
+        .easy-defense-screen button:not(.absolute):not(:disabled):active::after {
+          animation: easy-defense-ripple 420ms ease-out;
+        }
+
+        @keyframes easy-defense-ripple {
+          0% {
+            opacity: 0.55;
+            transform: translate(-50%, -50%) scale(0);
+          }
+          100% {
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(28);
+          }
+        }
+
+        @keyframes pitch-button-ripple {
+          0% {
+            opacity: 0.7;
+            transform: translate(-50%, -50%) scale(0);
+          }
+          100% {
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(18);
+          }
+        }
+
+        @keyframes pitch-button-flash {
+          0% {
+            opacity: 0.95;
+          }
+          45% {
+            opacity: 0.72;
+          }
+          100% {
+            opacity: 0;
+          }
+        }
+
+        @keyframes pitch-button-pop {
+          0% {
+            transform: scale(0.90);
+          }
+          55% {
+            transform: scale(1.04);
+          }
+          100% {
+            transform: scale(1);
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .easy-defense-screen button:not(:disabled) {
+            transition: none;
+          }
+
+          .easy-defense-screen button:not(.absolute):not(:disabled):active::after {
+            animation: none;
+          }
+        }
+      `}</style>
 
       <section className="mb-2">
 <h2
@@ -1827,22 +1993,72 @@ const handleStop = () => { ttsStop(); };
 >
   {/* －1（4/12） */}
   <button
+    type="button"
+    onPointerDown={() => handlePitchButtonPress("subtract")}
+    onPointerUp={handlePitchButtonRelease}
+    onPointerCancel={handlePitchButtonRelease}
+    onPointerLeave={handlePitchButtonRelease}
     onClick={subtractPitch}
     className="
+      relative overflow-hidden
       col-span-4
       mx-auto
       w-[80%]
       h-10
       md:h-[clamp(42px,5.2dvh,58px)]
       rounded
-      bg-yellow-500 text-white hover:bg-yellow-600
+      bg-yellow-500 text-white
       whitespace-nowrap
       text-sm
       md:text-[clamp(15px,2.2dvh,22px)]
       font-bold
+      shadow-md
+      select-none
     "
+    style={{
+      transform:
+        pressedPitchButton === "subtract" ? "scale(0.90)" : "scale(1)",
+      backgroundColor:
+        pressedPitchButton === "subtract" ? "#dc2626" : "#eab308",
+      color:
+        pressedPitchButton === "subtract" ? "#ffffff" : "#ffffff",
+      boxShadow:
+        pressedPitchButton === "subtract"
+          ? "0 0 0 4px rgba(255,255,255,0.95), 0 0 24px 10px rgba(239,68,68,0.95)"
+          : "0 4px 10px rgba(0,0,0,0.24)",
+      transition:
+        "transform 70ms ease, background-color 70ms linear, box-shadow 70ms linear",
+      WebkitTapHighlightColor: "transparent",
+      touchAction: "manipulation",
+    }}
   >
-    ⚾︎投球数－１
+    {pitchFlash === "subtract" && (
+      <span
+        aria-hidden="true"
+        className="absolute inset-0 z-20 pointer-events-none"
+        style={{
+          background:
+            "linear-gradient(90deg, rgba(255,255,255,0.2), rgba(255,255,255,1), rgba(255,255,255,0.2))",
+          animation: "pitch-button-flash 250ms ease-out forwards",
+        }}
+      />
+    )}
+    {pitchRipple?.target === "subtract" && (
+      <span
+        key={pitchRipple.id}
+        aria-hidden="true"
+        className="absolute left-1/2 top-1/2 rounded-full bg-white/60 pointer-events-none"
+        style={{
+          width: "16px",
+          height: "16px",
+          transform: "translate(-50%, -50%) scale(0)",
+          animation: "pitch-button-ripple 420ms ease-out forwards",
+        }}
+      />
+    )}
+    <span className="relative z-10">
+      {pressedPitchButton === "subtract" ? "－1しました" : "⚾︎投球数－１"}
+    </span>
   </button>
 
   {/* 中央表示（4/12） */}
@@ -1904,21 +2120,71 @@ const handleStop = () => { ttsStop(); };
 
   {/* ＋1（4/12） */}
   <button
+    type="button"
+    onPointerDown={() => handlePitchButtonPress("add")}
+    onPointerUp={handlePitchButtonRelease}
+    onPointerCancel={handlePitchButtonRelease}
+    onPointerLeave={handlePitchButtonRelease}
     onClick={addPitch}
     className="
+      relative overflow-hidden
       col-span-4
       w-full
       h-10
       md:h-[clamp(42px,5.2dvh,58px)]
       rounded
-      bg-green-500 text-white hover:bg-green-600
+      bg-green-500 text-white
       whitespace-nowrap
       text-sm
       md:text-[clamp(15px,2.2dvh,22px)]
       font-bold
+      shadow-md
+      select-none
     "
+    style={{
+      transform:
+        pressedPitchButton === "add" ? "scale(0.90)" : "scale(1)",
+      backgroundColor:
+        pressedPitchButton === "add" ? "#2563eb" : "#22c55e",
+      color:
+        pressedPitchButton === "add" ? "#ffffff" : "#ffffff",
+      boxShadow:
+        pressedPitchButton === "add"
+          ? "0 0 0 4px rgba(255,255,255,0.95), 0 0 26px 10px rgba(37,99,235,0.95)"
+          : "0 4px 10px rgba(0,0,0,0.24)",
+      transition:
+        "transform 70ms ease, background-color 70ms linear, box-shadow 70ms linear",
+      WebkitTapHighlightColor: "transparent",
+      touchAction: "manipulation",
+    }}
   >
-    ⚾️投球数＋１
+    {pitchFlash === "add" && (
+      <span
+        aria-hidden="true"
+        className="absolute inset-0 z-20 pointer-events-none"
+        style={{
+          background:
+            "linear-gradient(90deg, rgba(255,255,255,0.2), rgba(255,255,255,1), rgba(255,255,255,0.2))",
+          animation: "pitch-button-flash 250ms ease-out forwards",
+        }}
+      />
+    )}
+    {pitchRipple?.target === "add" && (
+      <span
+        key={pitchRipple.id}
+        aria-hidden="true"
+        className="absolute left-1/2 top-1/2 rounded-full bg-white/60 pointer-events-none"
+        style={{
+          width: "16px",
+          height: "16px",
+          transform: "translate(-50%, -50%) scale(0)",
+          animation: "pitch-button-ripple 420ms ease-out forwards",
+        }}
+      />
+    )}
+    <span className="relative z-10">
+      {pressedPitchButton === "add" ? "＋1しました" : "⚾️投球数＋１"}
+    </span>
   </button>
 </div>
 

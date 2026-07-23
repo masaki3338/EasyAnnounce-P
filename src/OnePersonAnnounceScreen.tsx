@@ -569,6 +569,17 @@ const clearHalfScoreAsBlank = (
   const [currentPitchCount, setCurrentPitchCount] = useState(0);
   const [totalPitchCount, setTotalPitchCount] = useState(0);
   const [pitcherTotals, setPitcherTotals] = useState<Record<number, number>>({});
+
+  // 投球数±1ボタン専用の押下フィードバック
+  const [pressedPitchButton, setPressedPitchButton] =
+    useState<"add" | "subtract" | null>(null);
+  const [pitchRipple, setPitchRipple] = useState<{
+    target: "add" | "subtract";
+    id: number;
+  } | null>(null);
+  const [pitchFlash, setPitchFlash] =
+    useState<"add" | "subtract" | null>(null);
+  const pitchFeedbackTimerRef = useRef<number | null>(null);
   const [defensePitcherName, setDefensePitcherName] = useState("");
   const [showEditTotalPitchModal, setShowEditTotalPitchModal] = useState(false);
   const [editTotalPitchValue, setEditTotalPitchValue] = useState("");
@@ -4062,10 +4073,71 @@ const buildOnePersonPitchAnnounceText = async () => {
     lines.push(`トータル${displayTotal}球です。`);
   }
 
-  const limitMessage = getOnePersonPitchLimitMessage(pitcher, displayTotal);
-  if (limitMessage) lines.push(limitMessage);
-
+  // イニング終了時は投球数だけを表示する。
+  // 投球制限の10球前・到達メッセージは、投球数ボタンを押した瞬間の
+  // 通知モーダルで表示済みのため、ここでは重複表示しない。
   return lines.join("\n");
+};
+
+// ✅ 投球数ボタンを押したことが分かるようにする
+// ・短いタップでも250msは色を変える
+// ・Android端末のみ短く振動させる
+const handlePitchButtonPress = (target: "add" | "subtract") => {
+  // 連打時は前回の解除タイマーをキャンセル
+  if (pitchFeedbackTimerRef.current !== null) {
+    window.clearTimeout(pitchFeedbackTimerRef.current);
+  }
+
+  const effectId = Date.now();
+  setPressedPitchButton(target);
+  setPitchRipple({ target, id: effectId });
+  setPitchFlash(target);
+
+  // 短押しでも必ず見えるように、最低250msは色変化を維持する
+  pitchFeedbackTimerRef.current = window.setTimeout(() => {
+    setPressedPitchButton((current) =>
+      current === target ? null : current
+    );
+    setPitchFlash((current) =>
+      current === target ? null : current
+    );
+    pitchFeedbackTimerRef.current = null;
+  }, 250);
+
+  // Android端末だけ振動
+  try {
+    const isAndroid =
+      typeof navigator !== "undefined" &&
+      /Android/i.test(navigator.userAgent);
+
+    if (
+      isAndroid &&
+      typeof navigator.vibrate === "function"
+    ) {
+      navigator.vibrate(50);
+    }
+  } catch (error) {
+    console.warn("vibration unavailable", error);
+  }
+};
+
+// 指を離しても即解除せず、250msタイマーで解除する
+const handlePitchButtonRelease = () => {};
+
+useEffect(() => {
+  return () => {
+    if (pitchFeedbackTimerRef.current !== null) {
+      window.clearTimeout(pitchFeedbackTimerRef.current);
+    }
+  };
+}, []);
+
+const handleAddPitchClick = () => {
+  void addPitch();
+};
+
+const handleSubtractPitchClick = () => {
+  void subtractPitch();
 };
 
 const addPitch = async () => {
@@ -6611,21 +6683,134 @@ useEffect(() => {
       </button>
     </div>
 
+    <style>{`
+      @keyframes pitch-button-ripple {
+        0% {
+          opacity: 0.7;
+          transform: translate(-50%, -50%) scale(0);
+        }
+        100% {
+          opacity: 0;
+          transform: translate(-50%, -50%) scale(18);
+        }
+      }
+
+      @keyframes pitch-button-flash {
+        0% {
+          opacity: 0.95;
+        }
+        45% {
+          opacity: 0.72;
+        }
+        100% {
+          opacity: 0;
+        }
+      }
+    `}</style>
+
     <div className="mt-2 grid grid-cols-2 gap-2">
       <button
         type="button"
-        onClick={subtractPitch}
-        className="rounded-xl bg-gray-500 py-2 text-base font-extrabold text-white shadow active:scale-95"
+        onPointerDown={() => handlePitchButtonPress("subtract")}
+        onPointerUp={handlePitchButtonRelease}
+        onPointerCancel={handlePitchButtonRelease}
+        onPointerLeave={handlePitchButtonRelease}
+        onClick={handleSubtractPitchClick}
+        className="relative overflow-hidden rounded-xl py-2 text-base font-extrabold text-white shadow select-none"
+        style={{
+          transform:
+            pressedPitchButton === "subtract" ? "scale(0.90)" : "scale(1)",
+          backgroundColor:
+            pressedPitchButton === "subtract" ? "#dc2626" : "#6b7280",
+          boxShadow:
+            pressedPitchButton === "subtract"
+              ? "0 0 0 4px rgba(255,255,255,0.95), 0 0 24px 10px rgba(239,68,68,0.95)"
+              : "0 4px 10px rgba(0,0,0,0.24)",
+          transition:
+            "transform 70ms ease, background-color 70ms linear, box-shadow 70ms linear",
+          WebkitTapHighlightColor: "transparent",
+          touchAction: "manipulation",
+        }}
       >
-        球数 -1
+        {pitchFlash === "subtract" && (
+          <span
+            aria-hidden="true"
+            className="absolute inset-0 z-20 pointer-events-none"
+            style={{
+              background:
+                "linear-gradient(90deg, rgba(255,255,255,0.2), rgba(255,255,255,1), rgba(255,255,255,0.2))",
+              animation: "pitch-button-flash 250ms ease-out forwards",
+            }}
+          />
+        )}
+        {pitchRipple?.target === "subtract" && (
+          <span
+            key={pitchRipple.id}
+            aria-hidden="true"
+            className="absolute left-1/2 top-1/2 rounded-full bg-white/60 pointer-events-none"
+            style={{
+              width: "16px",
+              height: "16px",
+              transform: "translate(-50%, -50%) scale(0)",
+              animation: "pitch-button-ripple 420ms ease-out forwards",
+            }}
+          />
+        )}
+        <span className="relative z-10">
+          {pressedPitchButton === "subtract" ? "－1 しました" : "球数 -1"}
+        </span>
       </button>
 
       <button
         type="button"
-        onClick={addPitch}
-        className="rounded-xl bg-blue-600 py-2 text-base font-extrabold text-white shadow active:scale-95"
+        onPointerDown={() => handlePitchButtonPress("add")}
+        onPointerUp={handlePitchButtonRelease}
+        onPointerCancel={handlePitchButtonRelease}
+        onPointerLeave={handlePitchButtonRelease}
+        onClick={handleAddPitchClick}
+        className="relative overflow-hidden rounded-xl py-2 text-base font-extrabold text-white shadow select-none"
+        style={{
+          transform:
+            pressedPitchButton === "add" ? "scale(0.90)" : "scale(1)",
+          backgroundColor:
+            pressedPitchButton === "add" ? "#2563eb" : "#22c55e",
+          boxShadow:
+            pressedPitchButton === "add"
+              ? "0 0 0 4px rgba(255,255,255,0.95), 0 0 26px 10px rgba(37,99,235,0.95)"
+              : "0 4px 10px rgba(0,0,0,0.24)",
+          transition:
+            "transform 70ms ease, background-color 70ms linear, box-shadow 70ms linear",
+          WebkitTapHighlightColor: "transparent",
+          touchAction: "manipulation",
+        }}
       >
-        球数 +1
+        {pitchFlash === "add" && (
+          <span
+            aria-hidden="true"
+            className="absolute inset-0 z-20 pointer-events-none"
+            style={{
+              background:
+                "linear-gradient(90deg, rgba(255,255,255,0.2), rgba(255,255,255,1), rgba(255,255,255,0.2))",
+              animation: "pitch-button-flash 250ms ease-out forwards",
+            }}
+          />
+        )}
+        {pitchRipple?.target === "add" && (
+          <span
+            key={pitchRipple.id}
+            aria-hidden="true"
+            className="absolute left-1/2 top-1/2 rounded-full bg-white/60 pointer-events-none"
+            style={{
+              width: "16px",
+              height: "16px",
+              transform: "translate(-50%, -50%) scale(0)",
+              animation: "pitch-button-ripple 420ms ease-out forwards",
+            }}
+          />
+        )}
+        <span className="relative z-10">
+          {pressedPitchButton === "add" ? "＋1 しました" : "球数 +1"}
+        </span>
       </button>
     </div>
   </div>

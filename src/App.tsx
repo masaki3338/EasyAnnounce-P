@@ -48,7 +48,7 @@ import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 import { getAnnouncementMode } from "./lib/announcementMode";
 
 // バージョン番号を定数で管理
-const APP_VERSION = "1.02"
+const APP_VERSION = "1.03"
 
 // iOS 判定を共通で使えるようにグローバル定数として定義
 const isIOS = (() => {
