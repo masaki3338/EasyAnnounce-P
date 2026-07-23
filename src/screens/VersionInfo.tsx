@@ -38,20 +38,29 @@ type HistoryItem = {
 const historyData: HistoryItem[] = [
   {
     date: "2026.05.26",
-    version: "Vesion 1.00",
+    version: "Version 1.00",
     details: ["GooglePlay Release"],
   },
   {
     date: "2026.06.15",
-    version: "Vesion 1.01",
+    version: "Version 1.01",
     details: ["シートノック時間変更可能対応"],
   },
   {
     date: "2026.07.20",
-    version: "Vesion 1.02",
+    version: "Version 1.02",
     details: ["1人で両チームアナウンス対応"],
   },
- ];
+  {
+    date: "2026.07.23",
+    version: "Version 1.03",
+    details: [
+      `投球数ボタンの操作性を改善
+      ・ボタン押下時のデザインを変更
+      ・Android端末でバイブレーション機能を追加`,
+    ],
+  },
+];
 
 export default function VersionInfo({ version, onBack }: Props) {
   const [openIndex, setOpenIndex] = useState<number | null>(0); // 最新を最初から開く
@@ -133,7 +142,9 @@ export default function VersionInfo({ version, onBack }: Props) {
                     <div className="px-6 pb-4 text-sm text-gray-300">
                       <ul className="list-disc ml-4 space-y-1">
                         {item.details.map((d, i) => (
-                          <li key={i}>{d}</li>
+                          <li key={i} className="whitespace-pre-line">
+                            {d}
+                          </li>
                         ))}
                       </ul>
                     </div>
