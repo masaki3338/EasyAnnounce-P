@@ -3980,7 +3980,7 @@ const getOnePersonPitchLimitMessage = (pitcher: any, total: number): string => {
 
   const honorific = pitcher?.isFemale ? "さん" : "くん";
   const pitcherName = pitcher
-    ? `${pitcher.lastName ?? ""}${honorific}`
+    ? `${rubyLast(pitcher)}${honorific}`
     : "ピッチャー";
   const specialHead = pitcher
     ? `ピッチャー${pitcherName}`
@@ -4038,7 +4038,7 @@ const buildOnePersonPitchAnnounceText = async () => {
   const displayTotal = Number(pitchCounts.total ?? totalPitchCount ?? 0);
   const honorific = pitcher?.isFemale ? "さん" : "くん";
   const name = pitcher
-    ? `${pitcher.lastName ?? ""}${honorific}`
+    ? `${rubyLast(pitcher)}${honorific}`
     : "未設定";
 
   // ✅ ボーイズリーグ専用文言
@@ -4047,7 +4047,7 @@ const buildOnePersonPitchAnnounceText = async () => {
   if (leagueMode === "boys") {
     const endedInning = Number(lastEndedHalfRef.current?.inning ?? inning ?? 1);
     const pitcherLabel = pitcher
-      ? `${pitcher.lastName ?? ""}投手`
+      ? `${rubyLast(pitcher)}投手`
       : "未設定投手";
 
     const boysLines = [
@@ -10043,16 +10043,17 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
 
             <div className="p-5">
               <div className="rounded-2xl border border-blue-300 bg-blue-50 p-4 text-center">
-                <p className="whitespace-pre-line text-lg font-bold text-blue-900">
-                  {pitchAnnounceText}
-                </p>
+                <p
+                  className="whitespace-pre-line text-lg font-bold text-blue-900"
+                  dangerouslySetInnerHTML={{ __html: pitchAnnounceText }}
+                />
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={async () => {
-                    await speak(pitchAnnounceText);
+                    await speak(htmlToTtsText(pitchAnnounceText));
                   }}
                   className="rounded-xl bg-blue-600 py-3 font-bold text-white shadow active:scale-95"
                 >
