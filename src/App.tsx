@@ -319,6 +319,7 @@ useEffect(() => {
 
   const [showWaterBreakPopup, setShowWaterBreakPopup] = useState(false);
   const [waterBreakMinutes, setWaterBreakMinutes] = useState<number>(3);
+  // 0 は「残り時間アナウンスなし」
   const [waterBreakAnnouncementMinutes, setWaterBreakAnnouncementMinutes] = useState<number>(1);
   const [waterBreakRemaining, setWaterBreakRemaining] = useState<number>(3 * 60);
   const [waterBreakRunning, setWaterBreakRunning] = useState(false);
@@ -551,6 +552,7 @@ const ponyOtherOptions: OtherOptionItem[] = [
   { value: "tiebreak", label: "タイブレーク" },
   { value: "continue", label: "継続試合" },
   { value: "heat", label: "熱中症" },
+  { value: "waterBreak", label: "給水タイム" },
   { value: "manual", label: "連盟🎤マニュアル" },
   { value: "pitchlist", label: "投球数⚾" },
 ];
@@ -634,7 +636,12 @@ useEffect(() => {
 
       const announcementSeconds = waterBreakAnnouncementMinutes * 60;
 
-      if (!waterBreakAnnounced && next === announcementSeconds) {
+      // 0 は「なし」なので、残り時間アナウンスを行わない
+      if (
+        waterBreakAnnouncementMinutes > 0 &&
+        !waterBreakAnnounced &&
+        next === announcementSeconds
+      ) {
         const msg = `クーリングタイム残り${waterBreakAnnouncementMinutes}分です。`;
         setWaterBreakAnnounced(true);
         setWaterBreakNotice(msg);
@@ -674,9 +681,14 @@ useEffect(() => {
   setWaterBreakNotice("");
   setWaterBreakAnnounced(false);
 
-  // 残り時間アナウンスは、必ずクーリングタイムより短くする
-  if (waterBreakAnnouncementMinutes >= waterBreakMinutes) {
-    setWaterBreakAnnouncementMinutes(Math.max(1, waterBreakMinutes - 1));
+  // 残り時間アナウンスは、0（なし）またはクーリングタイムより短い値にする
+  if (
+    waterBreakAnnouncementMinutes > 0 &&
+    waterBreakAnnouncementMinutes >= waterBreakMinutes
+  ) {
+    setWaterBreakAnnouncementMinutes(
+      waterBreakMinutes > 1 ? waterBreakMinutes - 1 : 0
+    );
   }
   // waterBreakRunning は依存配列に入れない
 }, [waterBreakMinutes]);
@@ -1712,6 +1724,7 @@ return (
                   <option value="tiebreak">タイブレーク</option>
                   <option value="continue">継続試合</option>
                   <option value="heat">熱中症</option>
+                  <option value="waterBreak">給水タイム</option>
                   <option value="manual">連盟🎤マニュアル</option>
                   <option value="pitchlist">投球数⚾</option>
                 </>
@@ -2061,6 +2074,7 @@ return (
           <option value="tiebreak">タイブレーク</option>
           <option value="continue">継続試合</option>
           <option value="heat">熱中症</option>
+          <option value="waterBreak">給水タイム</option>
           <option value="manual">連盟🎤マニュアル</option>
           <option value="pitchlist">投球数⚾</option>
         </>
@@ -2462,7 +2476,8 @@ return (
           <>
             <option value="end">試合終了</option>
             <option value="continue">継続試合</option>
-            <option value="heat">熱中症</option> 
+            <option value="heat">熱中症</option>
+            <option value="waterBreak">給水タイム</option>
             <option value="manual">連盟🎤マニュアル</option> 
             <option value="pitchlist">投球数⚾</option>
           </>
@@ -4271,10 +4286,11 @@ return (
                 setWaterBreakAnnounced(false);
                 setWaterBreakNotice("");
               }}
-              disabled={waterBreakRunning || waterBreakMinutes <= 1}
+              disabled={waterBreakRunning}
               className="w-full h-12 px-4 rounded-xl border border-slate-300 bg-white text-slate-800
                          disabled:bg-slate-100 disabled:text-slate-400"
             >
+              <option value={0}>なし</option>
               {Array.from(
                 { length: Math.max(0, waterBreakMinutes - 1) },
                 (_, i) => i + 1
@@ -4286,7 +4302,7 @@ return (
             </select>
             {waterBreakMinutes <= 1 && (
               <p className="mt-2 text-xs font-semibold text-amber-700">
-                クーリングタイムが1分の場合、残り時間アナウンスは設定できません。
+                クーリングタイムが1分の場合は「なし」のみ選択できます。
               </p>
             )}
           </div>

@@ -881,6 +881,19 @@ const cancelBenchOutLongPress = () => {
   }
 };
 
+/**
+ * 出場しない選手を全員ベンチ入りへ移動
+ * benchOutIds から全員外すことで、availablePlayers 側へまとめて移動する。
+ */
+const moveAllBenchOutPlayersToBench = () => {
+  if (benchOutPlayers.length === 0) return;
+
+  setBenchOutIds([]);
+  setSelectedBenchOutId(null);
+  setDraggingPlayerId(null);
+  setTouchDrag(null);
+};
+
   /* =========================================================
    *  ドロップ：ベンチ外（出場しない選手）
    * ======================================================= */
@@ -2530,12 +2543,27 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
 
         {/* ベンチ外選手 */}
 <div>
-  <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
-    <span className="inline-flex w-9 h-9 rounded-xl bg-rose-400/25 border border-rose-300/50 items-center justify-center">
-      <IconOut />
-    </span>
-    出場しない選手
-  </h2>
+  <div className="mb-2 flex items-center justify-between gap-2">
+    <h2 className="text-xl font-semibold flex items-center gap-2 min-w-0">
+      <span className="inline-flex w-9 h-9 rounded-xl bg-rose-400/25 border border-rose-300/50 items-center justify-center shrink-0">
+        <IconOut />
+      </span>
+      <span className="whitespace-nowrap">出場しない選手</span>
+    </h2>
+
+    <button
+      type="button"
+      onClick={moveAllBenchOutPlayersToBench}
+      disabled={benchOutPlayers.length === 0}
+      className={`shrink-0 rounded-xl px-3 py-2 text-[12px] md:text-sm font-bold border transition active:scale-95 ${
+        benchOutPlayers.length === 0
+          ? "bg-gray-500/30 text-gray-300 border-gray-500/30 cursor-not-allowed"
+          : "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500 shadow"
+      }`}
+    >
+      全員ベンチ入りへ
+    </button>
+  </div>
 
   <div
     className="flex flex-wrap items-start content-start gap-1.5 p-1.5
