@@ -60,6 +60,15 @@ const historyData: HistoryItem[] = [
       ・Android端末でバイブレーション機能を追加`,
     ],
   },
+  {
+    date: "2026.08.07",
+    version: "Version 1.04",
+    details: [
+      `運用設定画面に下記追加
+      ・給水タイムのアナウンス設定
+      ・グラウンド整備のアナウンス設定`,
+    ],
+  },
 ];
 
 export default function VersionInfo({ version, onBack }: Props) {
