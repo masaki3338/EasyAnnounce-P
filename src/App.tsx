@@ -48,7 +48,25 @@ import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 import { getAnnouncementMode } from "./lib/announcementMode";
 
 // バージョン番号を定数で管理
-const APP_VERSION = "1.03"
+type AnnouncementTimingSettings = {
+  coolingEnabled: boolean;
+  coolingMinutes: number;
+  coolingAnnouncementMinutes: number;
+  coolingFirstInning: number;
+  coolingSecondInning: number | null;
+  groundMaintenanceInning: number | null;
+};
+
+const DEFAULT_ANNOUNCEMENT_TIMING_SETTINGS: AnnouncementTimingSettings = {
+  coolingEnabled: false,
+  coolingMinutes: 3,
+  coolingAnnouncementMinutes: 1,
+  coolingFirstInning: 3,
+  coolingSecondInning: 5,
+  groundMaintenanceInning: 5,
+};
+
+const APP_VERSION = "1.04"
 
 // iOS 判定を共通で使えるようにグローバル定数として定義
 const isIOS = (() => {
@@ -329,6 +347,59 @@ useEffect(() => {
   const [waterBreakNotice, setWaterBreakNotice] = useState("");
   const [coolingPopupMessage, setCoolingPopupMessage] = useState("");
   const [showCoolingPopup, setShowCoolingPopup] = useState(false);
+
+  useEffect(() => {
+    const loadCoolingSettings = async () => {
+      const saved =
+        (await localForage.getItem<Partial<AnnouncementTimingSettings>>(
+          "announcementTimingSettings"
+        )) || {};
+      const next = {
+        ...DEFAULT_ANNOUNCEMENT_TIMING_SETTINGS,
+        ...saved,
+      };
+      setWaterBreakMinutes(next.coolingMinutes);
+      setWaterBreakAnnouncementMinutes(next.coolingAnnouncementMinutes);
+      setWaterBreakRemaining(next.coolingMinutes * 60);
+    };
+
+    const handleOpenCoolingTime = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          minutes?: number;
+          announcementMinutes?: number;
+        }>
+      ).detail;
+
+      const minutes = Math.min(30, Math.max(1, Number(detail?.minutes ?? 3)));
+      const announcementMinutes = Math.min(
+        30,
+        Math.max(0, Number(detail?.announcementMinutes ?? 1))
+      );
+
+      setWaterBreakMinutes(minutes);
+      setWaterBreakAnnouncementMinutes(announcementMinutes);
+      setWaterBreakRemaining(minutes * 60);
+      setWaterBreakRunning(false);
+      setWaterBreakAnnounced(false);
+      setWaterBreakNotice("");
+      setShowWaterBreakPopup(true);
+    };
+
+    void loadCoolingSettings();
+    window.addEventListener(
+      "easyannounce:open-cooling-time",
+      handleOpenCoolingTime
+    );
+
+    return () => {
+      window.removeEventListener(
+        "easyannounce:open-cooling-time",
+        handleOpenCoolingTime
+      );
+    };
+  }, []);
+
   const [seatIntroBackScreen, setSeatIntroBackScreen] = useState<"announcement" | "boysPreGameAnnouncement">("announcement");
 
   const [defenseInningStartTrigger, setDefenseInningStartTrigger] = useState(0);
@@ -552,14 +623,12 @@ const ponyOtherOptions: OtherOptionItem[] = [
   { value: "tiebreak", label: "タイブレーク" },
   { value: "continue", label: "継続試合" },
   { value: "heat", label: "熱中症" },
-  { value: "waterBreak", label: "給水タイム" },
   { value: "manual", label: "連盟🎤マニュアル" },
   { value: "pitchlist", label: "投球数⚾" },
 ];
 
 const boysOtherOptions: OtherOptionItem[] = [
   { value: "intentionalWalk", label: "申告敬遠" },
-  { value: "waterBreak", label: "給水タイム" },
   { value: "tiebreak", label: "タイブレーク" },
   { value: "end", label: "試合終了" },
   { value: "suspend", label: "中断" },
@@ -606,13 +675,51 @@ const formatWaterBreakTime = (sec: number) => {
 
 const waterBreakMessage = `ただいまから${waterBreakMinutes}分間のクーリングタイムを取ります。`;
 
+const changeWaterBreakMinutes = (delta: number) => {
+  if (waterBreakRunning) return;
+
+  setWaterBreakMinutes((prev) => {
+    const next = Math.min(30, Math.max(1, prev + delta));
+
+    setWaterBreakAnnouncementMinutes((announcePrev) =>
+      Math.min(announcePrev, next)
+    );
+    setWaterBreakRemaining(next * 60);
+    setWaterBreakAnnounced(false);
+    setWaterBreakNotice("");
+
+    return next;
+  });
+};
+
+const changeWaterBreakAnnouncementMinutes = (delta: number) => {
+  if (waterBreakRunning) return;
+
+  setWaterBreakAnnouncementMinutes((prev) =>
+    Math.min(waterBreakMinutes, Math.max(0, prev + delta))
+  );
+  setWaterBreakAnnounced(false);
+  setWaterBreakNotice("");
+};
+
 const handleWaterBreakStart = () => {
   if (waterBreakRemaining <= 0) {
     setWaterBreakRemaining(waterBreakMinutes * 60);
   }
 
-  setWaterBreakAnnounced(false);
-  setWaterBreakNotice("");
+  if (
+    waterBreakAnnouncementMinutes > 0 &&
+    waterBreakAnnouncementMinutes === waterBreakMinutes
+  ) {
+    const msg = `クーリングタイム残り${waterBreakAnnouncementMinutes}分です。`;
+    setWaterBreakAnnounced(true);
+    setWaterBreakNotice(msg);
+    showCoolingNoticePopup(msg);
+  } else {
+    setWaterBreakAnnounced(false);
+    setWaterBreakNotice("");
+  }
+
   setWaterBreakRunning(true);
 };
 
@@ -681,14 +788,9 @@ useEffect(() => {
   setWaterBreakNotice("");
   setWaterBreakAnnounced(false);
 
-  // 残り時間アナウンスは、0（なし）またはクーリングタイムより短い値にする
-  if (
-    waterBreakAnnouncementMinutes > 0 &&
-    waterBreakAnnouncementMinutes >= waterBreakMinutes
-  ) {
-    setWaterBreakAnnouncementMinutes(
-      waterBreakMinutes > 1 ? waterBreakMinutes - 1 : 0
-    );
+  // 残り時間アナウンスは、0（なし）またはクーリング時間以下にする
+  if (waterBreakAnnouncementMinutes > waterBreakMinutes) {
+    setWaterBreakAnnouncementMinutes(waterBreakMinutes);
   }
   // waterBreakRunning は依存配列に入れない
 }, [waterBreakMinutes]);
@@ -860,10 +962,6 @@ const handleHeatStop = () => {
 const handleBoysOnlyMenu = async (value: string) => {
   if (value === "intentionalWalk") {
     alert("申告敬遠はこれから実装します");
-    return true;
-  }
-  if (value === "waterBreak") {
-    alert("給水タイムはこれから実装します");
     return true;
   }
   if (value === "suspend") {
@@ -1710,8 +1808,8 @@ return (
               </option>
               {isBoys ? (
                 <>
-                  <option value="intentionalWalk">申告敬遠</option>
                   <option value="waterBreak">給水タイム</option>
+                  <option value="intentionalWalk">申告敬遠</option>
                   <option value="tiebreak">タイブレーク</option>
                   <option value="end">試合終了</option>
                   <option value="suspend">中断</option>
@@ -4205,7 +4303,7 @@ return (
 
 {/* ✅ 給水タイム */}
 {showWaterBreakPopup && (
-  <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="給水タイム">
+  <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="クーリングタイム">
     {/* 背景 */}
     <div
       className="absolute inset-0 bg-black/50 backdrop-blur-sm"
@@ -4233,7 +4331,7 @@ return (
           <div className="px-4 py-3 flex items-center justify-between">
             <h2 className="text-lg font-extrabold tracking-wide flex items-center gap-2">
               <span className="text-xl">💧</span>
-              <span>給水タイム</span>
+              <span>クーリングタイム</span>
             </h2>
             <button
               onClick={() => setShowWaterBreakPopup(false)}
@@ -4249,62 +4347,61 @@ return (
 
         {/* 本文 */}
         <div className="px-4 py-4 space-y-4 overflow-y-auto">
-          <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2">
-              クーリングタイム
-            </label>
-            <select
-              value={waterBreakMinutes}
-              onChange={(e) => {
-                const nextMinutes = Number(e.target.value);
-                setWaterBreakMinutes(nextMinutes);
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-center">
+              <div className="text-xs font-bold text-sky-700">クーリング時間</div>
+              <div className="mt-2 grid grid-cols-[40px_1fr_40px] items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => changeWaterBreakMinutes(-1)}
+                  disabled={waterBreakRunning || waterBreakMinutes <= 1}
+                  className="h-10 rounded-xl bg-sky-700 text-white text-xl font-bold disabled:bg-gray-300 disabled:text-gray-500 active:scale-95"
+                >
+                  −
+                </button>
+                <div className="text-xl font-extrabold text-sky-900 whitespace-nowrap">
+                  {waterBreakMinutes}分
+                </div>
+                <button
+                  type="button"
+                  onClick={() => changeWaterBreakMinutes(1)}
+                  disabled={waterBreakRunning || waterBreakMinutes >= 30}
+                  className="h-10 rounded-xl bg-sky-700 text-white text-xl font-bold disabled:bg-gray-300 disabled:text-gray-500 active:scale-95"
+                >
+                  ＋
+                </button>
+              </div>
+            </div>
 
-                // 停止中だけ表示時間も変更
-                if (!waterBreakRunning) {
-                  setWaterBreakRemaining(nextMinutes * 60);
-                }
-              }}
-              disabled={waterBreakRunning}
-              className="w-full h-12 px-4 rounded-xl border border-slate-300 bg-white text-slate-800"
-            >
-              {Array.from({ length: 10 }, (_, i) => i + 1).map((min) => (
-                <option key={min} value={min}>
-                  {min}分
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2">
-              残り時間アナウンス
-            </label>
-            <select
-              value={waterBreakAnnouncementMinutes}
-              onChange={(e) => {
-                setWaterBreakAnnouncementMinutes(Number(e.target.value));
-                setWaterBreakAnnounced(false);
-                setWaterBreakNotice("");
-              }}
-              disabled={waterBreakRunning}
-              className="w-full h-12 px-4 rounded-xl border border-slate-300 bg-white text-slate-800
-                         disabled:bg-slate-100 disabled:text-slate-400"
-            >
-              <option value={0}>なし</option>
-              {Array.from(
-                { length: Math.max(0, waterBreakMinutes - 1) },
-                (_, i) => i + 1
-              ).map((min) => (
-                <option key={min} value={min}>
-                  残り{min}分
-                </option>
-              ))}
-            </select>
-            {waterBreakMinutes <= 1 && (
-              <p className="mt-2 text-xs font-semibold text-amber-700">
-                クーリングタイムが1分の場合は「なし」のみ選択できます。
-              </p>
-            )}
+            <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-center">
+              <div className="text-xs font-bold text-sky-700">残りアナウンス</div>
+              <div className="mt-2 grid grid-cols-[40px_1fr_40px] items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => changeWaterBreakAnnouncementMinutes(-1)}
+                  disabled={waterBreakRunning || waterBreakAnnouncementMinutes <= 0}
+                  className="h-10 rounded-xl bg-sky-700 text-white text-xl font-bold disabled:bg-gray-300 disabled:text-gray-500 active:scale-95"
+                >
+                  −
+                </button>
+                <div className="text-xl font-extrabold text-sky-900 whitespace-nowrap">
+                  {waterBreakAnnouncementMinutes === 0
+                    ? "なし"
+                    : `${waterBreakAnnouncementMinutes}分`}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => changeWaterBreakAnnouncementMinutes(1)}
+                  disabled={
+                    waterBreakRunning ||
+                    waterBreakAnnouncementMinutes >= waterBreakMinutes
+                  }
+                  className="h-10 rounded-xl bg-sky-700 text-white text-xl font-bold disabled:bg-gray-300 disabled:text-gray-500 active:scale-95"
+                >
+                  ＋
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">

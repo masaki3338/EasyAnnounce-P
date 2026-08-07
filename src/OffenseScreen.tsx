@@ -376,6 +376,24 @@ const DropTarget = ({ base, runnerAssignments, replacedRunners, setRunnerAssignm
   );
 };
 
+type AnnouncementTimingSettings = {
+  coolingEnabled: boolean;
+  coolingMinutes: number;
+  coolingAnnouncementMinutes: number;
+  coolingFirstInning: number;
+  coolingSecondInning: number | null;
+  groundMaintenanceInning: number | null;
+};
+
+const DEFAULT_ANNOUNCEMENT_TIMING_SETTINGS: AnnouncementTimingSettings = {
+  coolingEnabled: false,
+  coolingMinutes: 3,
+  coolingAnnouncementMinutes: 1,
+  coolingFirstInning: 3,
+  coolingSecondInning: 5,
+  groundMaintenanceInning: 5,
+};
+
 const MIN_STARTERS = 9;
 const MAX_BATTING_ORDER = 15;
 
@@ -463,6 +481,234 @@ useEffect(() => {
 }, []);
   const [showGroundPopup, setShowGroundPopup] = useState(false);
   const [pendingGroundPopup, setPendingGroundPopup] = useState(false);
+  const [announcementTimingSettings, setAnnouncementTimingSettings] =
+    useState<AnnouncementTimingSettings>(DEFAULT_ANNOUNCEMENT_TIMING_SETTINGS);
+
+  useEffect(() => {
+    const loadTimingSettings = async () => {
+      const saved =
+        (await localForage.getItem<Partial<AnnouncementTimingSettings>>(
+          "announcementTimingSettings"
+        )) || {};
+      setAnnouncementTimingSettings({
+        ...DEFAULT_ANNOUNCEMENT_TIMING_SETTINGS,
+        ...saved,
+      });
+    };
+
+    const handleSettingsChanged = (event: Event) => {
+      const detail = (event as CustomEvent<AnnouncementTimingSettings>).detail;
+      if (detail) {
+        setAnnouncementTimingSettings({
+          ...DEFAULT_ANNOUNCEMENT_TIMING_SETTINGS,
+          ...detail,
+        });
+      }
+    };
+
+    void loadTimingSettings();
+    window.addEventListener(
+      "easyannounce:timing-settings-changed",
+      handleSettingsChanged
+    );
+
+    return () => {
+      window.removeEventListener(
+        "easyannounce:timing-settings-changed",
+        handleSettingsChanged
+      );
+    };
+  }, []);
+
+  const isConfiguredGroundMaintenance = (
+    endedInning: number,
+    endedIsTop: boolean
+  ) =>
+    leagueMode !== "boys" &&
+    !endedIsTop &&
+    announcementTimingSettings.groundMaintenanceInning !== null &&
+    endedInning === announcementTimingSettings.groundMaintenanceInning;
+
+  const requestConfiguredCoolingTime = (
+    endedInning: number,
+    endedIsTop: boolean
+  ) => {
+    if (endedIsTop || !announcementTimingSettings.coolingEnabled) return;
+
+    const targetInnings = [
+      announcementTimingSettings.coolingFirstInning,
+      announcementTimingSettings.coolingSecondInning,
+    ].filter((inningNo): inningNo is number => inningNo !== null);
+
+    if (!targetInnings.includes(endedInning)) return;
+
+    window.dispatchEvent(
+      new CustomEvent("easyannounce:open-cooling-time", {
+        detail: {
+          inning: endedInning,
+          minutes: announcementTimingSettings.coolingMinutes,
+          announcementMinutes:
+            announcementTimingSettings.coolingAnnouncementMinutes,
+        },
+      })
+    );
+  };
+
+  type CombinedAuxTab = "cooling" | "ground" | "member";
+  const [showCombinedAuxModal, setShowCombinedAuxModal] = useState(false);
+  const [combinedAuxTabs, setCombinedAuxTabs] = useState<CombinedAuxTab[]>([]);
+  const [activeCombinedAuxTab, setActiveCombinedAuxTab] = useState<CombinedAuxTab>("cooling");
+  const [combinedAuxInning, setCombinedAuxInning] = useState<number | null>(null);
+  const [combinedCoolingRemaining, setCombinedCoolingRemaining] = useState(0);
+  const [combinedCoolingRunning, setCombinedCoolingRunning] = useState(false);
+  const [combinedCoolingAnnounced, setCombinedCoolingAnnounced] = useState(false);
+  const [combinedCoolingNotice, setCombinedCoolingNotice] = useState("");
+  const [combinedCoolingMinutes, setCombinedCoolingMinutes] = useState(
+    DEFAULT_ANNOUNCEMENT_TIMING_SETTINGS.coolingMinutes
+  );
+  const [combinedCoolingAnnouncementMinutes, setCombinedCoolingAnnouncementMinutes] =
+    useState(DEFAULT_ANNOUNCEMENT_TIMING_SETTINGS.coolingAnnouncementMinutes);
+
+  const isConfiguredCoolingTime = (endedInning: number, endedIsTop: boolean) => {
+    if (endedIsTop || !announcementTimingSettings.coolingEnabled) return false;
+    return [
+      announcementTimingSettings.coolingFirstInning,
+      announcementTimingSettings.coolingSecondInning,
+    ]
+      .filter((inningNo): inningNo is number => inningNo !== null)
+      .includes(endedInning);
+  };
+
+  const formatCombinedCoolingTime = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  };
+
+  const changeCombinedCoolingMinutes = (delta: number) => {
+    if (combinedCoolingRunning) return;
+
+    setCombinedCoolingMinutes((prev) => {
+      const next = Math.min(30, Math.max(1, prev + delta));
+      setCombinedCoolingAnnouncementMinutes((announcePrev) =>
+        Math.min(announcePrev, next)
+      );
+      setCombinedCoolingRemaining(next * 60);
+      setCombinedCoolingAnnounced(false);
+      setCombinedCoolingNotice("");
+      return next;
+    });
+  };
+
+  const changeCombinedCoolingAnnouncementMinutes = (delta: number) => {
+    if (combinedCoolingRunning) return;
+
+    setCombinedCoolingAnnouncementMinutes((prev) =>
+      Math.min(combinedCoolingMinutes, Math.max(0, prev + delta))
+    );
+    setCombinedCoolingAnnounced(false);
+    setCombinedCoolingNotice("");
+  };
+
+  const buildMemberExchangeAnnouncement = async () => {
+    const mi = await localForage.getItem<any>("matchInfo");
+    const currentGame = Number(mi?.matchNumber) || 1;
+    const nextGame = currentGame + 1;
+    return (
+      `本日の第${nextGame}試合の両チームは、4回終了後、メンバー交換を行います。\n` +
+      `両チームのキャプテンと全てのベンチ入り指導者は、ボール3個とメンバー表とピッチングレコードを持って本部席付近にお集まりください。\n` +
+      `ベンチ入りのスコアラー、審判員、球場責任者、EasyScore担当、公式記録員、アナウンスもお集まりください。\n` +
+      `メンバーチェックと道具チェックはシートノックの間に行います。`
+    );
+  };
+
+  const openCombinedAuxModalIfNeeded = async (
+    endedInning: number,
+    endedIsTop: boolean
+  ) => {
+    const tabs: CombinedAuxTab[] = [];
+    if (isConfiguredCoolingTime(endedInning, endedIsTop)) tabs.push("cooling");
+    if (isConfiguredGroundMaintenance(endedInning, endedIsTop)) tabs.push("ground");
+    if (pendingMemberExchange) tabs.push("member");
+
+    if (tabs.length < 2) return false;
+
+    if (tabs.includes("member")) {
+      setMemberExchangeText(await buildMemberExchangeAnnouncement());
+      setPendingMemberExchange(false);
+    }
+    if (tabs.includes("ground")) {
+      setPendingGroundPopup(false);
+    }
+
+    setCombinedAuxTabs(tabs);
+    setActiveCombinedAuxTab(tabs[0]);
+    setCombinedAuxInning(endedInning);
+
+    if (tabs.includes("cooling")) {
+      const minutes = Math.min(
+        30,
+        Math.max(1, Number(announcementTimingSettings.coolingMinutes || 3))
+      );
+      const announceMinutes = Math.min(
+        minutes,
+        Math.max(
+          0,
+          Number(announcementTimingSettings.coolingAnnouncementMinutes || 0)
+        )
+      );
+
+      setCombinedCoolingMinutes(minutes);
+      setCombinedCoolingAnnouncementMinutes(announceMinutes);
+      setCombinedCoolingRemaining(minutes * 60);
+      setCombinedCoolingRunning(false);
+      setCombinedCoolingAnnounced(false);
+      setCombinedCoolingNotice("");
+    }
+
+    setShowCombinedAuxModal(true);
+    return true;
+  };
+
+  useEffect(() => {
+    if (!combinedCoolingRunning) return;
+
+    const timer = window.setInterval(() => {
+      setCombinedCoolingRemaining((prev) => {
+        const next = Math.max(0, prev - 1);
+        const announceSec =
+          combinedCoolingAnnouncementMinutes * 60;
+
+        if (
+          combinedCoolingAnnouncementMinutes > 0 &&
+          !combinedCoolingAnnounced &&
+          next === announceSec
+        ) {
+          setCombinedCoolingAnnounced(true);
+          setCombinedCoolingNotice(
+            `クーリングタイム残り${combinedCoolingAnnouncementMinutes}分です。`
+          );
+        }
+
+        if (next <= 0) {
+          window.clearInterval(timer);
+          setCombinedCoolingRunning(false);
+          const msg = "クーリングタイム終了です。";
+          setCombinedCoolingNotice(msg);
+          void speak(msg);
+          return 0;
+        }
+        return next;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [
+    combinedCoolingRunning,
+    combinedCoolingAnnounced,
+    combinedCoolingAnnouncementMinutes,
+  ]);
+
   const [announcementHTMLStr, setAnnouncementHTMLStr] = useState<string>("");
   const [announcementHTMLOverrideStr, setAnnouncementHTMLOverrideStr] = useState<string>("");
   const [tiebreakAnno, setTiebreakAnno] = useState<string | null>(null);
@@ -2248,6 +2494,9 @@ const confirmScore = async () => {
   }
 
   // ✅ 通常モード（イニング終了処理）
+  // クーリングタイムは得点アナウンス終了後に表示する。
+  // ここではまだ開かない。
+
   // ★ 前のイニングに戻す用：
   // 得点を確定する直前の状態を保存しておく
   await savePreviousInningEndSnapshot();
@@ -2297,7 +2546,7 @@ await saveMatchInfo({
     setPopupMessage(`${teamName}、この回の得点は${score}点です。`);
     setPopupSpeakMessage(`${teamReading}、この回の得点は${score}点です。`);
 
-  if (leagueMode !== "boys" && isHome && inning === 4 && !isTop) {
+  if (isConfiguredGroundMaintenance(inning, isTop)) {
     setPendingGroundPopup(true);
   }
 
@@ -2311,7 +2560,7 @@ await saveMatchInfo({
       setPopupMessage(`${teamName}、この回の得点は 無得点。`);
       setPopupSpeakMessage(`${teamReading}、この回の得点は 無得点。`);
 
-    if (leagueMode !== "boys" && isHome && inning === 4 && !isTop) {
+    if (isConfiguredGroundMaintenance(inning, isTop)) {
       setPendingGroundPopup(true);
     }
 
@@ -2320,6 +2569,14 @@ await saveMatchInfo({
     }
 
     // ★ ポニーは従来通り
+    // 同一回に複数の対象がある場合はタブモーダルにまとめる。
+    if (await openCombinedAuxModalIfNeeded(inning, isTop)) {
+      return;
+    }
+
+    // 0点時は得点アナウンスモーダルがないため、得点入力完了後のこの位置で表示する。
+    requestConfiguredCoolingTime(inning, isTop);
+
     if (pendingMemberExchange) {
       const mi = await localForage.getItem<any>("matchInfo");
       const currentGame = Number(mi?.matchNumber) || 1;
@@ -2333,7 +2590,7 @@ await saveMatchInfo({
 
       setMemberExchangeText(txt);
 
-      if (isHome && inning === 4 && !isTop) {
+      if (isConfiguredGroundMaintenance(inning, isTop)) {
         setAfterMemberExchange("groundPopup");
       } else if (lastEndedHalfRef.current?.inning === 1 && lastEndedHalfRef.current?.isTop) {
         const order =
@@ -2351,7 +2608,7 @@ await saveMatchInfo({
       return;
     }
 
-    if (isHome && inning === 4 && !isTop) {
+    if (isConfiguredGroundMaintenance(inning, isTop)) {
       setShowGroundPopup(true);
     } else if (inning === 1 && isTop) {
       const hasPendingDefense = await hasPendingDefenseSetup();
@@ -4128,6 +4385,25 @@ useEffect(() => {
         onClick={async () => {
           setShowScorePopup(false);
 
+          // ✅ 得点アナウンス後、同一回に複数の対象があればタブモーダルで表示
+          const endedHalf = lastEndedHalfRef.current;
+          if (
+            endedHalf &&
+            await openCombinedAuxModalIfNeeded(
+              endedHalf.inning,
+              endedHalf.isTop
+            )
+          ) {
+            return;
+          }
+
+          if (endedHalf) {
+            requestConfiguredCoolingTime(
+              endedHalf.inning,
+              endedHalf.isTop
+            );
+          }
+
           if (pendingMemberExchange) {
             // 本日の“次の試合番号”で文面を作成
             const mi = await localForage.getItem<any>("matchInfo");
@@ -5738,6 +6014,312 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
           </div>
         )}
 
+
+        {/* ✅ 同一回の複数アナウンス：タブ切替モーダル */}
+        {showCombinedAuxModal && (
+          <div className="fixed inset-0 z-[70]" role="dialog" aria-modal="true">
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+            <div className="absolute inset-0 flex items-center justify-center p-3 sm:p-4 overflow-hidden">
+              <div
+                className="bg-white shadow-2xl rounded-2xl w-full max-w-2xl max-h-[88vh] overflow-hidden flex flex-col"
+                style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+              >
+                <div className="bg-gradient-to-r from-sky-600 to-cyan-600 text-white">
+                  <div className="px-4 py-3">
+                    <h2 className="text-lg font-extrabold tracking-wide text-center">
+                      {combinedAuxInning ?? ""}回裏終了後
+                    </h2>
+                  </div>
+                  <div className="flex overflow-x-auto bg-white/10">
+                    {combinedAuxTabs.map((tab) => {
+                      const label =
+                        tab === "cooling"
+                          ? "クーリングタイム"
+                          : tab === "ground"
+                          ? "グラウンド整備"
+                          : "次の試合";
+                      return (
+                        <button
+                          key={tab}
+                          onClick={() => {
+                            stop();
+                            setActiveCombinedAuxTab(tab);
+                          }}
+                          className={`flex-1 min-w-[110px] px-2 py-3 text-[13px] sm:text-sm font-bold whitespace-nowrap border-b-4 ${
+                            activeCombinedAuxTab === tab
+                              ? "border-white bg-white/20"
+                              : "border-transparent"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="px-4 py-4 overflow-y-auto space-y-4">
+                  {activeCombinedAuxTab === "cooling" && (
+                    <>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-center">
+                          <div className="text-xs font-bold text-sky-700">クーリング時間</div>
+                          <div className="mt-2 grid grid-cols-[40px_1fr_40px] items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => changeCombinedCoolingMinutes(-1)}
+                              disabled={combinedCoolingRunning || combinedCoolingMinutes <= 1}
+                              className="h-10 rounded-xl bg-sky-700 text-white text-xl font-bold disabled:bg-gray-300 disabled:text-gray-500 active:scale-95"
+                            >
+                              −
+                            </button>
+                            <div className="text-xl font-extrabold text-sky-900 whitespace-nowrap">
+                              {combinedCoolingMinutes}分
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => changeCombinedCoolingMinutes(1)}
+                              disabled={combinedCoolingRunning || combinedCoolingMinutes >= 30}
+                              className="h-10 rounded-xl bg-sky-700 text-white text-xl font-bold disabled:bg-gray-300 disabled:text-gray-500 active:scale-95"
+                            >
+                              ＋
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-center">
+                          <div className="text-xs font-bold text-sky-700">残りアナウンス</div>
+                          <div className="mt-2 grid grid-cols-[40px_1fr_40px] items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => changeCombinedCoolingAnnouncementMinutes(-1)}
+                              disabled={
+                                combinedCoolingRunning ||
+                                combinedCoolingAnnouncementMinutes <= 0
+                              }
+                              className="h-10 rounded-xl bg-sky-700 text-white text-xl font-bold disabled:bg-gray-300 disabled:text-gray-500 active:scale-95"
+                            >
+                              −
+                            </button>
+                            <div className="text-xl font-extrabold text-sky-900 whitespace-nowrap">
+                              {combinedCoolingAnnouncementMinutes === 0
+                                ? "なし"
+                                : `${combinedCoolingAnnouncementMinutes}分`}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => changeCombinedCoolingAnnouncementMinutes(1)}
+                              disabled={
+                                combinedCoolingRunning ||
+                                combinedCoolingAnnouncementMinutes >= combinedCoolingMinutes
+                              }
+                              className="h-10 rounded-xl bg-sky-700 text-white text-xl font-bold disabled:bg-gray-300 disabled:text-gray-500 active:scale-95"
+                            >
+                              ＋
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+                        <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
+                          {combinedCoolingNotice ||
+                            `ただいまから${combinedCoolingMinutes}分間のクーリングタイムを取ります。`}
+                        </p>
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <button
+                            onClick={async () =>
+                              await speak(
+                                combinedCoolingNotice ||
+                                  `ただいまから${combinedCoolingMinutes}分間のクーリングタイムを取ります。`
+                              )
+                            }
+                            className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white"
+                          >
+                            読み上げ
+                          </button>
+                          <button
+                            onClick={() => stop()}
+                            className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white"
+                          >
+                            停止
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-center">
+                        <div className="text-sm font-bold text-sky-700 mb-2">タイマー</div>
+                        <div className="text-5xl font-extrabold tracking-widest text-sky-900 tabular-nums">
+                          {formatCombinedCoolingTime(combinedCoolingRemaining)}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <button
+                          onClick={() => {
+                            if (combinedCoolingRemaining <= 0) {
+                              setCombinedCoolingRemaining(
+                                combinedCoolingMinutes * 60
+                              );
+                            }
+
+                            if (
+                              combinedCoolingAnnouncementMinutes > 0 &&
+                              combinedCoolingAnnouncementMinutes === combinedCoolingMinutes
+                            ) {
+                              setCombinedCoolingAnnounced(true);
+                              setCombinedCoolingNotice(
+                                `クーリングタイム残り${combinedCoolingAnnouncementMinutes}分です。`
+                              );
+                            } else {
+                              setCombinedCoolingAnnounced(false);
+                              setCombinedCoolingNotice("");
+                            }
+
+                            setCombinedCoolingRunning(true);
+                          }}
+                          disabled={combinedCoolingRunning}
+                          className="h-12 rounded-xl bg-emerald-600 text-white font-bold disabled:bg-gray-300"
+                        >
+                          START
+                        </button>
+                        <button
+                          onClick={() => setCombinedCoolingRunning(false)}
+                          className="h-12 rounded-xl bg-amber-500 text-white font-bold"
+                        >
+                          STOP
+                        </button>
+                        <button
+                          onClick={() => {
+                            setCombinedCoolingRunning(false);
+                            setCombinedCoolingRemaining(
+                              combinedCoolingMinutes * 60
+                            );
+                            setCombinedCoolingAnnounced(false);
+                            setCombinedCoolingNotice("");
+                          }}
+                          className="h-12 rounded-xl bg-slate-700 text-white font-bold"
+                        >
+                          クリア
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  {activeCombinedAuxTab === "ground" && (
+                    <div className="space-y-5">
+                      <div className="space-y-3">
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-100 text-amber-900 border border-amber-200">
+                          <span className="text-xl">⚠️</span>
+                          <span>{announcementTimingSettings.groundMaintenanceInning ?? 5}回裏終了後🎤</span>
+                        </div>
+                        <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+                          <p className="text-red-700 font-bold">両チームはグランド整備をお願いします。</p>
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+                            <button
+                              onClick={async () => await speak("両チームはグランド整備をお願いします。")}
+                              className="w-full h-10 rounded-xl bg-blue-600 text-white"
+                            >
+                              読み上げ
+                            </button>
+                            <button onClick={() => stop()} className="w-full h-10 rounded-xl bg-rose-600 text-white">
+                              停止
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-100 text-amber-900 border border-amber-200">
+                          <span className="text-xl">⚠️</span>
+                          <span>整備終了後🎤</span>
+                        </div>
+                        <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+                          <p className="text-red-700 font-bold">グランド整備、ありがとうございました。</p>
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+                            <button
+                              onClick={async () => await speak("グランド整備、ありがとうございました。")}
+                              className="w-full h-10 rounded-xl bg-blue-600 text-white"
+                            >
+                              読み上げ
+                            </button>
+                            <button onClick={() => stop()} className="w-full h-10 rounded-xl bg-rose-600 text-white">
+                              停止
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeCombinedAuxTab === "member" && (
+                    <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+                      <p className="whitespace-pre-wrap text-red-700 font-bold">
+                        {memberExchangeText}
+                      </p>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <button
+                          onClick={async () => await speak(memberExchangeText)}
+                          className="w-full h-10 rounded-xl bg-blue-600 text-white"
+                        >
+                          読み上げ
+                        </button>
+                        <button onClick={() => stop()} className="w-full h-10 rounded-xl bg-rose-600 text-white">
+                          停止
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="sticky bottom-0 bg-white/95 backdrop-blur border-t px-4 py-3">
+                  <button
+                    onClick={async () => {
+                      stop();
+
+                      // ✅ 複数タブ時は、現在のタブだけを完了扱いにして消す。
+                      // 他のタブはそのまま残し、最後の1タブをOKした時だけ次へ進む。
+                      const currentTab = activeCombinedAuxTab;
+                      const currentIndex = combinedAuxTabs.indexOf(currentTab);
+                      const remainingTabs = combinedAuxTabs.filter(
+                        (tab) => tab !== currentTab
+                      );
+
+                      // クーリングタイムをOKした時だけ、そのタイマーを停止する。
+                      if (currentTab === "cooling") {
+                        setCombinedCoolingRunning(false);
+                      }
+
+                      if (remainingTabs.length > 0) {
+                        setCombinedAuxTabs(remainingTabs);
+
+                        // 右隣のタブを優先。右が無ければ左の残りへ移動。
+                        const nextIndex = Math.min(
+                          Math.max(currentIndex, 0),
+                          remainingTabs.length - 1
+                        );
+                        setActiveCombinedAuxTab(remainingTabs[nextIndex]);
+                        return;
+                      }
+
+                      // 最後の1タブを完了した時だけモーダル全体を閉じる。
+                      setCombinedAuxTabs([]);
+                      setCombinedAuxInning(null);
+                      setShowCombinedAuxModal(false);
+
+                      onSwitchToDefense();
+
+                    }}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
+                  >
+                    OK
+                  </button>
+                  <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ✅ グラウンド整備モーダル（スマホ風・薄赤背景・読み上げは青／中央配置） */}
         {showGroundPopup && (
           <div className="fixed inset-0 z-50">
@@ -5780,7 +6362,9 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
                     <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full
                                     bg-amber-100 text-amber-900 border border-amber-200">
                       <span className="text-xl">⚠️</span>
-                      <span>4回終了後🎤</span>
+                      <span>
+                        {announcementTimingSettings.groundMaintenanceInning ?? 5}回裏終了後🎤
+                      </span>
                     </div>
 
                     {/* アナウンス文言エリア（薄い赤） */}
