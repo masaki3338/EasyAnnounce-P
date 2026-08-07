@@ -729,6 +729,9 @@ const getOnePersonDefenseSide = (targetIsTop: boolean) =>
 }, []);
   const [showGroundPopup, setShowGroundPopup] = useState(false);
   const [pendingGroundPopup, setPendingGroundPopup] = useState(false);
+  // 自動クーリングタイム表示中だけ、閉じた後のイニング終了処理を待機する
+  const waitingForConfiguredCoolingRef = useRef(false);
+  const configuredCoolingModalSeenRef = useRef(false);
   const [announcementTimingSettings, setAnnouncementTimingSettings] =
     useState<AnnouncementTimingSettings>(DEFAULT_ANNOUNCEMENT_TIMING_SETTINGS);
 
@@ -780,15 +783,19 @@ const getOnePersonDefenseSide = (targetIsTop: boolean) =>
   const requestConfiguredCoolingTime = (
     endedInning: number,
     endedIsTop: boolean
-  ) => {
-    if (endedIsTop || !announcementTimingSettings.coolingEnabled) return;
+  ): boolean => {
+    if (endedIsTop || !announcementTimingSettings.coolingEnabled) return false;
 
     const targetInnings = [
       announcementTimingSettings.coolingFirstInning,
       announcementTimingSettings.coolingSecondInning,
     ].filter((inningNo): inningNo is number => inningNo !== null);
 
-    if (!targetInnings.includes(endedInning)) return;
+    if (!targetInnings.includes(endedInning)) return false;
+
+    // クーリングタイムのOKが押されるまで、守備交代判定や半回切替を進めない
+    waitingForConfiguredCoolingRef.current = true;
+    configuredCoolingModalSeenRef.current = false;
 
     window.dispatchEvent(
       new CustomEvent("easyannounce:open-cooling-time", {
@@ -800,6 +807,7 @@ const getOnePersonDefenseSide = (targetIsTop: boolean) =>
         },
       })
     );
+    return true;
   };
 
   type CombinedAuxTab = "cooling" | "ground" | "member";
@@ -6350,6 +6358,27 @@ const announce = async (text: string | string[]) => {
   await speak(plain);
 };
 
+// 補助アナウンス（クーリング／グラウンド整備等）が終わった後の共通処理
+// 代打・代走がある場合は、通常モードと同じ「守備位置の設定」モーダルを先に表示する。
+const continueAfterAuxAnnouncement = async () => {
+  const endedHalf = lastEndedHalfRef.current;
+  const hasPendingDefense = await hasCurrentOffensePendingDefenseSetup();
+
+  if (hasPendingDefense) {
+    setShowDefensePrompt(true);
+    return;
+  }
+
+  if (endedHalf?.inning === 1 && endedHalf?.isTop) {
+    await localForage.setItem("postDefenseSeatIntro", { enabled: false });
+    await localForage.setItem("seatIntroLock", false);
+    await goSeatIntroFromOffense();
+    return;
+  }
+
+  await switchHalfInOnePersonMode();
+};
+
 const continueAfterPitchAnnouncement = async () => {
   const endedHalf = lastEndedHalfRef.current;
 
@@ -6385,10 +6414,11 @@ const continueAfterPitchAnnouncement = async () => {
 
   // ✅ 次の試合アナウンスが無い場合は、従来の後続処理へ
   if (endedHalf) {
-    requestConfiguredCoolingTime(
+    const coolingOpened = requestConfiguredCoolingTime(
       endedHalf.inning,
       endedHalf.isTop
     );
+    if (coolingOpened) return;
   }
 
   if (pendingGroundPopup) {
@@ -6397,22 +6427,48 @@ const continueAfterPitchAnnouncement = async () => {
     return;
   }
 
-  const hasPendingDefense = await hasCurrentOffensePendingDefenseSetup();
-
-  if (hasPendingDefense) {
-    await openExistingDefenseChangeForEndedOffenseTeam();
-    return;
-  }
-
-  if (endedHalf?.inning === 1 && endedHalf?.isTop) {
-    await localForage.setItem("postDefenseSeatIntro", { enabled: false });
-    await localForage.setItem("seatIntroLock", false);
-    await goSeatIntroFromOffense();
-    return;
-  }
-
-  await switchHalfInOnePersonMode();
+  await continueAfterAuxAnnouncement();
 };
+
+// App.tsx 側のクーリングタイムはグローバルモーダルなので、
+// 自動表示したモーダルが閉じたことをDOMで検知して後続処理を再開する。
+// これにより App.tsx を変更せず、OK／×／背景タップのどの閉じ方でも復帰できる。
+useEffect(() => {
+  if (typeof document === "undefined") return;
+
+  const selector = '[role="dialog"][aria-label="クーリングタイム"]';
+
+  const checkCoolingModal = () => {
+    if (!waitingForConfiguredCoolingRef.current) return;
+
+    const exists = !!document.querySelector(selector);
+    if (exists) {
+      configuredCoolingModalSeenRef.current = true;
+      return;
+    }
+
+    // 一度モーダルがDOMに出た後、消えた時だけ「終了」と判定する。
+    if (!configuredCoolingModalSeenRef.current) return;
+
+    waitingForConfiguredCoolingRef.current = false;
+    configuredCoolingModalSeenRef.current = false;
+
+    void (async () => {
+      if (pendingGroundPopup) {
+        setPendingGroundPopup(false);
+        setShowGroundPopup(true);
+        return;
+      }
+      await continueAfterAuxAnnouncement();
+    })();
+  };
+
+  const observer = new MutationObserver(checkCoolingModal);
+  observer.observe(document.body, { childList: true, subtree: true });
+  checkCoolingModal();
+
+  return () => observer.disconnect();
+}, [pendingGroundPopup, battingOrder, isTop, inning]);
 
 const handleNext = async () => {
   setTiebreakAnno(null);
@@ -8256,12 +8312,14 @@ useEffect(() => {
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white p-6 rounded-xl shadow-xl text-center space-y-4 max-w-sm w-full">
               <h2 className="text-lg font-bold text-red-600">守備位置の設定</h2>
-              <p>代打／代走で出場した選手の守備位置を設定してください。</p>
+              <p>代打/代走で出場した選手の<br />守備位置を設定してください。</p>
               <button
                 className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
                 onClick={() => {
                   setShowDefensePrompt(false);
-                  void openDefenseChangeScreen(); // モーダル経由で守備交代画面へ
+                  // 終了した攻撃側チームの打順・守備位置・usedPlayerInfo を
+                  // DefenseChange 用の通常キーへ正しく準備してから開く。
+                  void openExistingDefenseChangeForEndedOffenseTeam();
                 }}
               >
                 OK
@@ -10155,15 +10213,7 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
                       setCombinedAuxInning(null);
                       setShowCombinedAuxModal(false);
 
-                      const hasPendingDefense =
-                        await hasCurrentOffensePendingDefenseSetup();
-
-                      if (hasPendingDefense) {
-                        await openExistingDefenseChangeForEndedOffenseTeam();
-                        return;
-                      }
-
-                      await switchHalfInOnePersonMode();
+                      await continueAfterAuxAnnouncement();
 
                     }}
                     className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
@@ -10299,7 +10349,7 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
                       onClick={async () => {
                         stop();
                         setShowGroundPopup(false);
-                        await switchHalfInOnePersonMode();
+                        await continueAfterAuxAnnouncement();
                       }}
                       className="w-full h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md"
                     >
@@ -10565,10 +10615,11 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
           const endedHalf = lastEndedHalfRef.current;
 
           if (endedHalf) {
-            requestConfiguredCoolingTime(
+            const coolingOpened = requestConfiguredCoolingTime(
               endedHalf.inning,
               endedHalf.isTop
             );
+            if (coolingOpened) return;
           }
 
           if (pendingGroundPopup) {
@@ -10577,25 +10628,7 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
             return;
           }
 
-          const hasPendingDefense =
-            await hasCurrentOffensePendingDefenseSetup();
-
-          if (hasPendingDefense) {
-            await openExistingDefenseChangeForEndedOffenseTeam();
-            return;
-          }
-
-          if (endedHalf?.inning === 1 && endedHalf?.isTop) {
-            await localForage.setItem(
-              "postDefenseSeatIntro",
-              { enabled: false }
-            );
-            await localForage.setItem("seatIntroLock", false);
-            await goSeatIntroFromOffense();
-            return;
-          }
-
-          await switchHalfInOnePersonMode();
+          await continueAfterAuxAnnouncement();
         }}
 
                     className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
