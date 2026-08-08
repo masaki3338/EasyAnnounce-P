@@ -4318,7 +4318,7 @@ const buildOnePersonPitchAnnounceText = async () => {
   }
 
   const lines = [
-    `ピッチャー ${name}、この回の投球数は${displayCurrent}球です。`,
+    `ピッチャー ${name}、<br>この回の投球数は${displayCurrent}球です。`,
   ];
 
   // ✅ この回の投球数とトータルが同じ場合は、トータル表示を省略する
