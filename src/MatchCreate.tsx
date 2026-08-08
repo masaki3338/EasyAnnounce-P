@@ -712,6 +712,19 @@ return (
               </option>
             </select>
         </div>
+
+        {/* 1人でアナウンス：第1試合ならメンバー交換を表示 */}
+        {!isBoys && matchNumber === 1 && (
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => setShowExchangeModal(true)}
+              className="w-full px-4 py-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded-xl text-base font-semibold active:scale-95"
+            >
+              メンバー交換（読み上げ案内）
+            </button>
+          </div>
+        )}
       </div>
     </section>
   </>
