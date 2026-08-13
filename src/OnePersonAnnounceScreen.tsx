@@ -4086,7 +4086,8 @@ await localForage.setItem(
     restoredOrder,
     restoredLineup,
     safePlayers,
-    safeIndex
+    safeIndex,
+    restoredCheckedIds
   );
 
   if (batterHtml) {
@@ -4223,7 +4224,11 @@ const saveOnePersonPitchCounts = async (
   );
 };
 
-const getOnePersonPitchLimitMessage = (pitcher: any, total: number): string => {
+const getOnePersonPitchLimitMessage = (
+  pitcher: any,
+  total: number,
+  defensePlayers: any[] = []
+): string => {
   // ボーイズリーグは既存の守備画面と同様、規定投球数メッセージを出さない
   if (leagueMode === "boys") return "";
 
@@ -4233,9 +4238,19 @@ const getOnePersonPitchLimitMessage = (pitcher: any, total: number): string => {
   if (total !== warn1 && total !== warn2) return "";
 
   const honorific = pitcher?.isFemale ? "さん" : "くん";
+
+  // ✅ 1人モードの投球数関連は「守備側チーム」の選手一覧で同姓判定する
+  const pitcherLastName = String(pitcher?.lastName ?? "").trim();
+  const hasDuplicatePitcherLastName =
+    !!pitcherLastName &&
+    defensePlayers.filter(
+      (p: any) => String(p?.lastName ?? "").trim() === pitcherLastName
+    ).length >= 2;
+
   const pitcherName = pitcher
-    ? `${rubyLast(pitcher)}${honorific}`
+    ? `${hasDuplicatePitcherLastName ? rubyFull(pitcher) : rubyLast(pitcher)}${honorific}`
     : "ピッチャー";
+
   const specialHead = pitcher
     ? `ピッチャー${pitcherName}`
     : "ピッチャー";
@@ -4291,8 +4306,25 @@ const buildOnePersonPitchAnnounceText = async () => {
   const displayCurrent = Number(pitchCounts.current ?? currentPitchCount ?? 0);
   const displayTotal = Number(pitchCounts.total ?? totalPitchCount ?? 0);
   const honorific = pitcher?.isFemale ? "さん" : "くん";
+
+  // ✅ 投球数モーダルは守備側チーム内で同姓を判定する。
+  // 攻撃側の duplicateLastNames に依存させないことで、
+  // 1人アナウンスモードでも同姓投手は必ずフルネーム表示にする。
+  const pitcherLastName = String(pitcher?.lastName ?? "").trim();
+  const hasDuplicatePitcherLastName =
+    !!pitcherLastName &&
+    players.filter(
+      (p: any) => String(p?.lastName ?? "").trim() === pitcherLastName
+    ).length >= 2;
+
+  const pitcherNameHtml = pitcher
+    ? hasDuplicatePitcherLastName
+      ? rubyFull(pitcher)
+      : rubyLast(pitcher)
+    : "";
+
   const name = pitcher
-    ? `${rubyLast(pitcher)}${honorific}`
+    ? `${pitcherNameHtml}${honorific}`
     : "未設定";
 
   // ✅ ボーイズリーグ専用文言
@@ -4301,7 +4333,7 @@ const buildOnePersonPitchAnnounceText = async () => {
   if (leagueMode === "boys") {
     const endedInning = Number(lastEndedHalfRef.current?.inning ?? inning ?? 1);
     const pitcherLabel = pitcher
-      ? `${rubyLast(pitcher)}投手`
+      ? `${pitcherNameHtml}投手`
       : "未設定投手";
 
     const boysLines = [
@@ -4441,7 +4473,11 @@ const addPitch = async () => {
       (p: any) => Number(p.id) === Number(pitcherId)
     );
 
-    const limitMessage = getOnePersonPitchLimitMessage(pitcher, nextTotal);
+    const limitMessage = getOnePersonPitchLimitMessage(
+      pitcher,
+      nextTotal,
+      players
+    );
     if (limitMessage) {
       setPitchAnnounceAction("notice");
       setPitchAnnounceText(limitMessage);
@@ -5153,8 +5189,38 @@ const hasCurrentOffensePendingDefenseSetup = async () => {
       ? battingOrder || []
       : [];
 
-  const sideHasPending = hasPendingDefenseInOrder(sideOrder);
-  const stateHasPending = hasPendingDefenseInOrder(stateOrder);
+  // ✅ DHへの代打は assignments["指"] を代打選手へ即時引継ぎ済みなので、
+  // 「守備位置を決める必要がある代打」には含めない。
+  // これを通常の代打と同じ pending 扱いにすると、
+  // 次の守備交代画面でDHの守備位置が消えたり未設定扱いになる。
+  const sideAssignments =
+    (await localForage.getItem<Record<string, number | null>>(
+      `onePerson.${offenseSide}.lineupAssignments`
+    )) || {};
+
+  const hasRealPendingDefense = (
+    order: any[],
+    lineup: Record<string, number | null>
+  ) =>
+    Array.isArray(order) &&
+    order.some((e: any) => {
+      if (!isPendingDefenseReason(e?.reason)) return false;
+
+      const playerId = Number(e?.id);
+      const isInheritedDh =
+        Number.isFinite(playerId) &&
+        Number(lineup?.["指"]) === playerId;
+
+      return !isInheritedDh;
+    });
+
+  const sideHasPending = hasRealPendingDefense(sideOrder, sideAssignments);
+  const stateHasPending = hasRealPendingDefense(
+    stateOrder,
+    currentOnePersonOffenseSideRef.current === offenseSide
+      ? assignments || {}
+      : sideAssignments
+  );
   const result = sideHasPending || stateHasPending;
 
   // ✅ 代打・代走が見つからない場合は、古い pending フラグを消す。
@@ -5666,7 +5732,8 @@ const buildOnePersonBatterAnnouncementHTML = (
   targetOrder: { id: number; reason?: string }[],
   targetLineup: Record<string, number | null>,
   targetPlayers: any[],
-  targetBatterIndex: number
+  targetBatterIndex: number,
+  targetCheckedIds: number[] = []
 ) => {
   if (!Array.isArray(targetOrder) || targetOrder.length === 0) return "";
 
@@ -5687,18 +5754,42 @@ const buildOnePersonBatterAnnouncementHTML = (
     )?.[0] || "";
 
   const posName = posKey ? positionNames[posKey] ?? posKey : "";
+  const posPrefix = posName ? `${posName} ` : "";
 
   const num = String(batter.number ?? "").trim();
+  const orderNo = targetBatterIndex + 1;
+
+  // ✅ 回の初めでも、画面の「読み上げ済み」チェック状態を反映する
+  const isChecked = (targetCheckedIds || []).some(
+    (id) => Number(id) === Number(batter.id)
+  );
 
   const fullName = formatNameForAnnounce(batter, false);
   const lastName = formatNameForAnnounce(batter, true);
 
-  const orderNo = targetBatterIndex + 1;
+  const prefix =
+    `${targetInning}回の${targetIsTop ? "表" : "裏"}、${targetTeamName}の攻撃は、<br/>`;
 
+  const isBoys =
+    leagueMode === "boys" ||
+    getLeagueMode() === "boys";
+
+  if (isChecked) {
+    // ✅ 通常の打者アナウンスと同じ「チェックあり」文言
+    // ボーイズ：〇番 守備位置 苗字くん
+    // ポニー：〇番 守備位置 苗字くん、背番号〇
+    const checkedLine =
+      `${orderNo}番 ${posPrefix}${lastName}${honorific}` +
+      (!isBoys && num ? `、背番号 ${num}。` : "。");
+
+    return prefix + checkedLine;
+  }
+
+  // ✅ チェックなし：従来どおり初回紹介のフル文言
   return (
-    `${targetInning}回の${targetIsTop ? "表" : "裏"}、${targetTeamName}の攻撃は、<br/>` +
-    `${orderNo}番 ${posName ? `${posName} ` : ""}${fullName}${honorific}、<br/>` +
-    `${posName ? `${posName} ` : ""}${lastName}${honorific}` +
+    prefix +
+    `${orderNo}番 ${posPrefix}${fullName}${honorific}、<br/>` +
+    `${posPrefix}${lastName}${honorific}` +
     `${num ? `、背番号 ${num}` : ""}。`
   );
 };
@@ -5837,7 +5928,8 @@ const loadOnePersonTeamForHalf = async (
     order,
     lineup,
     players,
-    safeIndex
+    safeIndex,
+    sideCheckedIds
   );
 
   if (batterHtml) {
@@ -8844,8 +8936,9 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
                               "ピッチャー": "投", "キャッチャー": "捕", "ファースト": "一",
                               "セカンド": "二", "サード": "三", "ショート": "遊",
                               "レフト": "左", "センター": "中", "ライト": "右",
+                              "指名打者": "指",
                               "投": "投", "捕": "捕", "一": "一", "二": "二", "三": "三",
-                              "遊": "遊", "左": "左", "中": "中", "右": "右",
+                              "遊": "遊", "左": "左", "中": "中", "右": "右", "指": "指",
                             };
 
                             const fullFromPos = getPosition(replaced.id);
@@ -8867,6 +8960,32 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
                             setBattingOrder(newOrder);
                             await localForage.setItem("battingOrder", newOrder);
 
+                            // ✅ 指名打者への代打は、その選手が新しい指名打者を引き継ぐ。
+                            // 打順だけ差し替えて assignments["指"] を元DHのままにすると、
+                            // 1人モードの守備位置表示や次回の守備交代画面でDHが消える/ずれる。
+                            const replacedWasDh =
+                              Number(assignments?.["指"]) === Number(replaced.id);
+
+                            const nextAssignments = replacedWasDh
+                              ? { ...assignments, ["指"]: subPlayer.id }
+                              : { ...assignments };
+
+                            if (replacedWasDh) {
+                              setAssignments(nextAssignments);
+                              await localForage.setItem(
+                                "lineupAssignments",
+                                nextAssignments
+                              );
+
+                              // 大谷ルール（投＝指）の選手に代打を出した場合は、
+                              // 投手は残してDHだけ代打選手へ移るため二刀流状態を解除する。
+                              if (
+                                Number(assignments?.["投"]) === Number(replaced.id)
+                              ) {
+                                await localForage.setItem("ohtaniRule", false);
+                              }
+                            }
+
                             if (isOnePersonMode) {
                               const side =
                                 currentOnePersonOffenseSideRef.current ||
@@ -8880,7 +8999,7 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
                               );
                               await localForage.setItem(
                                 `onePerson.${side}.lineupAssignments`,
-                                assignments || {}
+                                nextAssignments
                               );
                               await localForage.setItem(
                                 `onePerson.${side}.usedPlayerInfo`,
@@ -8965,8 +9084,9 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
                             "ピッチャー": "投", "キャッチャー": "捕", "ファースト": "一",
                             "セカンド": "二", "サード": "三", "ショート": "遊",
                             "レフト": "左", "センター": "中", "ライト": "右",
+                            "指名打者": "指",
                             "投": "投", "捕": "捕", "一": "一", "二": "二", "三": "三",
-                            "遊": "遊", "左": "左", "中": "中", "右": "右",
+                            "遊": "遊", "左": "左", "中": "中", "右": "右", "指": "指",
                           };
 
                           const fullFromPos = getPosition(replaced.id);
@@ -8990,8 +9110,34 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
                           setBattingOrder(newOrder);
                           await localForage.setItem("battingOrder", newOrder);
 
-                          // ✅ 1人モードでは、代打後の打順を現在攻撃中チーム側にも保存する。
-                          // 守備交代画面を開く時に通常キーだけを見ると、相手チームや不完全な守備位置と混ざるため。
+                          // ✅ 指名打者への代打は、そのまま新しい指名打者になる。
+                          // 通常の野手代打と同じく「守備位置未設定」のままにしない。
+                          const replacedWasDh =
+                            replaced != null &&
+                            Number(assignments?.["指"]) === Number(replaced.id);
+
+                          const nextAssignments = replacedWasDh
+                            ? { ...assignments, ["指"]: selectedSubPlayer.id }
+                            : { ...assignments };
+
+                          if (replacedWasDh) {
+                            setAssignments(nextAssignments);
+                            await localForage.setItem(
+                              "lineupAssignments",
+                              nextAssignments
+                            );
+
+                            // 投＝指の大谷ルール選手のDH打順へ代打を出した場合は、
+                            // 投手を残したままDHだけ代打選手へ移す。
+                            if (
+                              Number(assignments?.["投"]) === Number(replaced.id)
+                            ) {
+                              await localForage.setItem("ohtaniRule", false);
+                            }
+                          }
+
+                          // ✅ 1人モードでは、代打後の打順と守備位置を
+                          // 必ず同じ攻撃側チームへセットで保存する。
                           if (isOnePersonMode) {
                             const side =
                               currentOnePersonOffenseSideRef.current ||
@@ -9005,7 +9151,7 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
                             );
                             await localForage.setItem(
                               `onePerson.${side}.lineupAssignments`,
-                              assignments || {}
+                              nextAssignments
                             );
 
                             // ✅ イニング終了後の守備交代画面はチーム別 usedPlayerInfo を優先して読む。

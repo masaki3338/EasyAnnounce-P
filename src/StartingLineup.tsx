@@ -1756,21 +1756,38 @@ useEffect(() => {
       return { ...prev, ["指"]: p };
     });
 
-    // ② 打順：旧DH枠を新投手に差し替え
+    // ② 打順：大谷ルールONでも、投手がすでに打順にいる場合はその打順を維持
     setBattingOrder((prev) => {
       let updated = [...prev];
 
-      // 新投手が既に打順にいたら重複防止で消す
-      updated = updated.filter((e) => e.id !== newPitcherId);
+      const pitcherIndex = updated.findIndex((e) => e.id === newPitcherId);
+      const oldDhIndex =
+        oldDhId && oldDhId !== newPitcherId
+          ? updated.findIndex((e) => e.id === oldDhId)
+          : -1;
 
-      const idx = updated.findIndex((e) => e.id === oldDhId);
-      if (idx !== -1) {
-        updated[idx] = { id: newPitcherId, reason: "スタメン" };
-      } else if (!updated.some((e) => e.id === newPitcherId)) {
+      if (oldDhIndex !== -1) {
+        // 別のDHがいた場合は、そのDHの打順枠を投手へ引き継ぐ
+        let insertIndex = oldDhIndex;
+
+        // 投手がDHより前に既にいた場合、削除後に1つ前へ詰まる分を補正
+        if (pitcherIndex !== -1 && pitcherIndex < oldDhIndex) {
+          insertIndex -= 1;
+        }
+
+        updated = updated.filter(
+          (e) => e.id !== newPitcherId && e.id !== oldDhId
+        );
+        updated.splice(Math.max(0, insertIndex), 0, {
+          id: newPitcherId,
+          reason: "スタメン",
+        });
+      } else if (pitcherIndex === -1) {
+        // 投手が打順にいない時だけ末尾へ追加
         updated.push({ id: newPitcherId, reason: "スタメン" });
       }
+      // pitcherIndex !== -1 なら何もしない＝元の打順を維持
 
-      // 重複排除＆9人制限
       const seen = new Set<number>();
       updated = updated
         .filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)))
@@ -2244,25 +2261,41 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
                       return { ...prev, ["指"]: pitcherId };
                     });
 
-                    // 打順：旧DH枠を投手へ差し替え（元仕様）
+                    // 打順：投手がすでに打順にいる場合は、その打順を維持する
                     setBattingOrder((prev) => {
                       let updated = [...prev];
                       const pitcherId = pitcherIdNow;
                       const oldDhId = dhIdNow;
 
                       if (pitcherId) {
-                        updated = updated.filter((e) => e.id !== pitcherId);
+                        const pitcherIndex = updated.findIndex(
+                          (e) => e.id === pitcherId
+                        );
+                        const oldDhIndex =
+                          oldDhId && oldDhId !== pitcherId
+                            ? updated.findIndex((e) => e.id === oldDhId)
+                            : -1;
 
-                        if (oldDhId) {
-                          const dIdx = updated.findIndex((e) => e.id === oldDhId);
-                          if (dIdx !== -1) {
-                            updated[dIdx] = { id: pitcherId, reason: "スタメン" };
-                          } else {
-                            updated.push({ id: pitcherId, reason: "スタメン" });
+                        if (oldDhIndex !== -1) {
+                          // 別のDHがいた場合は、そのDHの打順枠を投手へ引き継ぐ
+                          let insertIndex = oldDhIndex;
+
+                          if (pitcherIndex !== -1 && pitcherIndex < oldDhIndex) {
+                            insertIndex -= 1;
                           }
-                        } else {
+
+                          updated = updated.filter(
+                            (e) => e.id !== pitcherId && e.id !== oldDhId
+                          );
+                          updated.splice(Math.max(0, insertIndex), 0, {
+                            id: pitcherId,
+                            reason: "スタメン",
+                          });
+                        } else if (pitcherIndex === -1) {
+                          // 投手が打順にいない時だけ末尾へ追加
                           updated.push({ id: pitcherId, reason: "スタメン" });
                         }
+                        // pitcherIndex !== -1 なら元の打順をそのまま維持
                       }
 
                       const seen = new Set<number>();
