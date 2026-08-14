@@ -104,6 +104,20 @@ async function clearOnePersonGameStartState() {
     "onePerson.third.lastBatterIndex",
     "onePerson.first.lastBatterIndex",
 
+    // ✅ 前試合の「交代確定済み守備」を必ず消す
+    // DefenseChange 側では通常の lineupAssignments より
+    // confirmedLineupAssignments を優先して読むため、
+    // ここが残ると新しい試合でも前試合の守備位置が復元されてしまう。
+    "onePerson.third.confirmedLineupAssignments",
+    "onePerson.first.confirmedLineupAssignments",
+    "onePerson.third.confirmedBattingOrder",
+    "onePerson.first.confirmedBattingOrder",
+    "onePerson.third.confirmedUsedPlayerInfo",
+    "onePerson.first.confirmedUsedPlayerInfo",
+
+    // ✅ 前試合の1人モード守備交代コンテキストも破棄
+    "onePersonDefenseChangeContext",
+
     // 代走・ランナー・交代系の前試合残りを消す
     "runnerAssignments",
     "replacedRunners",
@@ -186,7 +200,10 @@ async function clearUsedSubstitutionStateOnGameStart() {
       k.includes("substitutionLogs") ||
       k.includes("battingReplacements") ||
       k.includes("runnerAssignments") ||
-      k.includes("replacedRunners")
+      k.includes("replacedRunners") ||
+      k.includes("confirmedLineupAssignments") ||
+      k.includes("confirmedBattingOrder") ||
+      k.includes("confirmedUsedPlayerInfo")
     ) {
       dynamicKeysToRemove.push(k);
     }
@@ -715,6 +732,13 @@ const proceedStart = async () => {
 
     await localForage.setItem("onePerson.third.battingOrder", thirdO);
     await localForage.setItem("onePerson.first.battingOrder", firstO);
+
+    console.log("[GAME START] onePerson defense state reset", {
+      thirdAssignments: thirdA,
+      firstAssignments: firstA,
+      thirdOrder: thirdO,
+      firstOrder: firstO,
+    });
 
     // ✅ 試合開始直後は1回表・1回裏とも必ず未チェックから始める
     await localForage.setItem("onePerson.third.checkedIds", []);
