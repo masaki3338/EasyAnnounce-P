@@ -720,7 +720,7 @@ const handleSpeak = () => {
             ) : isTwoUmpires ? (
               <p className="mt-4 text-white whitespace-pre-wrap leading-relaxed">
                 なお、この試合の審判は 球審（{umpires[0] ? renderFurigana(umpires[0].name, umpires[0].furigana) : ""}）、
-                塁審は1塁（{umpires[1] ? renderFurigana(umpires[1].name, umpires[1].furigana) : ""}）、以上2氏でございます。
+                塁審（{umpires[1] ? renderFurigana(umpires[1].name, umpires[1].furigana) : ""}）、以上2氏でございます。
                 試合開始まで今しばらくお待ちください。
               </p>
             ) : (
