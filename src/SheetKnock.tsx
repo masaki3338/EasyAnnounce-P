@@ -836,12 +836,15 @@ const mainSpeakMessage =
     aria-labelledby="two-min-title"
   >
     <div className="
-      bg-white p-8 rounded-3xl shadow-2xl text-center text-gray-900
+      bg-red-600 p-8 rounded-3xl shadow-2xl text-center text-white
+      border-2 border-red-400
       w-[min(92vw,560px)] sm:w-[560px]
     ">
-      <p id="two-min-title" className="text-2xl font-bold mb-6">残り{noticeMinutes}分です</p>
+      <p id="two-min-title" className="text-2xl sm:text-3xl font-extrabold mb-6 leading-relaxed">
+        ノック時間、残り{noticeMinutes}分です
+      </p>
       <button
-        className="min-w-28 text-lg bg-blue-600 text-white px-6 py-3 rounded-2xl hover:bg-blue-700 active:scale-95 shadow"
+        className="min-w-28 text-lg bg-white text-red-700 px-6 py-3 rounded-2xl hover:bg-red-50 active:scale-95 shadow font-bold"
         onClick={() => setShowTwoMinModal(false)}
         autoFocus
       >
@@ -861,12 +864,15 @@ const mainSpeakMessage =
     aria-labelledby="end-title"
   >
     <div className="
-      bg-white p-8 rounded-3xl shadow-2xl text-center text-gray-900
+      bg-red-600 p-8 rounded-3xl shadow-2xl text-center text-white
+      border-2 border-red-400
       w-[min(92vw,560px)] sm:w-[560px]
     ">
-      <p id="end-title" className="text-2xl font-bold mb-6">タイマーが終了しました</p>
+      <p id="end-title" className="text-2xl sm:text-3xl font-extrabold mb-6 leading-relaxed">
+        ノックを終了してください
+      </p>
       <button
-        className="min-w-28 text-lg bg-blue-600 text-white px-6 py-3 rounded-2xl hover:bg-blue-700 active:scale-95 shadow"
+        className="min-w-28 text-lg bg-white text-red-700 px-6 py-3 rounded-2xl hover:bg-red-50 active:scale-95 shadow font-bold"
         onClick={() => setShowEndModal(false)}
         autoFocus
       >

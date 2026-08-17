@@ -714,15 +714,16 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
         >
           <div
             className="
-              bg-white p-8 rounded-3xl shadow-2xl text-center text-gray-900
+              bg-red-600 p-8 rounded-3xl shadow-2xl text-center text-white
               w-[min(92vw,560px)] sm:w-[560px]
+              border border-red-300/50
             "
           >
-            <p id="one-min-title" className="text-2xl font-bold mb-6">
-              残り1分です
+            <p id="one-min-title" className="text-2xl sm:text-3xl font-extrabold leading-relaxed mb-6">
+              {oneMinuteMessage}
             </p>
             <button
-              className="min-w-28 text-lg bg-blue-600 text-white px-6 py-3 rounded-2xl hover:bg-blue-700 active:scale-95 shadow"
+              className="min-w-28 text-lg font-bold bg-white text-red-700 px-6 py-3 rounded-2xl hover:bg-red-50 active:scale-95 shadow"
               onClick={() => setShowOneMinModal(false)}
               autoFocus
             >
@@ -741,15 +742,16 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
         >
           <div
             className="
-              bg-white p-8 rounded-3xl shadow-2xl text-center text-gray-900
+              bg-red-600 p-8 rounded-3xl shadow-2xl text-center text-white
               w-[min(92vw,560px)] sm:w-[560px]
+              border border-red-300/50
             "
           >
-            <p id="end-title" className="text-2xl font-bold mb-6">
-              タイマーが終了しました
+            <p id="end-title" className="text-2xl sm:text-3xl font-extrabold leading-relaxed mb-6">
+              {endMessage}
             </p>
             <button
-              className="min-w-28 text-lg bg-blue-600 text-white px-6 py-3 rounded-2xl hover:bg-blue-700 active:scale-95 shadow"
+              className="min-w-28 text-lg font-bold bg-white text-red-700 px-6 py-3 rounded-2xl hover:bg-red-50 active:scale-95 shadow"
               onClick={() => setShowEndModal(false)}
               autoFocus
             >
