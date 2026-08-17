@@ -353,6 +353,27 @@ const stopExchangeMessage = () => {
 };
 
 
+  // ✅ 審判役職の表示・保存用
+  // 2審制：球審＋塁審
+  // 4審制：球審＋1塁審＋2塁審＋3塁審
+  const getUmpiresForSave = () =>
+    umpires.map((u, index) => ({
+      ...u,
+      role:
+        isTwoUmp && index === 1
+          ? "塁審"
+          : index === 0
+            ? "球審"
+            : index === 1
+              ? "1塁審"
+              : index === 2
+                ? "2塁審"
+                : "3塁審",
+    }));
+
+  const getUmpireRoleLabel = (index: number, role: string) =>
+    isTwoUmp && index === 1 ? "塁審" : role;
+
   const handleUmpireChange = (
     index: number,
     field: "name" | "furigana",
@@ -413,7 +434,7 @@ const firstTeamFolder = registeredTeams.find(
    opponentTeamFurigana,
    isHome: isHome === "後攻",
    benchSide,
-   umpires,
+   umpires: getUmpiresForSave(),
    twoUmpires: isBoys ? false : isTwoUmp,
    teamName:
      announcementMode === "single"
@@ -862,7 +883,7 @@ return (
           className="grid grid-cols-[64px_1fr_1fr] gap-2 items-center"
         >
           <span className="font-medium text-sm">
-            {umpire.role}
+            {getUmpireRoleLabel(index, umpire.role)}
           </span>
 
           <input
@@ -940,7 +961,7 @@ return (
           opponentTeamFurigana,
           isHome: isHome === "後攻",
           benchSide,
-          umpires,
+          umpires: getUmpiresForSave(),
           twoUmpires: isBoys ? false : isTwoUmp,         // ✅ 2審制を記憶
           teamName: getRegisteredTeamName(getOwnTeamFolder()) || (base as any)?.teamName || team?.name || "",
           noNextGame,
