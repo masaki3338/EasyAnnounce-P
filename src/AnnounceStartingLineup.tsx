@@ -361,6 +361,13 @@ setGameNumber(String(mi.matchNumber || ""));
     const posFromExtra = extraPositionMap[playerId];
     if (posFromExtra) return posFromExtra;
 
+    // 打順追加で10番打者以降を設定しており、DH制を使用している場合は
+    // 守備位置未設定でも「指名打者」として表示する
+    const battingIndex = battingOrder.findIndex(
+      (entry) => Number(entry.id) === Number(playerId)
+    );
+    if (dhActive && battingIndex >= 9) return "指";
+
     return "-";
   };
   const getHonorific = (p: Player) => (p.isFemale ? "さん" : "くん");
@@ -629,9 +636,16 @@ const handleSpeak = () => {
 
               const pos = getDisplayPos(p.id);
 
-              // ★追加：表示用ポジション（大谷ルール時は投手を“指”表示にする）
+              // 表示用ポジション
+              // ・大谷ルールで投手が打順に入る場合は「指名打者」
+              // ・打順に入っていて守備位置が未設定（"-"）なら、打順に関係なく「指名打者」
+              // ・守備位置が設定済みなら、その守備位置を優先
               const displayPos =
-                ohtaniRule && assignments["投"] === p.id ? "指" : pos;
+                ohtaniRule && assignments["投"] === p.id
+                  ? "指"
+                  : pos === "-"
+                    ? "指"
+                    : pos;
 
               const posName = getPositionName(displayPos);
               const honorific = getHonorific(p);

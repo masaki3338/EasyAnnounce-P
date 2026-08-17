@@ -1139,12 +1139,13 @@ return (
             <div className="text-sm leading-tight space-y-1">
               {thirdBattingOrder.map((entry, index) => {
                 const pos = getDisplayPosFrom(thirdAssignments, entry.id);
+                const displayPos = pos === "—" ? "指" : pos;
                 const player = getPlayerFrom(thirdPlayers, entry.id);
 
                 return (
                   <div key={entry.id ?? index} className="flex items-center gap-2">
                     <span className="w-9">{index + 1}番</span>
-                    <span className="w-10">{pos}</span>
+                    <span className="w-10">{displayPos}</span>
                     <span className="flex-1 truncate">{player?.name ?? "未設定"}</span>
                     <span>#{player?.number ?? "-"}</span>
                   </div>
@@ -1161,12 +1162,13 @@ return (
             <div className="text-sm leading-tight space-y-1">
               {firstBattingOrder.map((entry, index) => {
                 const pos = getDisplayPosFrom(firstAssignments, entry.id);
+                const displayPos = pos === "—" ? "指" : pos;
                 const player = getPlayerFrom(firstPlayers, entry.id);
 
                 return (
                   <div key={entry.id ?? index} className="flex items-center gap-2">
                     <span className="w-9">{index + 1}番</span>
-                    <span className="w-10">{pos}</span>
+                    <span className="w-10">{displayPos}</span>
                     <span className="flex-1 truncate">{player?.name ?? "未設定"}</span>
                     <span>#{player?.number ?? "-"}</span>
                   </div>
@@ -1182,12 +1184,13 @@ return (
     <div className="text-sm leading-tight space-y-1">
       {battingOrder.map((entry, index) => {
         const pos = getDisplayPos(entry.id);
+        const displayPos = pos === "—" ? "指" : pos;
         const player = getPlayer(entry.id);
 
         return (
           <div key={entry.id ?? index} className="flex items-center gap-2">
             <span className="w-9">{index + 1}番</span>
-            <span className="w-10">{pos}</span>
+            <span className="w-10">{displayPos}</span>
             <span className="flex-1 truncate">
               {player?.name ?? "未設定"}
             </span>

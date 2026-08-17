@@ -2762,7 +2762,33 @@ const getPosition = (id: number): string | null => {
     return info ? "臨時代走" : "代走";
   }
 
-  // 4) どれでもなければ守備位置
+  // 4) 守備位置が取得できていればその位置を返す
+  if (currentPos && currentPos !== "-" && currentPos !== "－") {
+    return currentPos;
+  }
+
+  // 5) ✅ 複数DH対応
+  // 打順に残っていて、9つの守備位置に配置されていない選手は
+  // assignments["指"] に登録されていなくても指名打者として扱う。
+  //
+  // 例：
+  // ・指名打者 藤代 → サード
+  // ・指名打者 真喜志 → ファースト
+  // と変更した後も、守備に入っていない望月は「指」のまま。
+  const FIELD9 = ["投", "捕", "一", "二", "三", "遊", "左", "中", "右"];
+
+  const isInBattingOrder = battingOrder.some(
+    (entry) => Number(entry?.id) === Number(id)
+  );
+
+  const isInField9 = FIELD9.some(
+    (pos) => Number((assignments as any)?.[pos]) === Number(id)
+  );
+
+  if (isInBattingOrder && !isInField9) {
+    return "指";
+  }
+
   return currentPos;
 };
 

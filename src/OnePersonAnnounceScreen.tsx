@@ -6512,8 +6512,17 @@ const getPosition = (id: number): string | null => {
     return info ? "臨時代走" : "代走";
   }
 
-  // 4) どれでもなければ守備位置
-  return currentPos;
+  // 4) 守備位置が設定されていればその位置を返す
+  if (currentPos) return currentPos;
+
+  // 5) 打順に入っているのに守備位置が未設定の選手は指名打者として扱う
+  //    打順追加の10番以降だけでなく、6番・7番など途中の打順に設定したDHにも対応
+  const isInBattingOrder = battingOrder.some(
+    (e) => Number(e?.id) === Number(id)
+  );
+  if (isInBattingOrder) return "指";
+
+  return null;
 };
 
 

@@ -3298,26 +3298,45 @@ Object.entries(usedPlayerInfo || {}).forEach(([origIdStr, info]) => {
 /* ---- shift ---- */
 // 守備変更：連鎖構造に並べ替え
 const buildShiftChain = (shifts: typeof shift): typeof shift[] => {
-  const fromMap = new Map(shifts.map(s => [s.fromPos, s]));
-  const toMap = new Map(shifts.map(s => [s.toPos, s]));
-
-  const used = new Set<string>();
+  // ✅ 複数DH対応
+  // 旧処理は Map<fromPos, shift> だったため、
+  // 「指名打者→ショート」「指名打者→ファースト」のように
+  // fromPos が同じ "指" の変更が複数あると、後の1件で上書きされていた。
+  //
+  // ここでは「守備位置」ではなく「shift配列のindex」を処理済み管理することで、
+  // 同じfromPosを持つ複数選手の変更もすべて残す。
+  const used = new Set<number>();
   const chains: typeof shift[] = [];
 
-  shifts.forEach((s) => {
-    if (used.has(s.fromPos)) return;
+  for (let startIndex = 0; startIndex < shifts.length; startIndex++) {
+    if (used.has(startIndex)) continue;
 
     const chain: typeof shift = [];
-    let current: typeof s | undefined = s;
+    let currentIndex = startIndex;
 
-    while (current && !used.has(current.fromPos)) {
+    while (!used.has(currentIndex)) {
+      const current = shifts[currentIndex];
+      if (!current) break;
+
       chain.push(current);
-      used.add(current.fromPos);
-      current = fromMap.get(current.toPos);
+      used.add(currentIndex);
+
+      // 現在の移動先を「移動元」にしている未処理shiftを次につなぐ。
+      // 同じfromPosが複数ある場合も、未処理の1件だけを選ぶため消失しない。
+      const nextIndex = shifts.findIndex(
+        (candidate, idx) =>
+          !used.has(idx) &&
+          candidate.fromPos === current.toPos
+      );
+
+      if (nextIndex < 0) break;
+      currentIndex = nextIndex;
     }
 
-    chains.push(chain);
-  });
+    if (chain.length > 0) {
+      chains.push(chain);
+    }
+  }
 
   return chains;
 };
@@ -3345,9 +3364,19 @@ sortedShift.forEach((s, i) => {
     s.fromPos === "投" &&
     replace.some(r => r.pos === "投" && r.from.id === s.player.id);
 
+  // ✅ 複数DH対応
+  // 「指名打者」は複数人存在できるため、移動先が "指" の場合は
+  // handledPositions による位置単位の重複抑止を行わない。
+  // 選手ID単位の重複抑止は従来どおり有効。
+  const normalizedToPosForHandled =
+    (posNameToSymbol as any)[s.toPos] ?? s.toPos;
+
   if (
     (!allowedPitcherShift && handledPlayerIds.has(s.player.id)) ||
-    handledPositions.has(s.toPos)
+    (
+      normalizedToPosForHandled !== "指" &&
+      handledPositions.has(s.toPos)
+    )
   ) return;
 
   // ★追加: 守備位置を必ず正規化
@@ -6127,12 +6156,36 @@ const withMark = (pos: string) => `${posNum[pos] ?? ""}${pos}`;
 
 // ★打順表示用：大谷ルールでも「投手」と「DH」は別枠として扱う。
 // 同一IDが「投」「指」の両方に入っていても、この汎用関数では投手を優先する。
-// DH打順スロットだけは、打順描画側の dhSlotIndex 判定で「指」に上書きする。
+//
+// ✅ 複数DH対応
+// 10人以上の打順では、2人目以降のDHは assignments["指"] には保持できない。
+// そのため「打順に入っていて、9守備のどこにもいない選手」は
+// assignments["指"] の有無に関係なく「指名打者」として扱う。
 const getOrderDisplayPos = (as: Record<string, number | null>, pid: number | null) => {
   if (!pid) return "";
-  if (Number(as?.["投"]) === Number(pid)) return "投";
-  if (Number(as?.["指"]) === Number(pid)) return "指";
-  return getPositionName(as, pid);
+
+  const n = Number(pid);
+  const FIELD9 = ["投", "捕", "一", "二", "三", "遊", "左", "中", "右"];
+
+  // まず実際の9守備を優先
+  const fieldPos = FIELD9.find(
+    (pos) => Number(as?.[pos]) === n
+  );
+  if (fieldPos) return fieldPos;
+
+  // 明示DH
+  if (Number(as?.["指"]) === n) return "指";
+
+  // ✅ 打順に入っているが9守備にいない = 追加DH
+  const isInBattingOrder =
+    (battingOrderDraft?.length ? battingOrderDraft : battingOrder || []).some(
+      (entry: any, idx: number) =>
+        Number((battingReplacements as any)?.[idx]?.id ?? entry?.id) === n
+    );
+
+  if (isInBattingOrder) return "指";
+
+  return getPositionName(as, n);
 };
 
 // ✅ 大谷ルール専用：DH側は投手側とは別枠として扱う。
