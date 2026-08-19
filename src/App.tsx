@@ -1708,8 +1708,8 @@ return (
 
                   const msg =
                     resolveCurrentLeagueMode(match) === "boys"
-                      ? `ただいまより大会規定により、タイブレークをおこないます。\nタイブレークは${outs}${bases}の状態からおこないます。`
-                      : `この試合は、${prevInning}回終了して同点のため、大会規定により${outs}${bases}からのタイブレークに入ります。`;
+                      ? `ただいまより大会規定により、タイブレークをおこないます。\nタイブレークは${outs}、${bases}の状態からおこないます。`
+                      : `この試合は、${prevInning}回終了して同点のため、大会規定により${outs}、${bases}からのタイブレークに入ります。`;
 
                   setTiebreakMessage(msg);
                   setShowTiebreakPopup(true);
@@ -2074,8 +2074,8 @@ return (
 
           const msg =
             resolveCurrentLeagueMode(match) === "boys"
-              ? `ただいまより大会規定により、タイブレークをおこないます。\nタイブレークは${outs}${bases}の状態からおこないます。`
-              : `この試合は、${prevInning}回終了して同点のため、大会規定により${outs}${bases}からのタイブレークに入ります。`;
+              ? `ただいまより大会規定により、タイブレークをおこないます。\nタイブレークは${outs}、${bases}の状態からおこないます。`
+              : `この試合は、${prevInning}回終了して同点のため、大会規定により${outs}、${bases}からのタイブレークに入ります。`;
 
           setTiebreakMessage(msg);
           setShowTiebreakPopup(true);

@@ -1120,7 +1120,20 @@ const normalizeForTTS = (input: string) => {
 
  const handleSpeak = () => {
    if (announceMessages.length === 0) return;
-   const text = normalizeForTTS(announceMessages.join("。"));
+
+   let text = normalizeForTTS(announceMessages.join("。"));
+
+   // ポニーリーグの投球数アナウンスは、
+   // 「ピッチャー」→「○○くん、」→「この回の投球数は…」
+   // の3つのまとまりで読ませる。
+   // 画面表示用 announceMessages 自体は変更しない。
+   if (!isBoys) {
+     text = text.replace(
+       /ピッチャー(.+?)(くん|さん)、この回のとうきゅうすうは/g,
+       "ピッチャー、$1$2、この回のとうきゅうすうは"
+     );
+   }
+
    // UIは待たせない＋先頭文を先に鳴らす
    void ttsSpeak(text, { progressive: true, cache: true });
  };

@@ -125,6 +125,10 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
       ? "1回の表"
       : "1回の裏";
 
+  // 読み上げ用：「表」を「ひょう」と誤読しないよう明示
+  const inningReading =
+    inning === "1回の裏" ? "いっかいのうら" : "いっかいのおもて";
+
   useEffect(() => {
     const loadData = async () => {
  const team = await localForage.getItem<any>("team");
@@ -262,11 +266,11 @@ const text =
   leagueMode === "boys"
     ? inning === "1回の裏"
       ? [
-          `${inning}、守ります、${teamReading}の`,
+          `${inningReading}、守ります、${teamReading}の`,
           ...boysPlayerLines,
         ].join("\n")
       : [
-          `${inning}、まず守ります、${teamReading}の`,
+          `${inningReading}、まず守ります、${teamReading}の`,
           ...boysPlayerLines,
           `審判は球審、${umpireYomi("球審")}`,
           `塁審、一塁、${umpireYomi("一塁")}`,
@@ -275,7 +279,7 @@ const text =
           `以上四氏でございます。`,
         ].join("\n")
     : [
-        `${inning}、守ります、${teamReading}のシートをお知らせします。`,
+        `${inningReading}、守ります、${teamReading}のシートをお知らせします。`,
         ...positionLabels.map(([pos, label]) => {
           const p = positions[pos];
           const ln = p?.lastName || "";

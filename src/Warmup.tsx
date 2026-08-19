@@ -451,6 +451,7 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
         <StepCard step={4} icon={<IconMic2 />} title="交代案内" accent="blue">
           <MessageBlock
             text="両チーム 交代してください。"
+            speakText="りょうチーム、交代してください。"
             keyName="switch"
             readingKey={readingKey}
             onSpeak={handleSpeak}

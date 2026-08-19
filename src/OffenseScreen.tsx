@@ -59,14 +59,22 @@ function htmlToTtsText(html: string): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
 
-  // rubyは rt(ふりがな) を優先。無ければベース文字を読む
-  doc.querySelectorAll("ruby").forEach(ruby => {
+  // rubyは rt(ふりがな) を優先。
+  // スタメン発表画面と同じ方式：
+  // 姓のrubyの直後に名前のrubyが続く場合だけ、姓の読みの後ろに「、」を付ける。
+  // 例: 「こいけ、たけひろくん」
+  const rubyNodes = Array.from(doc.querySelectorAll("ruby"));
+  rubyNodes.forEach((ruby) => {
     const rt = ruby.querySelector("rt")?.textContent?.trim();
     const rb = ruby.querySelector("rb");
     const base = (rb?.textContent ?? ruby.childNodes[0]?.textContent ?? "").trim();
     const spoken = rt && rt.length > 0 ? rt : base;
+
+    const next = ruby.nextElementSibling;
+    const nextIsRuby = next?.tagName?.toLowerCase() === "ruby";
+
     const span = doc.createElement("span");
-    span.textContent = spoken;
+    span.textContent = spoken + (nextIsRuby ? "、" : "");
     ruby.replaceWith(span);
   });
 
@@ -131,7 +139,8 @@ async function speakFromAnnouncementArea(
   let text = htmlToTtsText(html);
   text = normalizeJapaneseTime(text); // ← 追加：時刻の読み上げを「時・分」に直す
   if (!text) return;
-  await speak(text); // VOICEVOX優先（失敗時はブラウザの音声合成）
+
+  await speak(text);
 }
 
 // === タイブレーク（攻撃側）アナウンス用ヘルパー：ここから ===
@@ -907,7 +916,7 @@ const formatKanaForReEntryAnnounce = (p: any) => {
   const ln = (p.lastNameKana || p.lastName || "").toString();
   const fn = (p.firstNameKana || p.firstName || "").toString();
   if (!hasAnyDupLastName) return ln;
-  return fn ? `${ln} ${fn}` : ln;
+  return fn ? `${ln}、${fn}` : ln;
 };
 
 
@@ -928,7 +937,13 @@ const RenderName = ({ p, preferLastOnly }: { p: any; preferLastOnly: boolean }) 
   const normalizeForTTS = (input: string) => {
     if (!input) return "";
     let t = input;
-    // 例：<ruby>山田<rt>やまだ</rt></ruby> → やまだ
+    // スタメン発表画面と同じ方式：
+    // 連続する姓・名のrubyは「姓かな、名かな」にする
+    t = t.replace(
+      /<ruby>(.*?)<rt>(.*?)<\/rt><\/ruby>\s*<ruby>(.*?)<rt>(.*?)<\/rt><\/ruby>/gms,
+      "$2、$4"
+    );
+    // 単独ruby：<ruby>山田<rt>やまだ</rt></ruby> → やまだ
     t = t.replace(/<ruby>(.*?)<rt>(.*?)<\/rt><\/ruby>/gms, "$2");
     // rbタグ（使用している場合）：<rb>山田</rb><rt>やまだ</rt> の保険
     t = t.replace(/<\/?rb>/g, "").replace(/<\/?rt>/g, "");
@@ -2807,6 +2822,7 @@ const getAnnouncementName = (player: Player) => {
 const announce = async (text: string | string[]) => {
   const joined = Array.isArray(text) ? text.join("、") : text;
   const plain = normalizeForTTS(joined); // ruby→かな & タグ除去
+
   await speak(plain);
 };
 
@@ -4966,7 +4982,7 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
 
                         const num = (sub.number ?? "").trim();
 
-                        await speak(
+                        const pinchSpeakText =
                           `${isLeadingBatter
                               ? `${inning}回の${isTop ? "表" : "裏"}、${teamReading || "自チーム"}の攻撃は、`
                               : ""
@@ -4974,8 +4990,9 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
                             `${currentBatterIndex + 1}番 ${fromKana}${honorBef}に代わりまして、` +
                             `${toKanaFull}${honorSub}、` +
                             `バッターは ${toKanaLast}${honorSub}` +
-                            `${num ? `、背番号 ${num}。` : "。"}`
-                        );
+                            `${num ? `、背番号 ${num}。` : "。"}`;
+
+                        await speak(pinchSpeakText);
                         }}
                         className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                                   inline-flex items-center justify-center gap-2 shadow-md ring-1 ring-white/40"

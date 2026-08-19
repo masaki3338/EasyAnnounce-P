@@ -4593,12 +4593,12 @@ const speakVisibleAnnouncement = () => {
   let text = toReadable(temp);
 
   text = text
-    .replace(/に入ります/g, "にはいります")
+    .replace(/に入ります/g, "に、はいります")
     .replace(/へ入ります/g, "へはいります")
     .replace(/が\s*入り/g, "がはいり")
     .replace(/へ\s*入り/g, "へはいり")
     .replace(/に\s*入り/g, "にはいり")
-    .replace(/そのまま\s*入り/g, "そのままはいり");
+    .replace(/そのまま\s*入り/g, "そのまま、はいり");
 
   text = text
     .replace(/\u00A0/g, " ")

@@ -546,13 +546,13 @@ const prepSpeakMessage =
 
 const mainDisplayMessage =
   isHome === "後攻"
-    ? ` ${activeTeamName}はシートノックに入って下さい。\nノック時間は${knockMinutes}分以内です。`
+    ? ` ${activeTeamName}はシートノックに入って下さい。\nノック時間は、${knockMinutes}分以内です。`
     : ` ${activeTeamName}はシートノックに入って下さい。\nノック時間は同じく${knockMinutes}分以内です。`;
 
 const mainSpeakMessage =
   isHome === "後攻"
-    ? `${activeTeamReading}はシートノックに入って下さい。\nノック時間は${knockMinutes}分以内です。`
-    : `${activeTeamReading}はシートノックに入って下さい。\nノック時間は同じく${knockMinutes}分以内です。`;
+    ? `${activeTeamReading}はシートノックに入って下さい。\nノック時間、は${knockMinutes}分以内です。`
+    : `${activeTeamReading}はシートノックに入って下さい。\nノック時間、は同じく${knockMinutes}分以内です。`;
 
 
   const hasTimingHint = isHome === "先攻";
