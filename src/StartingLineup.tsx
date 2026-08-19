@@ -275,6 +275,27 @@ const StartingLineup = () => {
     );
   };
 
+  // ✅ 通常モード用：
+  // チーム／選手登録の「現在選択中チーム」を正として取得する。
+  // "team" キーは互換用フォールバックとして残す。
+  const loadCurrentRegisteredTeam = async (): Promise<{ players: Player[] } | null> => {
+    const store = await localForage.getItem<any>("teamRegisterStore");
+
+    if (store?.selectedTeamId && Array.isArray(store?.teams)) {
+      const selectedFolder = store.teams.find(
+        (t: any) => String(t.id) === String(store.selectedTeamId)
+      );
+
+      if (selectedFolder?.team && Array.isArray(selectedFolder.team.players)) {
+        // 他画面との互換性のため旧キーも同期
+        await localForage.setItem("team", selectedFolder.team);
+        return selectedFolder.team;
+      }
+    }
+
+    return await localForage.getItem<{ players: Player[] }>("team");
+  };
+
 const loadSingleTeamSide = async (side: "third" | "first") => {
   const matchInfo = await localForage.getItem<any>("matchInfo");
   console.log("StartingLineup matchInfo", matchInfo);
@@ -443,7 +464,8 @@ const handleChangeTeamTab = async (nextSide: "third" | "first") => {
     setExtraPositionMap({});
 
     // ★ チーム全員をベンチ外へ
-    const team = await localForage.getItem<{ players: Player[] }>("team");
+    // ✅ 現在選択中の登録チームを正として取得
+    const team = await loadCurrentRegisteredTeam();
     const allIds = (team?.players || []).map((p) => p.id);
     setBenchOutIds(allIds);
 
@@ -1871,12 +1893,14 @@ useEffect(() => {
   }, [announcementMode]);
 
   // teamPlayersロード（通常モードのみ）
+  // ✅ teamRegisterStore の現在選択中チームを最優先にする
   useEffect(() => {
     if (announcementMode !== "normal") return;
 
-    localForage.getItem<{ players: Player[] }>("team").then((team) => {
-      setTeamPlayers(team?.players || []);
-    });
+    (async () => {
+      const currentTeam = await loadCurrentRegisteredTeam();
+      setTeamPlayers(currentTeam?.players || []);
+    })();
   }, [announcementMode]);
 
   // 初回ロード後にdirty判定の基準を固定（元仕様）
@@ -2002,7 +2026,8 @@ useEffect(() => {
     if (announcementMode !== "normal") return;
 
     const loadInitialData = async () => {
-      const team = await localForage.getItem<{ players: Player[] }>("team");
+      // ✅ チーム／選手登録で現在選択されているチームを正として読む
+      const team = await loadCurrentRegisteredTeam();
       setTeamPlayers(team?.players || []);
 
       const savedBenchOut = await localForage.getItem<number[]>("startingBenchOutIds");

@@ -177,11 +177,16 @@ const confirmSwitchTeam = async () => {
 
   await clearContinuationGameCache();
 
-  setTeamStore((prev) => ({
-    ...prev,
+  const nextStore: TeamRegisterStore = {
+    ...teamStore,
     selectedTeamId: folder.id,
-  }));
+  };
 
+  // ✅ 現在選択中チームの実データも同期
+  await localForage.setItem(TEAM_STORE_KEY, nextStore);
+  await localForage.setItem("team", folder.team);
+
+  setTeamStore(nextStore);
   loadFolderToForm(folder);
   setShowTeamMenu(false);
 
@@ -199,10 +204,16 @@ const confirmSwitchTeam = async () => {
 
     await clearContinuationGameCache();
 
-    setTeamStore((prev) => ({
-      ...prev,
+    const nextStore: TeamRegisterStore = {
+      ...teamStore,
       selectedTeamId: folder.id,
-    }));
+    };
+
+    // ✅ 現在選択中チームの実データも同期
+    await localForage.setItem(TEAM_STORE_KEY, nextStore);
+    await localForage.setItem("team", folder.team);
+
+    setTeamStore(nextStore);
     loadFolderToForm(folder);
     setShowTeamMenu(false);
   };
