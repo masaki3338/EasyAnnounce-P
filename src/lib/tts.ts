@@ -1,5 +1,4 @@
-import { prewarmPiper, speakPiper, stopPiper } from "./piperTts";
-// src/lib/tts.ts  — Web Speech API 専用版（VOICEVOX非依存）
+// src/lib/tts.ts  — Web Speech API 専用版（Piper / VOICEVOX 非依存）
 
 type SpeakOptions = {
   progressive?: boolean; // 互換用: 未使用
@@ -15,9 +14,6 @@ let __wsUnlocked = false;
 let sessionCounter = 0; // 停止でインクリメントして旧セッションを無効化
 let speaking = false;
 
-function getTtsEngine(): "webspeech" | "piper" {
-  return localStorage.getItem("tts:engine") === "piper" ? "piper" : "webspeech";
-}
 
 
 // ---- speech normalize ------------------------------------------------------
@@ -69,7 +65,6 @@ function normalizeSpeechText(input: string): string {
   t = t.replace(/後攻/g, "こうこう");
   t = t.replace(/四氏/g, "よんし");
   t = t.replace(/行方/g, "ゆくえ");
-  t = t.replace(/尚/g, "なお");
 
   // 「お知らせいたします」が Web Speech 側で
   // 「お知らせいた」＋「します」のように不自然に切られるのを防ぐ。
@@ -229,19 +224,6 @@ export async function speak(text: string, options: SpeakOptions = {}) {
       ? clamp(lsVolume, 0.0, 1.0)
       : DEFAULT_VOLUME;
 
-  // Piper-Plus選択時はブラウザ内WASMで生成（サーバー不要）
-  if (getTtsEngine() === "piper") {
-    speaking = true;
-    try {
-      await speakPiper(text, {
-        speedScale: baseRate,
-        volume,
-      });
-    } finally {
-      speaking = false;
-    }
-    return;
-  }
 
   try {
     await unlockWebSpeech(voiceName);
@@ -348,21 +330,6 @@ export async function speakSegments(
       ? clamp(lsVolume, 0.0, 1.0)
       : DEFAULT_VOLUME;
 
-  // Piper は Web Speech の Utterance キューを使えないため、語ごとに順番に生成する。
-  if (getTtsEngine() === "piper") {
-    speaking = true;
-    try {
-      for (const segment of cleaned) {
-        await speakPiper(segment, {
-          speedScale: baseRate,
-          volume,
-        });
-      }
-    } finally {
-      speaking = false;
-    }
-    return;
-  }
 
   try {
     await unlockWebSpeech(voiceName);
@@ -426,7 +393,6 @@ export async function speakSegments(
 export function stop() {
   sessionCounter++;
 
-  stopPiper();
 
   speaking = false;
   hardCancelSpeechSynthesis(true);
@@ -439,15 +405,6 @@ export function isSpeaking() {
 // 互換用: 事前ウォームアップ（無音1文字でモバイルのロック解除）
 export async function prewarmTTS(): Promise<void> {
   try {
-    if (getTtsEngine() === "piper") {
-      try {
-        await prewarmPiper();
-      } catch (error) {
-        console.warn("Piper prewarm failed:", error);
-      }
-      return;
-    }
-
     const name = localStorage.getItem("tts:webspeech:voiceName") || undefined;
 
     await waitForVoices();
