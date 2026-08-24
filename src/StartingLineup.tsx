@@ -2473,7 +2473,7 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
                 key={pos}
                 data-drop-zone="position"
                 data-position={pos}
-                draggable={!!player}
+                draggable={!isTouchDevice() && !!player}
                 onDragStart={(e) => player && handleDragStart(e, player.id, pos)}
                 onDragEnter={() => setHoverPosKey(pos)}
                 onDragLeave={() => setHoverPosKey((v) => (v === pos ? null : v))}
@@ -2487,35 +2487,6 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
                   setDragKind(null);
                   setDraggingPlayerId(player.id);
                   setTouchDrag({ playerId: player.id, fromPos: pos, kind: "player" });
-                }}
-                onTouchEnd={(ev) => {
-                  if (!touchDrag) return;
-
-                  const t = ev.changedTouches?.[0];
-                  const x = t?.clientX ?? lastTouchRef.current?.x ?? 0;
-                  const y = t?.clientY ?? lastTouchRef.current?.y ?? 0;
-
-                  const el = document.elementFromPoint(x, y) as HTMLElement | null;
-                  const droppedOnBench =
-                    !!benchDropRef.current &&
-                    !!el &&
-                    benchDropRef.current.contains(el);
-
-                  const fake = makeFakeDragEvent({
-                    playerId: String(touchDrag.playerId),
-                    "text/plain": String(touchDrag.playerId),
-                    fromPosition: touchDrag.fromPos ?? "",
-                  });
-
-                  // スマホで DH → ベンチ入り選手 の時だけ、守備位置処理ではなくベンチ処理に送る
-                  if (touchDrag.fromPos === DH && droppedOnBench) {
-                    handleDropToBench(fake);
-                    setTouchDrag(null);
-                    return;
-                  }
-
-                  handleDropToPosition(fake, pos);
-                  setTouchDrag(null);
                 }}
                 style={{
                   ...positionStyles[pos],
