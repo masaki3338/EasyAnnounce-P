@@ -193,9 +193,11 @@ const StartingLineup = () => {
    * --------------------------- */
 
   // タッチ（スマホ）用：ドラッグ対象保持
-  const [touchDrag, setTouchDrag] = useState<{ playerId: number; fromPos?: string } | null>(
-    null
-  );
+  const [touchDrag, setTouchDrag] = useState<{
+    playerId: number;
+    fromPos?: string;
+    kind?: "player" | "order" | "swapPos";
+  } | null>(null);
 
   // ドラッグ中の選手ID／ホバー中のターゲット
   const [draggingPlayerId, setDraggingPlayerId] = useState<number | null>(null);
@@ -1314,7 +1316,7 @@ const changePositionByBattingIndex = (targetIndex: number, nextPos: string) => {
       e.dataTransfer.setData("text", `swapPos:${playerId}:${token}`);
     } catch {}
 
-    setTouchDrag((prev) => prev ?? { playerId });
+    setTouchDrag((prev) => prev ?? { playerId, kind: "swapPos" });
     setDragKind("swapPos");
 
     const cleanup = () => {
@@ -1946,6 +1948,12 @@ useEffect(() => {
         battingPlayerId: String(touchDrag?.playerId ?? ""),
         "text/plain": String(touchDrag?.playerId ?? ""),
         fromPosition: touchDrag?.fromPos ?? "",
+        dragKind:
+          touchDrag?.kind === "swapPos"
+            ? "swapPos"
+            : touchDrag?.kind === "order"
+              ? "order"
+              : "",
       });
 
     const routeTouchDrop = (x: number, y: number) => {
@@ -1955,12 +1963,13 @@ useEffect(() => {
       if (!el) {
         setTouchDrag(null);
         setDraggingPlayerId(null);
+        setDragKind(null);
         return;
       }
 
       // 守備位置ラベル同士の入替は従来処理を優先
       const posLabel = el.closest('[data-role="poslabel"]') as HTMLElement | null;
-      if (dragKind === "swapPos" && posLabel) {
+      if ((touchDrag.kind === "swapPos" || dragKind === "swapPos") && posLabel) {
         const targetPlayerId = Number(posLabel.getAttribute("data-player-id") || 0);
         if (targetPlayerId) {
           const fake = {
@@ -1980,6 +1989,7 @@ useEffect(() => {
         }
         setTouchDrag(null);
         setDraggingPlayerId(null);
+        setDragKind(null);
         return;
       }
 
@@ -2011,6 +2021,7 @@ useEffect(() => {
       setHoverOrderPlayerId(null);
       setTouchDrag(null);
       setDraggingPlayerId(null);
+      setDragKind(null);
     };
 
     const onTouchMove = (ev: TouchEvent) => {
@@ -2052,6 +2063,7 @@ useEffect(() => {
       if (typeof x !== "number" || typeof y !== "number") {
         setTouchDrag(null);
         setDraggingPlayerId(null);
+        setDragKind(null);
         return;
       }
 
@@ -2066,6 +2078,7 @@ useEffect(() => {
       setHoverOrderPlayerId(null);
       setTouchDrag(null);
       setDraggingPlayerId(null);
+      setDragKind(null);
     };
 
     window.addEventListener("touchmove", onTouchMove, { passive: false, capture: true });
@@ -2469,7 +2482,12 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
                   handleDropToPosition(e, pos);
                   setHoverPosKey(null);
                 }}
-                onTouchStart={() => player && setTouchDrag({ playerId: player.id, fromPos: pos })}
+                onTouchStart={() => {
+                  if (!player) return;
+                  setDragKind(null);
+                  setDraggingPlayerId(player.id);
+                  setTouchDrag({ playerId: player.id, fromPos: pos, kind: "player" });
+                }}
                 onTouchEnd={(ev) => {
                   if (!touchDrag) return;
 
@@ -2515,7 +2533,7 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
               >
                 {player ? (
                   <div
-                    draggable
+                    draggable={!isTouchDevice()}
                     onDragStart={(e) => handleDragStart(e, player.id, pos)}
                     style={{ WebkitUserDrag: "none", touchAction: "none" }}
                     className={`relative w-full h-full flex items-center justify-center font-semibold
@@ -2597,9 +2615,13 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
               dhDisplayPlayers.map((p) => (
                 <div
                   key={p.id}
-                  draggable
+                  draggable={!isTouchDevice()}
                   onDragStart={(e) => handleDragStart(e, p.id, DH)}
-                  onTouchStart={() => setTouchDrag({ playerId: p.id, fromPos: DH })}
+                  onTouchStart={() => {
+                    setDragKind(null);
+                    setDraggingPlayerId(p.id);
+                    setTouchDrag({ playerId: p.id, fromPos: DH, kind: "player" });
+                  }}
                   style={{ touchAction: "none" }}
                   className={`px-2 py-1 text-[14px] font-bold leading-tight bg-white/85 text-gray-900 border border-yellow-200 rounded-lg cursor-move select-none shadow-sm
                     ${draggingPlayerId === p.id ? "ring-4 ring-amber-400 bg-amber-100" : ""}`}
@@ -2649,9 +2671,13 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
       availablePlayers.map((p) => (
         <div
           key={p.id}
-          draggable
+          draggable={!isTouchDevice()}
           onDragStart={(e) => handleDragStart(e, p.id)}
-          onTouchStart={() => setTouchDrag({ playerId: p.id })}
+          onTouchStart={() => {
+            setDragKind(null);
+            setDraggingPlayerId(p.id);
+            setTouchDrag({ playerId: p.id, kind: "player" });
+          }}
           style={{ touchAction: "none" }}
           className={`px-2 py-1 md:px-[clamp(8px,1.1dvh,12px)] md:py-[clamp(4px,0.7dvh,8px)] text-[14px] md:text-[clamp(14px,1.7dvh,18px)] font-bold leading-tight bg-white/85 text-gray-900 border border-rose-200 rounded-lg md:rounded-lg cursor-move select-none shadow-sm
             ${draggingPlayerId === p.id ? "ring-4 ring-amber-400 bg-amber-100" : ""}`}
@@ -2705,10 +2731,11 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
   benchOutPlayers.map((p) => (
     <div
       key={p.id}
-      draggable
+      draggable={!isTouchDevice()}
       onDragStart={(e) => handleDragStart(e, p.id)}
       onTouchStart={() => {
-        setTouchDrag({ playerId: p.id });
+        setDragKind(null);
+        setTouchDrag({ playerId: p.id, kind: "player" });
         setDraggingPlayerId(p.id);
       }}
       onTouchEnd={() => {
@@ -2780,7 +2807,7 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
                         ? "ring-2 ring-emerald-400"
                         : ""
                     }`}
-                  draggable={!!entry}
+                  draggable={!isTouchDevice() && !!entry}
                   onDragStart={(e) => {
                     if (!entry) return;
                     const t = e.target as HTMLElement;
@@ -2801,6 +2828,19 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
                   }}
                   onDragLeave={() => {
                     setHoverOrderPlayerId((v) => (v === hoverKey ? null : v));
+                  }}
+                  onTouchStart={(e) => {
+                    if (!entry) return;
+                    const target = e.target as HTMLElement;
+                    if (
+                      target.closest('[data-role="poslabel"]') ||
+                      target.closest("button")
+                    ) {
+                      return;
+                    }
+                    setDragKind("order");
+                    setDraggingPlayerId(entry.id);
+                    setTouchDrag({ playerId: entry.id, kind: "order" });
                   }}
                   onTouchEnd={() => {
                     if (!touchDrag) return;
@@ -2856,7 +2896,7 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
           : "守備なし"
         : "未設定"
     }
-    draggable={!!entry && !!pos}
+    draggable={!isTouchDevice() && !!entry && !!pos}
     onDragStart={(e) => {
       if (!entry || !pos) return;
       handlePosDragStart(e, entry.id);
@@ -2882,7 +2922,11 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
     onTouchStart={(ev) => {
       ev.stopPropagation();
       if (!entry || !pos) return;
-      setTouchDrag({ playerId: entry.id });
+      setDragKind("swapPos");
+      swapSourceIdRef.current = entry.id;
+      const token = `${Date.now()}-${entry.id}`;
+      swapTokenRef.current = token;
+      setTouchDrag({ playerId: entry.id, kind: "swapPos" });
     }}
   >
     {entry ? (displayPos ? positionNames[displayPos] : "未設定") : "未設定"}
