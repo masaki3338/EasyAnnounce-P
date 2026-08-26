@@ -4965,7 +4965,11 @@ const [posNumberRows, setPosNumberRows] = useState<PositionNumberChangeRow[]>(
 const [posNumberError, setPosNumberError] = useState<string | null>(null);
 
 // ★ 追加：ドラッグ中のタッチ情報
-const [touchDrag, setTouchDrag] = useState<{ playerId: number; fromPos?: string } | null>(null);
+const [touchDrag, setTouchDrag] = useState<{
+  playerId: number;
+  fromPos?: string;
+  fromDhList?: boolean;
+} | null>(null);
 const lastTouchRef = React.useRef<{ x: number; y: number } | null>(null);
 const hoverPosRef = React.useRef<string | null>(null);
 
@@ -9943,6 +9947,106 @@ const p = typeof id === "number" ? teamPlayers.find((x) => x.id === id) : null;
   };
 });
 
+  /**
+   * iPhone / iPad 用タッチDnD
+   * SafariではHTML5のdraggable/dropに頼らず、指を離した座標から
+   * 移動先を判定して既存handleDrop()へ渡す。
+   */
+  useEffect(() => {
+    if (!isTouchDevice() || !touchDrag) return;
+
+    const makeTouchDragEvent = () => {
+      const payload: Record<string, string> = {
+        playerId: String(touchDrag.playerId),
+        "text/plain": String(touchDrag.playerId),
+        fromPos: touchDrag.fromPos ?? "",
+        fromPosition: touchDrag.fromPos ?? "",
+        fromDhList: touchDrag.fromDhList ? "1" : "",
+      };
+
+      return {
+        preventDefault: () => {},
+        dataTransfer: {
+          getData: (key: string) => payload[key] ?? "",
+        },
+      } as unknown as React.DragEvent<HTMLDivElement>;
+    };
+
+    const finishTouchDrag = () => {
+      setHoverPos(null);
+      hoverPosRef.current = null;
+      lastTouchRef.current = null;
+      setTouchDrag(null);
+      setDraggingFrom(null);
+    };
+
+    const routeTouchDrop = (x: number, y: number) => {
+      const hit = document.elementFromPoint(x, y) as HTMLElement | null;
+      const zone = hit?.closest("[data-defense-drop-zone]") as HTMLElement | null;
+
+      if (!zone) {
+        finishTouchDrag();
+        return;
+      }
+
+      const kind = zone.dataset.defenseDropZone;
+      const fake = makeTouchDragEvent();
+
+      if (kind === "position") {
+        const toPos = zone.dataset.position || "";
+        const canDrop = zone.dataset.canDrop !== "0";
+        if (toPos && canDrop) handleDrop(toPos, fake);
+      } else if (kind === "bench") {
+        handleDrop(BENCH, fake);
+      }
+
+      finishTouchDrag();
+    };
+
+    const onTouchMove = (ev: TouchEvent) => {
+      const t = ev.touches?.[0];
+      if (!t) return;
+      lastTouchRef.current = { x: t.clientX, y: t.clientY };
+      if (ev.cancelable) ev.preventDefault();
+
+      const hit = document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null;
+      const zone = hit?.closest("[data-defense-drop-zone]") as HTMLElement | null;
+      if (zone?.dataset.defenseDropZone === "position") {
+        const pos = zone.dataset.position ?? null;
+        hoverPosRef.current = pos;
+        setHoverPos(pos);
+      } else {
+        hoverPosRef.current = null;
+        setHoverPos(null);
+      }
+    };
+
+    const onTouchEnd = (ev: TouchEvent) => {
+      const t = ev.changedTouches?.[0];
+      const x = t?.clientX ?? lastTouchRef.current?.x;
+      const y = t?.clientY ?? lastTouchRef.current?.y;
+      if (ev.cancelable) ev.preventDefault();
+
+      if (typeof x !== "number" || typeof y !== "number") {
+        finishTouchDrag();
+        return;
+      }
+      requestAnimationFrame(() => routeTouchDrop(x, y));
+    };
+
+    const onTouchCancel = () => finishTouchDrag();
+
+    window.addEventListener("touchmove", onTouchMove, { passive: false, capture: true });
+    window.addEventListener("touchend", onTouchEnd, { passive: false, capture: true });
+    window.addEventListener("touchcancel", onTouchCancel, { passive: true, capture: true });
+
+    return () => {
+      window.removeEventListener("touchmove", onTouchMove, true);
+      window.removeEventListener("touchend", onTouchEnd, true);
+      window.removeEventListener("touchcancel", onTouchCancel, true);
+    };
+  }, [touchDrag, assignments, draggingFrom, dhEnabledAtStart, dhDisableDirty, pendingDisableDH, ohtaniRule, usedPlayerInfo, battingOrder, battingOrderDraft, battingReplacements, benchPlayers, teamPlayers]);
+
   if (isLoading) {
     return <div className="text-center text-gray-500 mt-10">読み込み中...</div>;
   }
@@ -10337,6 +10441,9 @@ const canDropHere =
   return (
     <div
       key={pos}
+      data-defense-drop-zone="position"
+      data-position={pos}
+      data-can-drop={canDropHere ? "1" : "0"}
       
       onDragEnter={() => setHoverPos(pos)}
       onDragLeave={() => setHoverPos((v) => (v === pos ? null : v))}
@@ -10365,8 +10472,14 @@ const canDropHere =
       {player ? (
         // ★ 内側チップに見た目を集約（青＞黄の優先でリング）
         <div
-          draggable
+          draggable={!isTouchDevice()}
           onDragStart={(e) => handlePositionDragStart(e, pos)}
+          onTouchStart={(e) => {
+            const t = e.changedTouches?.[0];
+            if (t) lastTouchRef.current = { x: t.clientX, y: t.clientY };
+            setDraggingFrom(pos);
+            setTouchDrag({ playerId: Number(currentId), fromPos: pos });
+          }}
           className={`text-base md:text-lg font-bold rounded px-2 py-1 leading-tight text-white bg-black/80 whitespace-nowrap
           ${
             draggingFrom === pos
@@ -10412,8 +10525,14 @@ const canDropHere =
                 <div
                   key={`dh-${p.id}`}
                   style={{ touchAction: "none" }}
-                  draggable
+                  draggable={!isTouchDevice()}
                   onDragStart={(e) => handleDhDragStart(e, p.id)}
+                  onTouchStart={(e) => {
+                    const t = e.changedTouches?.[0];
+                    if (t) lastTouchRef.current = { x: t.clientX, y: t.clientY };
+                    setDraggingFrom("指");
+                    setTouchDrag({ playerId: p.id, fromPos: "指", fromDhList: true });
+                  }}
                   className="px-3 py-1.5 text-sm bg-indigo-50 text-indigo-900 border border-indigo-200 rounded-xl cursor-move select-none transition active:scale-[0.98]"
                   title="DH選手"
                 >
@@ -10436,6 +10555,7 @@ const canDropHere =
           </div>
 
           <div
+            data-defense-drop-zone="bench"
             className="flex flex-col gap-2 md:gap-3 mb-6"
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => handleDrop(BENCH, e)}
@@ -10451,8 +10571,14 @@ const canDropHere =
                   <div
                     key={`bench-${p.id}`}
                     style={{ touchAction: "none" }}
-                    draggable
+                    draggable={!isTouchDevice()}
                     onDragStart={(e) => handleBenchDragStart(e, p.id)}
+                    onTouchStart={(e) => {
+                      const t = e.changedTouches?.[0];
+                      if (t) lastTouchRef.current = { x: t.clientX, y: t.clientY };
+                      setDraggingFrom(BENCH);
+                      setTouchDrag({ playerId: p.id, fromPos: BENCH });
+                    }}
                     className="
                       px-3 py-1.5 md:px-4 md:py-2
                       text-sm md:text-base lg:text-lg
@@ -10487,8 +10613,14 @@ const canDropHere =
                   <div
                     key={`played-${p.id}`}
                     style={{ touchAction: "none" }}
-                    draggable
+                    draggable={!isTouchDevice()}
                     onDragStart={(e) => handleBenchDragStart(e, p.id)}
+                    onTouchStart={(e) => {
+                      const t = e.changedTouches?.[0];
+                      if (t) lastTouchRef.current = { x: t.clientX, y: t.clientY };
+                      setDraggingFrom(BENCH);
+                      setTouchDrag({ playerId: p.id, fromPos: BENCH });
+                    }}
                     className="
                       px-3 py-1.5 md:px-4 md:py-2
                       text-sm md:text-base lg:text-lg
