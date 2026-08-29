@@ -66,6 +66,8 @@ function normalizeSpeechText(input: string): string {
   t = t.replace(/四氏/g, "よんし");
   t = t.replace(/行方/g, "ゆくえ");
 
+  t = t.replace(/対/g, "たい");
+
   // 「お知らせいたします」が Web Speech 側で
   // 「お知らせいた」＋「します」のように不自然に切られるのを防ぐ。
   // 表示文言は変更せず、読み上げ直前だけ「致します」表記にして
@@ -197,10 +199,15 @@ export async function speak(text: string, options: SpeakOptions = {}) {
   const DEFAULT_PITCH = 1.0;
   const DEFAULT_VOLUME = 0.8;
 
-  const lsSpeed = Number(localStorage.getItem("tts:speedScale"));
-  const lsWSName = localStorage.getItem("tts:webspeech:voiceName") || undefined;
-  const lsPitch = Number(localStorage.getItem("tts:pitch"));
-  const lsVolume = Number(localStorage.getItem("tts:volume"));
+  const speedRaw = localStorage.getItem("tts:speedScale");
+  const pitchRaw = localStorage.getItem("tts:pitch");
+  const volumeRaw = localStorage.getItem("tts:volume");
+
+  const lsSpeed = speedRaw !== null ? Number(speedRaw) : NaN;
+  const lsWSName =
+    localStorage.getItem("tts:webspeech:voiceName") || undefined;
+  const lsPitch = pitchRaw !== null ? Number(pitchRaw) : NaN;
+  const lsVolume = volumeRaw !== null ? Number(volumeRaw) : NaN;
 
   const voiceName = options.voiceName ?? lsWSName;
 
@@ -305,10 +312,15 @@ export async function speakSegments(
   const DEFAULT_PITCH = 1.0;
   const DEFAULT_VOLUME = 0.8;
 
-  const lsSpeed = Number(localStorage.getItem("tts:speedScale"));
-  const lsWSName = localStorage.getItem("tts:webspeech:voiceName") || undefined;
-  const lsPitch = Number(localStorage.getItem("tts:pitch"));
-  const lsVolume = Number(localStorage.getItem("tts:volume"));
+  const speedRaw = localStorage.getItem("tts:speedScale");
+  const pitchRaw = localStorage.getItem("tts:pitch");
+  const volumeRaw = localStorage.getItem("tts:volume");
+
+  const lsSpeed = speedRaw !== null ? Number(speedRaw) : NaN;
+  const lsWSName =
+    localStorage.getItem("tts:webspeech:voiceName") || undefined;
+  const lsPitch = pitchRaw !== null ? Number(pitchRaw) : NaN;
+  const lsVolume = volumeRaw !== null ? Number(volumeRaw) : NaN;
 
   const voiceName = options.voiceName ?? lsWSName;
 
