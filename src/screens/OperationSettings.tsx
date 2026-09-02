@@ -1,6 +1,6 @@
 // src/screens/OperationSettings.tsx
 import type { ScreenType } from "../App";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import localForage from "localforage";
 import { getLeagueMode } from "../lib/leagueSettings";
 
@@ -80,6 +80,128 @@ const TileButton: React.FC<{
   </button>
 );
 
+
+const PdfManualViewer: React.FC<{
+  file: string;
+  title: string;
+}> = ({ file, title }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const renderPdf = async () => {
+      setLoading(true);
+      setError("");
+
+      try {
+        // 追加パッケージ不要で使える PDF.js。
+        // @ts-ignore - Vite に外部URLをそのまま動的importさせる
+        const pdfjsLib = await import(
+          /* @vite-ignore */
+          "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs"
+        );
+
+        pdfjsLib.GlobalWorkerOptions.workerSrc =
+          "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
+
+        const pdf = await pdfjsLib.getDocument(`/${file}`).promise;
+        if (cancelled) return;
+
+        const root = containerRef.current;
+        if (!root) return;
+        root.innerHTML = "";
+
+        for (let pageNo = 1; pageNo <= pdf.numPages; pageNo += 1) {
+          if (cancelled) return;
+
+          const page = await pdf.getPage(pageNo);
+          const baseViewport = page.getViewport({ scale: 1 });
+
+          // スマホでも横幅いっぱいに収める
+          const availableWidth = Math.max(280, root.clientWidth - 16);
+          const scale = availableWidth / baseViewport.width;
+          const viewport = page.getViewport({ scale });
+
+          // Retina表示でも文字がぼやけにくいようにする
+          const outputScale = Math.min(window.devicePixelRatio || 1, 2);
+
+          const pageWrap = document.createElement("div");
+          pageWrap.style.width = "100%";
+          pageWrap.style.display = "flex";
+          pageWrap.style.justifyContent = "center";
+          pageWrap.style.padding = "4px 0 10px";
+
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d");
+          if (!context) throw new Error("Canvas context could not be created.");
+
+          canvas.width = Math.floor(viewport.width * outputScale);
+          canvas.height = Math.floor(viewport.height * outputScale);
+          canvas.style.width = `${Math.floor(viewport.width)}px`;
+          canvas.style.height = `${Math.floor(viewport.height)}px`;
+          canvas.style.maxWidth = "100%";
+          canvas.style.background = "white";
+          canvas.style.boxShadow = "0 1px 5px rgba(0,0,0,0.22)";
+
+          pageWrap.appendChild(canvas);
+          root.appendChild(pageWrap);
+
+          await page.render({
+            canvasContext: context,
+            viewport,
+            transform:
+              outputScale === 1
+                ? undefined
+                : [outputScale, 0, 0, outputScale, 0, 0],
+          }).promise;
+        }
+
+        if (!cancelled) setLoading(false);
+      } catch (e) {
+        console.error("PDF manual render error:", e);
+        if (!cancelled) {
+          setLoading(false);
+          setError("PDFを表示できませんでした。通信状態を確認して、もう一度お試しください。");
+        }
+      }
+    };
+
+    void renderPdf();
+
+    return () => {
+      cancelled = true;
+      if (containerRef.current) {
+        containerRef.current.innerHTML = "";
+      }
+    };
+  }, [file]);
+
+  return (
+    <div className="relative h-full w-full bg-slate-200 overflow-y-auto overscroll-contain">
+      {loading && (
+        <div className="sticky top-0 z-10 flex items-center justify-center gap-2 bg-slate-800 px-3 py-2 text-sm font-bold text-white shadow">
+          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+          PDFを読み込み中...
+        </div>
+      )}
+
+      {error ? (
+        <div className="flex min-h-full items-center justify-center p-6 text-center">
+          <div className="max-w-md rounded-2xl bg-white p-5 text-slate-800 shadow">
+            <div className="mb-2 text-lg font-bold">{title}</div>
+            <p className="text-sm leading-6">{error}</p>
+          </div>
+        </div>
+      ) : (
+        <div ref={containerRef} className="w-full p-2" />
+      )}
+    </div>
+  );
+};
+
 export default function OperationSettings({ onNavigate }: Props) {
   const [showManual, setShowManual] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
@@ -123,6 +245,10 @@ export default function OperationSettings({ onNavigate }: Props) {
     leagueMode === "boys"
       ? "ボーイズリーグ 連盟アナウンスマニュアル"
       : "ポニーリーグ 連盟アナウンスマニュアル";
+
+  const openManual = () => {
+    setShowManual(true);
+  };
 
   return (
     <div
@@ -323,8 +449,8 @@ export default function OperationSettings({ onNavigate }: Props) {
         <TileButton
           icon={<span className="text-2xl">📘</span>}
           title="連盟アナウンスマニュアル"
-          desc="PDFをアプリ内で表示"
-          onClick={() => setShowManual(true)}
+          desc="PDFを表示"
+          onClick={openManual}
         />
 
         <TileButton
@@ -608,13 +734,11 @@ export default function OperationSettings({ onNavigate }: Props) {
                 </div>
               </div>
 
-              {/* PDF表示エリア */}
+              {/* PDF表示エリア
+                  iPhone の iframe PDF は1ページ目しか表示されないことがあるため、
+                  PDF.js で全ページを縦並びに描画する。 */}
               <div className="flex-1 min-h-0 bg-white">
-                <iframe
-                  title={manualTitle}
-                  src={`/${manualFile}#toolbar=0&navpanes=0&scrollbar=1&view=FitH`}
-                  className="w-full h-full"
-                />
+                <PdfManualViewer file={manualFile} title={manualTitle} />
               </div>
 
               {/* フッター */}
