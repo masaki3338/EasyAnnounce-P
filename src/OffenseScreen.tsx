@@ -1928,7 +1928,7 @@ const makeRunnerAnnounce = (base: string, fromName: string, to: Player | null, i
   }
 
   // 通常代走（背番号がある時だけ付ける）
-  return `${prefix}${fromName ? fromName + "に" : ""}代わりまして、${toNameFull}、${prefix}は ${toNameLast}${
+  return `${prefix}、${fromName ? fromName + "に" : ""}代わりまして、${toNameFull}、${prefix}は ${toNameLast}${
     num ? `、背番号 ${num}。` : "。"
   }`;
 
@@ -2824,6 +2824,62 @@ const announce = async (text: string | string[]) => {
   const plain = normalizeForTTS(joined); // ruby→かな & タグ除去
 
   await speak(plain);
+};
+
+// ✅ 代走モーダル読み上げ
+// 代打モーダルと同じく、HTML/ルビから再変換せず
+// lastNameKana / firstNameKana から読み上げ文を直接作る。
+const speakRunnerModalLikePinch = async () => {
+  const lines: string[] = [];
+
+  for (const base of ["1塁", "2塁", "3塁"] as const) {
+    const replaced = replacedRunners[base];
+    const sub = runnerAssignments[base];
+
+    if (!replaced || !sub) continue;
+
+    const isTemp = !!tempRunnerFlags[base];
+    const prefix = getRunnerLabel(base);
+
+    const honorBef = replaced.isFemale ? "さん" : "くん";
+    const honorSub = sub.isFemale ? "さん" : "くん";
+
+    // ★ ここから代打モーダルと同じ名前処理
+    const fromKana = dupLastNames.has(String(replaced.lastName ?? "").trim())
+      ? `${replaced.lastNameKana ?? replaced.lastName ?? ""}、${replaced.firstNameKana ?? replaced.firstName ?? ""}`
+      : `${replaced.lastNameKana ?? replaced.lastName ?? ""}`;
+
+    // 新しく入る選手の最初の紹介は必ずフルネーム
+    const toKanaFull =
+      `${sub.lastNameKana ?? sub.lastName ?? ""}、${sub.firstNameKana ?? sub.firstName ?? ""}`;
+
+    // 2回目は通常は苗字のみ。同姓選手の場合だけフルネーム
+    const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
+      ? `${sub.lastNameKana ?? sub.lastName ?? ""}、${sub.firstNameKana ?? sub.firstName ?? ""}`
+      : `${sub.lastNameKana ?? sub.lastName ?? ""}`;
+    // ★ ここまで代打モーダルと同じ名前処理
+
+    const num = String(sub.number ?? "").trim();
+
+    if (isTemp) {
+      lines.push(
+        `${prefix} ${fromKana}${honorBef}に代わりまして、` +
+        `臨時代走、${toKanaLast}${honorSub}、` +
+        `臨時代走は ${toKanaLast}${honorSub}。`
+      );
+    } else {
+      lines.push(
+        `${prefix} ${fromKana}${honorBef}に代わりまして、` +
+        `${toKanaFull}${honorSub}、` +
+        `${prefix}は ${toKanaLast}${honorSub}` +
+        `${num ? `、背番号 ${num}。` : "。"}`
+      );
+    }
+  }
+
+  if (!lines.length) return;
+
+  await speak(lines.join("、"));
 };
 
 const handleNext = async () => {
@@ -5802,21 +5858,7 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
         <div className="grid grid-cols-2 gap-2">
           {/* 読み上げ＝青 */}
           <button
-            onClick={() =>
-              announce(
-                ["1塁", "2塁", "3塁"]
-                  .map((base) => {
-                    const kanji = base.replace("1", "一").replace("2", "二").replace("3", "三");
-                    return runnerAnnouncement.find(
-                      (msg) =>
-                        msg.startsWith(`${base}ランナー`) ||
-                        msg.startsWith(`${kanji}ランナー`)
-                    );
-                  })
-                  .filter(Boolean)
-                  .join("、")
-              )
-            }
+            onClick={speakRunnerModalLikePinch}
             className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                       inline-flex items-center justify-center gap-2 shadow-md ring-1 ring-white/40"
           >
