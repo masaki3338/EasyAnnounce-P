@@ -2,8 +2,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import localForage from "localforage";
 import { ScreenType } from "./App";
-import { speak as ttsSpeak, stop as ttsStop, prefetchTTS, prewarmTTS } from "./lib/tts";
-import { pageStyle } from "./styles/pageStyle";
+import { speak as ttsSpeak, stop as ttsStop } from "./lib/tts";
 
 /* ====== ミニSVGアイコン（依存なし） ====== */
 const IconBack = () => (
@@ -244,9 +243,6 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
     load();
   }, []);
 
-  // 初回だけ VOICEVOX を温めると、最初の読み上げが速くなります
- useEffect(() => { void prewarmTTS(); }, []);
-
  const team1 = benchSide === "1塁側" ? teamName : opponentName;
   const team3 = benchSide === "3塁側" ? teamName : opponentName;
 
@@ -346,25 +342,6 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
     `りょうチームはウォーミングアップニ入ってください。\n` +
     `${team1Read}はトスバッティング、\n` +
     `${team3Read}はキャッチボールを開始してください。`;
-
-  useEffect(() => {
-    // 画面表示後は、まず本アナウンスを最優先で先読みする。
-    // 「交代」「終了」はその後に回し、本アナウンスの生成を邪魔しない。
-    const mainTimer = window.setTimeout(() => {
-      void prefetchTTS(mainSpeak);
-    }, 40);
-
-    const subTimer = window.setTimeout(() => {
-      void prefetchTTS("りょうチーム、交代してください。");
-      void prefetchTTS("ウォーミングアップを終了してください。");
-    }, 1200);
-
-    return () => {
-      window.clearTimeout(mainTimer);
-      window.clearTimeout(subTimer);
-    };
-  }, [mainSpeak]);
-
 
   return (
       <div 
