@@ -152,15 +152,8 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
       console.error("[TTS settings] AI performance check failed:", error);
       setAiPerformance(null);
       setAiPerformanceProgress(null);
-      const detail =
-        error instanceof Error
-          ? `${error.name}: ${error.message}`
-          : typeof error === "string"
-          ? error
-          : JSON.stringify(error);
-
       setAiPerformanceError(
-        `AI音声の動作チェックに失敗しました。\n\n【エラー詳細】\n${detail || "不明なエラー"}`
+        "AI音声の動作チェックに失敗しました。もう一度お試しください。"
       );
     } finally {
       setIsCheckingAiPerformance(false);
@@ -490,7 +483,16 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
                     <div className="h-5 w-5 rounded-full border-2 border-cyan-200/30 border-t-cyan-200 animate-spin" />
                     <div className="text-sm font-semibold text-cyan-50">
                       {aiPerformanceProgress === "preparing"
-                        ? "AIモデルを準備しています..."
+                        ? (
+                           <span>
+                             AIモデルを準備しています...
+                             <span className="block mt-1 text-xs font-normal text-cyan-100/80 leading-relaxed">
+                               初回のみ時間がかかる場合があります。
+                               <br />
+                               そのままお待ちください。
+                             </span>
+                           </span>
+                         )
                         : aiPerformanceProgress === "g2p"
                         ? "文章をAI音声用データに変換しています..."
                         : aiPerformanceProgress === "inference"
@@ -596,9 +598,7 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
 
               {!isCheckingAiPerformance && aiPerformanceError && (
                 <div className="mt-3 rounded-xl border border-amber-300/50 bg-amber-400/15 px-4 py-3 text-sm text-amber-50">
-                  <div className="whitespace-pre-wrap break-words select-text text-left">
-                    {aiPerformanceError}
-                  </div>
+                  {aiPerformanceError}
                   <button
                     type="button"
                     onClick={() => void runAiPerformanceCheck()}
