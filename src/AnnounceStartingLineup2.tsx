@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import localForage from "localforage";
 import { ScreenType } from "./App";
-import { speak as ttsSpeak, stop as ttsStop, prefetchTTS, prewarmTTS, preserveNameReading } from "./lib/tts";
+import { speak as ttsSpeak, stop as ttsStop, prefetchTTS, prewarmTTS } from "./lib/tts";
 
 /* === ミニSVGアイコン（依存なし） === */
 const IconBack = () => (
@@ -98,7 +98,6 @@ const AnnounceStartingLineup: React.FC<{
   const announceBoxRef = useRef<HTMLDivElement | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const isSpeakingRef = useRef(false);
-  const speakSessionRef = useRef(0);
 
   const startingIds = battingOrder.map((e) => e.id);
   const [benchOutIds, setBenchOutIds] = useState<number[]>([]);
@@ -381,19 +380,12 @@ setGameNumber(String(mi.matchNumber || ""));
   const renderFullName = (p: Player) => (<>{renderFurigana(p.lastName, p.lastNameKana)}{renderFurigana(p.firstName, p.firstNameKana)}</>);
   const renderLastName = (p: Player) => renderFurigana(p.lastName, p.lastNameKana);
   const getSpokenFullName = (p: Player) => {
-    const last = preserveNameReading(
-      (p.lastNameKana || p.lastName || "").trim()
-    );
-    const first = preserveNameReading(
-      (p.firstNameKana || p.firstName || "").trim()
-    );
-    const full = first ? `${last} ${first}` : last;
-    return `${full}${getHonorific(p)}`;
+    const last = (p.lastNameKana || p.lastName || "").trim();
+    const first = (p.firstNameKana || p.firstName || "").trim();
+    return `${last}${first}${getHonorific(p)}`;
   };
   const getSpokenLastName = (p: Player) => {
-    const last = preserveNameReading(
-      (p.lastNameKana || p.lastName || "").trim()
-    );
+    const last = (p.lastNameKana || p.lastName || "").trim();
     return `${last}${getHonorific(p)}`;
   };
 
@@ -478,12 +470,9 @@ clone.querySelectorAll("ruby").forEach((rb) => {
 
   // 次も ruby なら「苗字 + 名前」の可能性が高いので、
   // 読み上げ用にだけ少し区切る
-  const spoken = kana
-    ? preserveNameReading(kana)
-    : fallback;
-
   const textNode = document.createTextNode(
-    spoken + (nextIsRuby ? " " : "")
+    //(kana || fallback) + (nextIsRuby ? "　" : "")
+    (kana || fallback) + (nextIsRuby ? "、" : "")
   );
 
   rb.replaceWith(textNode);
@@ -499,150 +488,59 @@ clone.querySelectorAll("ruby").forEach((rb) => {
   // 画面表示用テキストから、実際にTTSへ渡す文章を1か所で作る。
   // 重要: 先読みと本番読み上げで完全に同じ文字列を使い、
   // Matchaのキャッシュキーを一致させる。
-  //
-  // ★ 選手名のふりがなに「ライト」「ショート」等が含まれる場合、
-  //    守備位置用の整形・固定MP3判定に巻き込まれないよう、
-  //    選手名部分を一時的にプレースホルダーへ退避してから整形する。
-  const buildSpeakText = (source: string): string => {
-    let working = String(source ?? "");
-
-    // 選手名 + 敬称を一時退避。
-    // 例:
-    //   「ライト タロウくん」→ private-use文字のプレースホルダー
-    //   「ライトくん」       → private-use文字のプレースホルダー
-    //
-    // 守備位置として表示されている「ライト」は退避しないので、
-    // 従来どおり固定MP3(0018)を使用できる。
-    const protectedNames: Array<{ token: string; value: string }> = [];
-    const nameCandidates: string[] = [];
-
-    teamPlayers.forEach((p) => {
-      const last = preserveNameReading(
-        (p.lastNameKana || p.lastName || "").trim()
-      );
-      const first = preserveNameReading(
-        (p.firstNameKana || p.firstName || "").trim()
-      );
-      const honorific = getHonorific(p);
-
-      if (last && first) {
-        nameCandidates.push(`${last} ${first}${honorific}`);
-      }
-      if (last) {
-        nameCandidates.push(`${last}${honorific}`);
-      }
-    });
-
-    // 「姓名」→「姓」の順で保護し、短い候補が先に食わないようにする。
-    const uniqueNameCandidates = Array.from(new Set(nameCandidates))
-      .filter(Boolean)
-      .sort((a, b) => b.length - a.length);
-
-    uniqueNameCandidates.forEach((value, index) => {
-      if (!working.includes(value)) return;
-
-      // 数字や英字を含むプレースホルダーは使わない。
-      // 以前の `NAME0` は、この後の「単独の0→ゼロ」変換で
-      // `NAMEゼロ` に変わり、選手名へ復元できずTTSが
-      // 「ネームゼロ」と読んでしまうことがあった。
-      //
-      // Private Use Area の1文字だけを使えば、下の文章整形に
-      // 一切巻き込まれず、最後に確実に選手名へ戻せる。
-      const token = String.fromCharCode(0xE100 + index);
-      protectedNames.push({ token, value });
-      working = working.split(value).join(token);
-    });
-
-    working = working
-      // 「先攻/後攻 チーム名」の直後で一度文を閉じる。
-      .replace(
-        /(^|\n)((?:先攻|続きまして、?\s*後攻|対しまして、?\s*後攻)[^\n]*)\n(?=\s*1番)/g,
-        "$1$2。\n"
-      )
-
+  const buildSpeakText = (source: string): string =>
+    String(source ?? "")
       // 「1番ショート」→「1番、ショート」
       .replace(/([0-9]+)番\s*/g, "$1番、")
 
-      // 守備位置の直後だけ区切る。
-      // 選手名は上で退避済みなので、名前中の「ライト」等には作用しない。
+      // 守備位置の直後だけ区切る
       .replace(
         /(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)\s*/g,
         "$1、"
       )
 
-      // 「先攻 チーム名」は従来どおり少し区切る。
+      // 「先攻 チーム名」「後攻 チーム名」を少し空けて読む
       .replace(/(先攻|後攻)\s+/g, "$1、")
-      .replace(/続きまして、\s*後攻、/g, "続きまして、後攻 ")
 
       // 「苗字くん 背番号1」→「苗字くん、背番号1」
       .replace(/(さん|くん)\s*背番号/g, "$1、背番号")
-
-      // 背番号の直後に短い間を入れる
-      .replace(/背番号\s*([0-9０-９]+)/g, "背番号、$1")
 
       // 単独の 0 は「れい」ではなく「ゼロ」
       .replace(/(^|[^0-9])0(?![0-9])/g, "$1ゼロ")
 
       // 句読点の重複を軽く整理
-      .replace(/、、+/g, "、");
-
-    // 選手名を元に戻す。
-    // この時点では名前中の「ライト」等に読点が入っていないため、
-    // tts.ts の「選手名範囲保護」が正しく認識できる。
-    protectedNames.forEach(({ token, value }) => {
-      working = working.split(token).join(value);
-    });
-
-    return working.trim();
-  };
-
-  // 画面上の1行（選手1人分）単位に分割する。
-  // 長いヘッダーや審判文だけは句点単位にも分け、1回の生成を短くする。
-  const getSpeakParts = (source: string): string[] =>
-    buildSpeakText(source)
-      .split(/\n+/)
-      .flatMap((line) =>
-        line.length > 80
-          ? (line.match(/[^。！？!?]+[。！？!?]?/g) ?? [line])
-          : [line]
-      )
-      .map((part) => part.trim())
-      .filter(Boolean);
-
-
+      .replace(/、、+/g, "、")
+      .trim();
 
   // 同じ完成文を何度も先読みしない。
   const lastPrefetchedSpeakTextRef = useRef("");
-  const prefetchGenerationRef = useRef(0);
 
-  // 最初の2パートだけを読み上げ前に準備する。
-  // 3パート目以降は、再生中に次のパートを順次先読みする。
+  // スタメン発表文が画面に完成したら、実際に読み上げる文章そのものを先読みする。
+  // 従来は「画面の生テキスト」を先読みし、ボタン押下時だけ読点を追加していたため、
+  // キャッシュキーが一致せず、押してから再生成されることがあった。
   useEffect(() => {
+    // 最低限のスタメン情報が揃う前の中途半端な文章は先読みしない。
     if (!teamPlayers.length || !battingOrder.length || !homeTeamName) return;
 
-    const generation = ++prefetchGenerationRef.current;
-
-    const priorityTimer = window.setTimeout(() => {
+    const timer = window.setTimeout(() => {
       const visibleText = getVisibleAnnounceText();
       const speakText = buildSpeakText(visibleText);
       if (!speakText || speakText === lastPrefetchedSpeakTextRef.current) return;
 
       lastPrefetchedSpeakTextRef.current = speakText;
-      const parts = getSpeakParts(visibleText);
-      if (!parts.length) return;
+      console.log("[TTS PREFETCH][StartingLineup] exact start", {
+        textLength: speakText.length,
+        preview: speakText.replace(/\s+/g, " ").slice(0, 60),
+      });
 
-      void (async () => {
-        await prefetchTTS(parts[0]);
-        if (generation !== prefetchGenerationRef.current) return;
-        if (parts[1]) {
-          await prefetchTTS(parts[1]);
-        }
-      })();
+      void prefetchTTS(speakText).then(() => {
+        console.log("[TTS PREFETCH][StartingLineup] exact ready", {
+          textLength: speakText.length,
+        });
+      });
     }, 0);
 
-    return () => {
-      window.clearTimeout(priorityTimer);
-    };
+    return () => window.clearTimeout(timer);
   }, [
     teamPlayers,
     assignments,
@@ -669,36 +567,22 @@ const handleSpeak = () => {
 
   // 念のため直前に全停止してから、新しい読み上げを開始する。
   handleStop();
-  const session = ++speakSessionRef.current;
   isSpeakingRef.current = true;
 
   const visibleText = getVisibleAnnounceText();
-  const parts = getSpeakParts(visibleText);
-  if (!parts.length) {
+  const text = buildSpeakText(visibleText);
+  if (!text) {
     isSpeakingRef.current = false;
     return;
   }
 
+  console.log("[TTS CACHE][StartingLineup] play exact text", {
+    prefetched: text === lastPrefetchedSpeakTextRef.current,
+    textLength: text.length,
+  });
+
   setSpeaking(true);
-  void (async () => {
-    for (let i = 0; i < parts.length; i += 1) {
-      if (session !== speakSessionRef.current) return;
-
-      // 現在の行を再生している間に、次の選手の音声を作っておく。
-      const nextReady = parts[i + 1]
-        ? prefetchTTS(parts[i + 1])
-        : Promise.resolve();
-
-      // 1人分は途中分割せずに再生し、氏名の途中に生成待ちを入れない。
-      // 本来の打順・守備位置は固定MP3を使用する。
-      // 選手名の中に含まれる「ライト」等だけは、tts.ts側の
-      // 選手名範囲保護により固定MP3へ置き換えない。
-      await ttsSpeak(parts[i], { progressive: false, cache: true });
-      if (session !== speakSessionRef.current) return;
-      await nextReady;
-    }
-  })().finally(() => {
-    if (session !== speakSessionRef.current) return;
+  void ttsSpeak(text).finally(() => {
     setSpeaking(false);
     isSpeakingRef.current = false;
   });
@@ -706,7 +590,6 @@ const handleSpeak = () => {
 
 
   const handleStop = () => {
-   speakSessionRef.current += 1;
    ttsStop();                 // ← sessionCounter が進むので連鎖が止まる
    isSpeakingRef.current = false;
    setSpeaking(false);

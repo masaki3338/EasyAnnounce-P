@@ -10,7 +10,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 
 import { useKeepScreenAwake } from "./hooks/useKeepScreenAwake";
 
-import { speak, stop } from "./lib/tts"; // ファイル先頭付近に追記
+import { speak, speakJoinedTTS, stop, prefetchTTS, prewarmTTS } from "./lib/tts";
 
 import ManualViewer from "./ManualViewer"; // ← 追加
 const manualPdfURL = "/manual.pdf#zoom=page-fit"; // ページ全体にフィット
@@ -66,7 +66,7 @@ const DEFAULT_ANNOUNCEMENT_TIMING_SETTINGS: AnnouncementTimingSettings = {
   groundMaintenanceInning: 5,
 };
 
-const APP_VERSION = "1.04"
+const APP_VERSION = "1.05"
 
 // iOS 判定を共通で使えるようにグローバル定数として定義
 const isIOS = (() => {
@@ -215,6 +215,14 @@ const BottomTab: React.FC<{
 
 const App = () => {
   const [screen, setScreen] = useState<ScreenType>("menu");
+  // AI音声の準備状態は表示だけ。準備中でも全操作・読み上げボタンを使用可能。
+  const [isTtsStarting, setIsTtsStarting] = useState(() => {
+    const engine = localStorage.getItem("tts:engine");
+    return engine === "matcha" || engine === "piper";
+  });
+  const [showTtsReady, setShowTtsReady] = useState(false);
+  const warmedOnceRef = useRef(false);
+  const startGreetingPrefetchKeyRef = useRef("");
     // ✅ アプリ終了用
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
   const [showIOSCloseGuide, setShowIOSCloseGuide] = useState(false);
@@ -229,6 +237,46 @@ const App = () => {
 
   const [endGameAnnouncement, setEndGameAnnouncement] = useState("");       // 表示用
   const [endGameAnnouncementSpeak, setEndGameAnnouncementSpeak] = useState(""); // 読み上げ用
+
+  // ✅ 試合終了時刻：
+  // 「〇時〇分です」を1本で生成するとイントネーションが不自然になりやすいため、
+  // 読み上げ時だけ「〇時」＋「〇分です」に分けてPCM結合する。
+  // 表示文そのものは変更しない。
+  const buildEndGameAnnouncementParts = (value?: string | null): string[] => {
+    const source = String(value ?? "").trim();
+    if (!source) return [];
+
+    const match = source.match(
+      /(終了時刻は\s*)(\d{1,2})時\s*(\d{1,2})分/
+    );
+
+    if (!match || match.index == null) {
+      return [source];
+    }
+
+    const beforeIndex = match.index;
+    const afterIndex = beforeIndex + match[0].length;
+
+    const hour = String(parseInt(match[2], 10));
+    const minute = String(parseInt(match[3], 10));
+
+    const before =
+      source.slice(0, beforeIndex) +
+      `${match[1]}${hour}時`;
+
+    const after =
+      `${minute}分` +
+      source.slice(afterIndex);
+
+    return [before.trim(), after.trim()].filter(Boolean);
+  };
+
+  const prefetchEndGameAnnouncement = async (value?: string | null) => {
+    const parts = buildEndGameAnnouncementParts(value);
+    for (const part of parts) {
+      await prefetchTTS(part);
+    }
+  };
   const [showEndGameSimpleModal, setShowEndGameSimpleModal] = useState(false);
   const [showHeatPopup, setShowHeatPopup] = useState(false);
   // 🔒 熱中症アナウンス 連打ロック
@@ -243,6 +291,73 @@ const App = () => {
   const [showManualPopup, setShowManualPopup] = useState(false);
   const [showContinuationModal, setShowContinuationModal] = useState(false);
   const [showNoContinueModal, setShowNoContinueModal] = useState(false);
+
+  // ---------------------------------------------------------------------------
+  // モーダルTTS高速開始
+  // 「読み上げ」押下後にMatcha生成を開始すると数秒待つことがあるため、
+  // 固定文はアプリ起動後にバックグラウンド生成してキャッシュしておく。
+  // 動的文はモーダル表示時点で先読みする。
+  // ---------------------------------------------------------------------------
+  const MODAL_TTS_STATIC_TEXTS = [
+    "この試合は、ただ今で打ち切り、継続試合となります。\n明日以降に中断した時点から再開いたします。\nあしからずご了承くださいませ。",
+    "本日は気温が高く、熱中症が心配されますので、水分をこまめにとり、体調に気を付けてください。",
+    "ご覧のような天候の為、試合を一時中断いたします。\n",
+    "お知らせいたします。雷雲が近づいている為、試合を一時中断いたします。\nスタンドの皆様も安全な場所に避難をお願い致します。",
+    "大変長らくお待たせをしております。\nただいまからグラウンドの整備をおこないます。今しばらくお待ちください。",
+    "ご覧のような天候状態の為、本日の試合は中止とさせていただきます。",
+    "ご覧のような天候状態の為、試合続行が不可能となりましたので\nこの試合は大会規定により、サスペンデッドゲームといたします。",
+  ] as const;
+
+  const prefetchTextFast = (value?: string | null) => {
+    const valueText = String(value ?? "").trim();
+    if (!valueText) return;
+    void prefetchTTS(valueText).catch((error) => {
+      console.warn("[TTS PREFETCH][App modal] failed", error);
+    });
+  };
+
+  // AI音声のprewarm後、固定モーダル文を低優先度で順番にキャッシュする。
+  // 実際の操作を邪魔しにくいよう、起動直後ではなく少し待ってから開始。
+  useEffect(() => {
+    if (localStorage.getItem("tts:engine") !== "matcha") return;
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        for (const value of MODAL_TTS_STATIC_TEXTS) {
+          if (cancelled) return;
+          try {
+            await prefetchTTS(value);
+          } catch (error) {
+            console.warn("[TTS PREFETCH][App static modal] failed", error);
+          }
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+        }
+      })();
+    }, 1200);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, []);
+
+  // 継続試合モーダルは固定文なので、表示した時点でMatcha音声を先読みする。
+  // 読み上げボタンを押してから1文目を生成する待ち時間をなくす。
+  useEffect(() => {
+    if (!showContinuationModal) return;
+
+    const text =
+      "この試合は、ただ今で打ち切り、継続試合となります。\n" +
+      "明日以降に中断した時点から再開いたします。\n" +
+      "あしからずご了承くださいませ。";
+
+    const timer = window.setTimeout(() => {
+      void prefetchTTS(text);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [showContinuationModal]);
   const [showSuspendPopup, setShowSuspendPopup] = useState(false);
   const [showSuspendedGamePopup, setShowSuspendedGamePopup] = useState(false);
   const [showBoysManualPopup, setShowBoysManualPopup] = useState(false);
@@ -638,6 +753,41 @@ const boysOtherOptions: OtherOptionItem[] = [
 
 const getOtherOptions = () =>
   leagueMode === "boys" ? boysOtherOptions : ponyOtherOptions;
+
+// 試合終了アナウンスはポップアップ表示時点で先読みする。
+// 終了時刻は「〇時」＋「〇分です」に分け、本番と同じ単位で先読みする。
+useEffect(() => {
+  if (!showEndGamePopup) return;
+
+  const text =
+    (endGameAnnouncementSpeak || endGameAnnouncement || "").trim();
+
+  if (!text) return;
+
+  // モーダル表示と同時に即先読みする。
+  // 40ms待つと、表示直後に読み上げボタンを押した場合に生成待ちになる。
+  void prefetchEndGameAnnouncement(text).catch((error) => {
+    console.warn("[TTS PREFETCH][EndGame] failed", error);
+  });
+}, [
+  showEndGamePopup,
+  endGameAnnouncementSpeak,
+  endGameAnnouncement,
+]);
+
+  // タイブレークは設定内容で文言が変わるため、表示された瞬間に現在文を先読み。
+  useEffect(() => {
+    if (!showTiebreakPopup || !tiebreakMessage.trim()) return;
+    prefetchTextFast(tiebreakMessage.replace(/入ります。/g, "はいります。"));
+  }, [showTiebreakPopup, tiebreakMessage]);
+
+  // 熱中症は固定文だが、モーダル表示時にも最優先でキャッシュ確認する。
+  useEffect(() => {
+    if (!showHeatPopup) return;
+    prefetchTextFast(heatMessage);
+  }, [showHeatPopup, heatMessage]);
+
+
   // --- 試合終了アナウンスを分割して注意ボックスを差し込む ---
   const BREAKPOINT_LINE = "球審、EasyScore担当、公式記録員、球場役員もお集まりください。";
   const ann = endGameAnnouncement ?? "";
@@ -653,7 +803,6 @@ const iosVideoRef = useRef<HTMLVideoElement | null>(null);
 const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
 // App コンポーネント内のどこか（stateの定義付近）に追加
-const warmedOnceRef = useRef(false);
 useEffect(() => {
   setLeagueMode(getLeagueMode());
 }, []);
@@ -674,6 +823,18 @@ const formatWaterBreakTime = (sec: number) => {
 };
 
 const waterBreakMessage = `ただいまから${waterBreakMinutes}分間のクーリングタイムを取ります。`;
+
+  // クーリングタイムは設定時間・残り時間で文言が変わるため、
+  // waterBreakMessage の定義後に先読みする。
+  useEffect(() => {
+    if (!showWaterBreakPopup) return;
+    prefetchTextFast(waterBreakNotice || waterBreakMessage);
+  }, [showWaterBreakPopup, waterBreakNotice, waterBreakMessage]);
+
+  useEffect(() => {
+    if (!showWaterBreakPopupMessage || !waterBreakPopupMessage.trim()) return;
+    prefetchTextFast(waterBreakPopupMessage);
+  }, [showWaterBreakPopupMessage, waterBreakPopupMessage]);
 
 const changeWaterBreakMinutes = (delta: number) => {
   if (waterBreakRunning) return;
@@ -795,13 +956,158 @@ useEffect(() => {
   // waterBreakRunning は依存配列に入れない
 }, [waterBreakMinutes]);
 
-// マウント時に一度だけ軽いウォームアップ
+
+// 試合開始挨拶は大会名・試合番号・対戦カードの生成に数秒かかる場合がある。
+// StartGreeting画面に入ってからでは遅いため、matchInfo/team が存在した時点で
+// 画面に関係なく「実際に読む全文」をそのまま先読みする。
 useEffect(() => {
-  if (warmedOnceRef.current) return; // ← dev StrictMode の二重実行ガード
+  if (leagueMode === "boys") return;
+  if (localStorage.getItem("tts:engine") !== "matcha") return;
+
+  let cancelled = false;
+  let checking = false;
+  let retryCount = 0;
+  let retryTimer: number | null = null;
+
+  const tryPrefetchStartGreeting = async (): Promise<boolean> => {
+    if (cancelled || checking) return false;
+    checking = true;
+
+    try {
+      const [team, matchInfo] = await Promise.all([
+        localForage.getItem<any>("team"),
+        localForage.getItem<any>("matchInfo"),
+      ]);
+
+      if (cancelled) return false;
+
+      const tournamentName = String(matchInfo?.tournamentName ?? "").trim();
+      const matchNumber = String(matchInfo?.matchNumber ?? "1").trim() || "1";
+      const opponentName = String(matchInfo?.opponentTeam ?? "").trim();
+      const opponentFurigana = String(
+        matchInfo?.opponentTeamFurigana ?? ""
+      ).trim();
+
+      const teamName = String(team?.name ?? "").trim();
+      const teamFurigana = String(
+        team?.furigana ?? team?.nameFurigana ?? team?.nameKana ?? ""
+      ).trim();
+
+      const benchSide =
+        matchInfo?.benchSide === "3塁側" ? "3塁側" : "1塁側";
+
+      if (!tournamentName || !teamName || !opponentName) {
+        return false;
+      }
+
+      const team1stRead =
+        benchSide === "1塁側"
+          ? (teamFurigana || teamName)
+          : (opponentFurigana || opponentName);
+
+      const team3rdRead =
+        benchSide === "3塁側"
+          ? (teamFurigana || teamName)
+          : (opponentFurigana || opponentName);
+
+      // 実際の読み上げと同じ全文。
+      // tts.ts 側で固定MP3・大会名・対戦カードへ分解されるため、
+      // 本番と完全に同じキャッシュを先に作れる。
+      const fullStartGreeting =
+        `おまたせいたしました。` +
+        `${tournamentName}。` +
+        `ほんじつの だい${matchNumber}しあい、` +
+        `${team1stRead}たい${team3rdRead}のしあい、` +
+        `まもなくかいしでございます。`;
+
+      const voice =
+        localStorage.getItem("tts:matcha:voice") ||
+        localStorage.getItem("tts:matchaVoice") ||
+        "taniho";
+      const speed = localStorage.getItem("tts:speedScale") || "1";
+
+      const key = `full-v2::${voice}::${speed}::${fullStartGreeting}`;
+      if (startGreetingPrefetchKeyRef.current === key) {
+        return true;
+      }
+
+      startGreetingPrefetchKeyRef.current = key;
+
+      console.log("[APP PREFETCH][StartGreeting FULL] start", {
+        screen,
+        tournamentName,
+        matchNumber,
+        team1stRead,
+        team3rdRead,
+      });
+
+      try {
+        await prefetchTTS(fullStartGreeting);
+
+        console.log("[APP PREFETCH][StartGreeting FULL] ready", {
+          tournamentName,
+          matchNumber,
+          team1stRead,
+          team3rdRead,
+        });
+
+        return true;
+      } catch (error) {
+        console.warn("[APP PREFETCH][StartGreeting FULL] failed", error);
+        if (!cancelled) {
+          startGreetingPrefetchKeyRef.current = "";
+        }
+        return false;
+      }
+    } finally {
+      checking = false;
+    }
+  };
+
+  const run = async () => {
+    const ready = await tryPrefetchStartGreeting();
+    if (cancelled || ready) return;
+
+    // アプリ起動直後はlocalForageへ試合情報がまだ保存されていない場合がある。
+    // 最大20秒だけ再確認し、見つかった瞬間に生成を開始する。
+    retryCount += 1;
+    if (retryCount >= 20) return;
+
+    retryTimer = window.setTimeout(() => {
+      void run();
+    }, 1000);
+  };
+
+  void run();
+
+  return () => {
+    cancelled = true;
+    if (retryTimer !== null) {
+      window.clearTimeout(retryTimer);
+    }
+  };
+}, [screen, leagueMode]);
+
+// AI音声の起動準備状態を右上に表示する。
+// tts.ts側でも0msで準備を開始しているが、prewarmMatcha()はPromise共有なので二重実行されない。
+useEffect(() => {
+  if (warmedOnceRef.current) return;
   warmedOnceRef.current = true;
 
-  fetch("/api/tts-voicevox/version", { cache: "no-store" })
-    .catch(() => {});
+  const engine = localStorage.getItem("tts:engine");
+  const isAi = engine === "matcha" || engine === "piper";
+
+  if (!isAi) {
+    setIsTtsStarting(false);
+    return;
+  }
+
+  setIsTtsStarting(true);
+  void prewarmTTS().finally(() => {
+    setIsTtsStarting(false);
+    setShowTtsReady(true);
+    window.setTimeout(() => setShowTtsReady(false), 1200);
+  });
 }, []);
 
 
@@ -944,7 +1250,7 @@ const handleHeatSpeak = async () => {
   heatSpeakingRef.current = true;
   setHeatSpeaking(true);
   try {
-    await speak(heatMessage); // progressiveにしたいなら { progressive:true } を第2引数に
+    await speak(heatMessage, { progressive: true, cache: true }); // progressiveにしたいなら { progressive:true } を第2引数に
   } finally {
     heatSpeakingRef.current = false;
     setHeatSpeaking(false);
@@ -984,7 +1290,7 @@ const handleSpeak = async () => {
       "この試合は、ただ今で打ち切り、継続試合となります。\n" +
       "明日以降に中断した時点から再開いたします。\n" +
       "あしからずご了承くださいませ。";
-    await speak(txt);
+    await speak(txt, { progressive: true, cache: true });
   };
   const handleStop = () => {
     stop();
@@ -1080,6 +1386,26 @@ const handleSpeak = async () => {
 
 return (
   <>
+    {(isTtsStarting || showTtsReady) && (
+      <div
+        className={`fixed z-[10000] top-[max(10px,env(safe-area-inset-top))] right-3 pointer-events-none rounded-full border px-3 py-2 text-white shadow-lg flex items-center gap-2 ${
+          isTtsStarting
+            ? "bg-slate-950/85 border-white/15"
+            : "bg-emerald-700/90 border-emerald-200/30"
+        }`}
+        role="status"
+        aria-live="polite"
+      >
+        {isTtsStarting ? (
+          <div className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" />
+        ) : (
+          <span className="text-sm" aria-hidden="true">✓</span>
+        )}
+        <span className="text-xs font-semibold">
+          {isTtsStarting ? "AI音声準備中" : "AI音声準備完了"}
+        </span>
+      </div>
+    )}
     {screen === "menu" && (
       <button
         type="button"
@@ -1597,7 +1923,7 @@ return (
                       speakAnnouncement = displayAnnouncement;
                     } else {
                       displayAnnouncement =
-                        `ただいまの試合は、ご覧のように${totalTop}対${totalBottom}でした。\n` +
+                        `ただいまの試合は、ご覧のように、${totalTop}対${totalBottom}でした。\n` +
                         `審判員の皆様、ありがとうございました。\n` +
                         `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
                         `尚、この試合の終了時刻は ${formatted}です。\n` +
@@ -1623,6 +1949,7 @@ return (
 
                     setEndGameAnnouncement(displayAnnouncement);
                     setEndGameAnnouncementSpeak(speakAnnouncement);
+                     void prefetchEndGameAnnouncement(speakAnnouncement);
                     setShowEndGamePopup(true);
                   } else if (winnerName) {
                     if (currentLeagueMode === "boys") {
@@ -1645,7 +1972,7 @@ return (
                       speakAnnouncement = displayAnnouncement;
                     } else {
                       displayAnnouncement =
-                        `ただいまの試合は、ご覧のように${totalTop}対${totalBottom}で${winnerName}が勝ちました。\n` +
+                        `ただいまの試合は、ご覧のように ${totalTop}対${totalBottom}で${winnerName}が勝ちました。\n` +
                         `審判員の皆様、ありがとうございました。\n` +
                         `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
                         `尚、この試合の終了時刻は ${formatted}です。\n` +
@@ -1671,6 +1998,7 @@ return (
 
                     setEndGameAnnouncement(displayAnnouncement);
                     setEndGameAnnouncementSpeak(speakAnnouncement);
+                     void prefetchEndGameAnnouncement(speakAnnouncement);
                     setShowEndGamePopup(true);
                   } else {
                     setShowEndGameSimpleModal(true);
@@ -1965,7 +2293,7 @@ return (
                 `なおこの試合の終了時刻は${formatted}です。`;
             } else {
               displayAnnouncement =
-                `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}でした。\n` +
+                `ただいまの試合は、ご覧のように ${totalMyScore}対${totalOpponentScore}でした。\n` +
                 `審判員の皆様、ありがとうございました。\n` +
                 `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
                 `尚、この試合の終了時刻は ${formatted}です。\n` +
@@ -1988,6 +2316,7 @@ return (
 
             setEndGameAnnouncement(displayAnnouncement);
             setEndGameAnnouncementSpeak(speakAnnouncement);
+                     void prefetchEndGameAnnouncement(speakAnnouncement);
             setShowEndGamePopup(true);
           } else if (totalMyScore > totalOpponentScore) {
             const currentLeagueMode = resolveCurrentLeagueMode(match);
@@ -2014,7 +2343,7 @@ return (
                 `なおこの試合の終了時刻は${formatted}です。`;
             } else {
               displayAnnouncement =
-                `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
+                `ただいまの試合は、ご覧のように ${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
                 `審判員の皆様、ありがとうございました。\n` +
                 `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
                 `尚、この試合の終了時刻は ${formatted}です。\n` +
@@ -2023,7 +2352,7 @@ return (
                 `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;
 
               speakAnnouncement =
-                `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeamReading}が勝ちました。\n` +
+                `ただいまの試合は、ご覧のように ${totalMyScore}対${totalOpponentScore}で${myTeamReading}が勝ちました。\n` +
                 `審判員の皆様、ありがとうございました。\n` +
                 `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
                 `尚、この試合の終了時刻は ${formatted}です。\n` +
@@ -2044,6 +2373,7 @@ return (
 
             setEndGameAnnouncement(displayAnnouncement);
             setEndGameAnnouncementSpeak(speakAnnouncement);
+                     void prefetchEndGameAnnouncement(speakAnnouncement);
             setShowEndGamePopup(true);
           } else {
             setShowEndGameSimpleModal(true);
@@ -2374,7 +2704,7 @@ return (
                   `なおこの試合の終了時刻は${formatted}です。`;
               } else {
                 displayAnnouncement =
-                  `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}でした。\n` +
+                  `ただいまの試合は、ご覧のように ${totalMyScore}対${totalOpponentScore}でした。\n` +
                   `審判員の皆様、ありがとうございました。\n` +
                   `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
                   `尚、この試合の終了時刻は ${formatted}です。\n` +
@@ -2397,6 +2727,7 @@ return (
 
               setEndGameAnnouncement(displayAnnouncement);
               setEndGameAnnouncementSpeak(speakAnnouncement);
+                     void prefetchEndGameAnnouncement(speakAnnouncement);
               setShowEndGamePopup(true);
             } else if (totalMyScore > totalOpponentScore) {
               const currentLeagueMode = resolveCurrentLeagueMode(match);
@@ -2423,7 +2754,7 @@ return (
                   `なおこの試合の終了時刻は${formatted}です。`;
               } else {
                 displayAnnouncement =
-                  `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
+                  `ただいまの試合は、ご覧のように ${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
                   `審判員の皆様、ありがとうございました。\n` +
                   `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
                   `尚、この試合の終了時刻は ${formatted}です。\n` +
@@ -2432,7 +2763,7 @@ return (
                   `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;
 
                 speakAnnouncement =
-                  `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeamReading}が勝ちました。\n` +
+                  `ただいまの試合は、ご覧のように ${totalMyScore}対${totalOpponentScore}で${myTeamReading}が勝ちました。\n` +
                   `審判員の皆様、ありがとうございました。\n` +
                   `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
                   `尚、この試合の終了時刻は ${formatted}です。\n` +
@@ -2453,6 +2784,7 @@ return (
 
               setEndGameAnnouncement(displayAnnouncement);
               setEndGameAnnouncementSpeak(speakAnnouncement);
+                     void prefetchEndGameAnnouncement(speakAnnouncement);
               setShowEndGamePopup(true);
             } else {
               setShowEndGameSimpleModal(true);
@@ -2891,7 +3223,19 @@ return (
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button
                 onClick={async () => {
-                  await speak(endGameAnnouncementSpeak || endGameAnnouncement);
+                  const text =
+                    (endGameAnnouncementSpeak || endGameAnnouncement || "").trim();
+                  if (!text) return;
+
+                  const parts = buildEndGameAnnouncementParts(text);
+
+                  if (parts.length <= 1) {
+                    await speak(parts[0] || text, { progressive: true, cache: true });
+                  } else {
+                    // 「〇時」→「〇分です」の境目だけ、
+                    // speakJoinedTTS の短い接続間隔で自然につなぐ。
+                    await speakJoinedTTS(parts);
+                  }
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                            inline-flex items-center justify-center gap-2"
@@ -3126,7 +3470,8 @@ return (
               <button
                 onClick={async () => {
                   await speak(
-                    tiebreakMessage.replace(/入ります。/g, "はいります。")
+                    tiebreakMessage.replace(/入ります。/g, "はいります。"),
+                    { progressive: true, cache: true }
                   );
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
@@ -3290,7 +3635,7 @@ return (
                     "この試合は、ただ今で打ち切り、継続試合となります。\n" +
                     "明日以降に中断した時点から再開いたします。\n" +
                     "あしからずご了承くださいませ。";
-                  await speak(txt);
+                  await speak(txt, { progressive: true, cache: true });
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                            inline-flex items-center justify-center gap-2"
@@ -3658,7 +4003,11 @@ return (
 
           {/* 雨天中断 */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
-            <div className="text-red-700 font-extrabold mb-2">雨天中断</div>
+            <div className="mb-3">
+              <span className="inline-flex items-center rounded-full border border-red-700 bg-red-700 px-3 py-1 text-xs font-extrabold tracking-wide text-white shadow-sm">
+                雨天中断
+              </span>
+            </div>
             <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
               ご覧のような天候の為、試合を一時中断いたします。{'\n'}
             </p>
@@ -3666,7 +4015,8 @@ return (
               <button
                 onClick={async () => {
                   await speak(
-                    "ご覧のような天候の為、試合を一時中断いたします。\n"
+                    "ご覧のような天候の為、試合を一時中断いたします。\n",
+                    { progressive: true, cache: true }
                   );
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
@@ -3687,7 +4037,11 @@ return (
 
           {/* 雷での中断 */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
-            <div className="text-red-700 font-extrabold mb-2">雷での中断</div>
+            <div className="mb-3">
+              <span className="inline-flex items-center rounded-full border border-red-700 bg-red-700 px-3 py-1 text-xs font-extrabold tracking-wide text-white shadow-sm">
+                雷での中断
+              </span>
+            </div>
             <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
               お知らせいたします。雷雲が近づいている為、試合を一時中断いたします。{'\n'}
               スタンドの皆様も安全な場所に避難をお願い致します。
@@ -3697,7 +4051,8 @@ return (
                 onClick={async () => {
                   await speak(
                     "お知らせいたします。雷雲が近づいている為、試合を一時中断いたします。\n" +
-                    "スタンドの皆様も安全な場所に避難をお願い致します。"
+                    "スタンドの皆様も安全な場所に避難をお願い致します。",
+                    { progressive: true, cache: true }
                   );
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
@@ -3718,7 +4073,11 @@ return (
 
           {/* 中断→再開 */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
-            <div className="text-red-700 font-extrabold mb-2">中断→再開</div>
+            <div className="mb-3">
+              <span className="inline-flex items-center rounded-full border border-red-700 bg-red-700 px-3 py-1 text-xs font-extrabold tracking-wide text-white shadow-sm">
+                中断→再開
+              </span>
+            </div>
             <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
               大変長らくお待たせをしております。{'\n'}
               ただいまからグラウンドの整備をおこないます。今しばらくお待ちください。
@@ -3728,7 +4087,8 @@ return (
                 onClick={async () => {
                   await speak(
                     "大変長らくお待たせをしております。\n" +
-                    "ただいまからグラウンドの整備をおこないます。今しばらくお待ちください。"
+                    "ただいまからグラウンドの整備をおこないます。今しばらくお待ちください。",
+                    { progressive: true, cache: true }
                   );
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
@@ -3749,7 +4109,11 @@ return (
 
           {/* 中断→中止 */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
-            <div className="text-red-700 font-extrabold mb-2">中断→中止</div>
+            <div className="mb-3">
+              <span className="inline-flex items-center rounded-full border border-red-700 bg-red-700 px-3 py-1 text-xs font-extrabold tracking-wide text-white shadow-sm">
+                中断→中止
+              </span>
+            </div>
             <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
               ご覧のような天候状態の為、本日の試合は中止とさせていただきます。
             </p>
@@ -3757,7 +4121,8 @@ return (
               <button
                 onClick={async () => {
                   await speak(
-                    "ご覧のような天候状態の為、本日の試合は中止とさせていただきます。"
+                    "ご覧のような天候状態の為、本日の試合は中止とさせていただきます。",
+                    { progressive: true, cache: true }
                   );
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
@@ -3849,7 +4214,8 @@ return (
                 onClick={async () => {
                   await speak(
                     "ご覧のような天候状態の為、試合続行が不可能となりましたので\n" +
-                    "この試合は大会規定により、サスペンデッドゲームといたします。"
+                    "この試合は大会規定により、サスペンデッドゲームといたします。",
+                    { progressive: true, cache: true }
                   );
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
@@ -4412,7 +4778,10 @@ return (
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button
                 onClick={async () => {
-                  await speak(waterBreakNotice || waterBreakMessage);
+                  await speak(
+                    waterBreakNotice || waterBreakMessage,
+                    { progressive: true, cache: true }
+                  );
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                             inline-flex items-center justify-center gap-2"

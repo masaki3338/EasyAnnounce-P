@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import localForage from "localforage";
 import { ScreenType } from "./pre-game-announcement";
-import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
+import { speak as ttsSpeak, stop as ttsStop, preserveNameReading, prefetchTTS } from "./lib/tts";
 import { getLeagueMode } from "./lib/leagueSettings";
 
 interface Props {
@@ -89,6 +89,7 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
   const [positions, setPositions] = useState<{ [key: string]: PositionInfo }>({});
   const [isHome, setIsHome] = useState(true); // true → 後攻
   const [speaking, setSpeaking] = useState(false);
+  const seatSpeakSessionRef = useRef(0);
   const [backTarget, setBackTarget] = useState<ScreenType>("announcement" as ScreenType);
   const [leagueMode, setLeagueMode] = useState<"pony" | "boys">(getLeagueMode());
   const [umpires, setUmpires] = useState<{ role: string; name: string; furigana: string }[]>([]);
@@ -128,6 +129,15 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
   // 読み上げ用：「表」を「ひょう」と誤読しないよう明示
   const inningReading =
     inning === "1回の裏" ? "いっかいのうら" : "いっかいのおもて";
+
+  // 読み上げボタンで最初に再生する文章。
+  // 先読み時と実再生時で完全に同じ文字列を使い、キャッシュを確実に一致させる。
+  const seatIntroFirstText =
+    leagueMode === "boys"
+      ? inning === "1回の裏"
+        ? `${inningReading}、守ります、${teamReading}の`
+        : `${inningReading}、まず守ります、${teamReading}の`
+      : `${inningReading}、守ります、${teamReading}のシートをお知らせします。`;
 
   useEffect(() => {
     const loadData = async () => {
@@ -191,8 +201,110 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
     return () => { ttsStop(); setSpeaking(false); };
   }, []);
 
-  // 初回だけ VOICEVOX を温めて初回の待ち時間を短縮
-  useEffect(() => { void prewarmTTS(); }, []);
+  useEffect(() => {
+    if (!teamReading) return;
+
+    const options = { progressive: true, cache: true } as const;
+
+    const pitcher = positions["投"];
+    const fixedKana = (value?: string) =>
+      preserveNameReading(String(value ?? ""));
+    const pitcherName = leagueMode === "boys"
+      ? `${fixedKana(pitcher?.lastNameKana || pitcher?.lastName)} ${fixedKana(
+          pitcher?.firstNameKana || pitcher?.firstName
+        )}`.trim()
+      : pitcher && pitcher.lastName && dupLastNames.has(pitcher.lastName)
+      ? `${fixedKana(pitcher.lastNameKana || pitcher.lastName)} ${fixedKana(
+          pitcher.firstNameKana || pitcher.firstName
+        )}`.trim()
+      : fixedKana(pitcher?.lastNameKana || pitcher?.lastName);
+    const pitcherLine = leagueMode === "boys"
+      ? `ぴっちゃーは、${pitcherName}${pitcher?.honorific || "くん"}`
+      : `ピッチャー、${pitcherName}${pitcher?.honorific || "くん"}`;
+
+    // 開始文＋9人分を画面表示時から順番に先読みする。
+    // 従来は「開始文＋ピッチャー」だけだったため、
+    // ピッチャーの後でキャッチャー以降の生成待ちが発生することがあった。
+    const seatPrefetchLines =
+      leagueMode === "boys"
+        ? [
+            pitcherLine,
+            `キャッチャー、${(() => {
+              const p = positions["捕"];
+              return `${fixedKana(p?.lastNameKana || p?.lastName)} ${fixedKana(
+                p?.firstNameKana || p?.firstName
+              )}`.trim() + (p?.honorific || "くん");
+            })()}`,
+            `ファースト、${(() => {
+              const p = positions["一"];
+              return `${fixedKana(p?.lastNameKana || p?.lastName)} ${fixedKana(
+                p?.firstNameKana || p?.firstName
+              )}`.trim() + (p?.honorific || "くん");
+            })()}`,
+            `セカンド、${(() => {
+              const p = positions["二"];
+              return `${fixedKana(p?.lastNameKana || p?.lastName)} ${fixedKana(
+                p?.firstNameKana || p?.firstName
+              )}`.trim() + (p?.honorific || "くん");
+            })()}`,
+            `サード、${(() => {
+              const p = positions["三"];
+              return `${fixedKana(p?.lastNameKana || p?.lastName)} ${fixedKana(
+                p?.firstNameKana || p?.firstName
+              )}`.trim() + (p?.honorific || "くん");
+            })()}`,
+            `ショート、${(() => {
+              const p = positions["遊"];
+              return `${fixedKana(p?.lastNameKana || p?.lastName)} ${fixedKana(
+                p?.firstNameKana || p?.firstName
+              )}`.trim() + (p?.honorific || "くん");
+            })()}`,
+            `レフト、${(() => {
+              const p = positions["左"];
+              return `${fixedKana(p?.lastNameKana || p?.lastName)} ${fixedKana(
+                p?.firstNameKana || p?.firstName
+              )}`.trim() + (p?.honorific || "くん");
+            })()}`,
+            `センター、${(() => {
+              const p = positions["中"];
+              return `${fixedKana(p?.lastNameKana || p?.lastName)} ${fixedKana(
+                p?.firstNameKana || p?.firstName
+              )}`.trim() + (p?.honorific || "くん");
+            })()}`,
+            `ライト、${(() => {
+              const p = positions["右"];
+              return `${fixedKana(p?.lastNameKana || p?.lastName)} ${fixedKana(
+                p?.firstNameKana || p?.firstName
+              )}`.trim() + (p?.honorific || "くん");
+            })()}`,
+          ]
+        : positionLabels.map(([pos, label]) => {
+            const p = positions[pos];
+            if (!p) return "";
+            const ln = p.lastName || "";
+            const forceFull = ln && dupLastNames.has(ln);
+            const yomi = forceFull
+              ? `${fixedKana(p.lastNameKana || p.lastName)} ${fixedKana(
+                  p.firstNameKana || p.firstName
+                )}`.trim()
+              : fixedKana(p.lastNameKana || p.lastName);
+            const isLastPlayer = pos === "右";
+            return `${label}、${yomi}${p.honorific || "くん"}${isLastPlayer ? "です。" : ""}`;
+          });
+
+    void (async () => {
+      for (const part of [seatIntroFirstText, ...seatPrefetchLines]) {
+        if (!part) continue;
+        await prefetchTTS(part, options);
+      }
+    })().catch((error) => {
+      console.warn("[TTS PREFETCH][SeatIntroduction] failed", error);
+    });
+  }, [teamReading, seatIntroFirstText, positions, dupLastNames, leagueMode]);
+
+  // Matchaの起動時prewarmはtts.ts側で共通実行する。
+  // この画面で重ねてprewarmすると、読み上げボタン直後の実再生と
+  // 1スレッドWorkerを取り合うことがあるため、ここでは実行しない。
 
   // 審判の役割名は保存元によって
   // 「一塁」「1塁」「一塁審」「塁審（一塁）」など表記が異なるため正規化して検索する
@@ -234,75 +346,146 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
   };
 
   const speakText = () => {
+    const speakOpening = async () => {
+      const options = { progressive: true, cache: true } as const;
+      await ttsSpeak(seatIntroFirstText, options);
+    };
+
     const honor = (p?: PositionInfo) => p?.honorific || "くん";
+    const fixedKana = (value?: string) =>
+      preserveNameReading(String(value ?? ""));
+
     const fullKana = (p?: PositionInfo) =>
-      `${p?.lastNameKana || p?.lastName || ""} ${p?.firstNameKana || p?.firstName || ""}`.trim();
+      `${fixedKana(p?.lastNameKana || p?.lastName || "")} ${fixedKana(
+        p?.firstNameKana || p?.firstName || ""
+      )}`.trim();
+
+    const ponyKana = (p?: PositionInfo) => {
+      if (!p) return "";
+      const ln = p.lastName || "";
+      const forceFull = ln && dupLastNames.has(ln);
+
+      return forceFull
+        ? `${fixedKana(p.lastNameKana || p.lastName)} ${fixedKana(
+            p.firstNameKana || p.firstName
+          )}`.trim()
+        : fixedKana(p.lastNameKana || p.lastName);
+    };
 
     const umpireYomi = (role: "球審" | "一塁" | "二塁" | "三塁") => {
       const u: any = findUmpireByRole(role);
-      return (
+      const registeredName = String(
+        u?.name || u?.umpireName || u?.displayName || ""
+      ).trim();
+
+      if (!registeredName || registeredName === "未設定") return "";
+
+      return String(
         u?.furigana ||
         u?.nameKana ||
         u?.kana ||
         u?.reading ||
-        u?.name ||
-        "未設定"
-      );
+        registeredName
+      ).trim();
     };
 
-const boysPlayerLines = [
-  `ピッチャーは、${fullKana(positions["投"])}${honor(positions["投"])}`,
-  `キャッチャー、${fullKana(positions["捕"])}${honor(positions["捕"])}`,
-  `ファースト、${fullKana(positions["一"])}${honor(positions["一"])}`,
-  `セカンド、${fullKana(positions["二"])}${honor(positions["二"])}`,
-  `サード、${fullKana(positions["三"])}${honor(positions["三"])}`,
-  `ショート、${fullKana(positions["遊"])}${honor(positions["遊"])}`,
-  `レフト、${fullKana(positions["左"])}${honor(positions["左"])}`,
-  `センター、${fullKana(positions["中"])}${honor(positions["中"])}`,
-  `ライト、${fullKana(positions["右"])}${honor(positions["右"])}`,
-];
+    // iPhone / iPad は、9人分を1本の長いWAVへ結合すると
+    // Safariで再生エラーになる場合があるため、短い音声を連続再生する。
+    const isIOSSeatIntro =
+      typeof navigator !== "undefined" &&
+      (/iP(hone|ad|od)/.test(navigator.userAgent || "") ||
+        (/Macintosh/.test(navigator.userAgent || "") &&
+          Number((navigator as any).maxTouchPoints || 0) > 1));
 
-const text =
-  leagueMode === "boys"
-    ? inning === "1回の裏"
-      ? [
-          `${inningReading}、守ります、${teamReading}の`,
-          ...boysPlayerLines,
-        ].join("\n")
-      : [
-          `${inningReading}、まず守ります、${teamReading}の`,
-          ...boysPlayerLines,
-          `審判は球審、${umpireYomi("球審")}`,
-          `塁審、一塁、${umpireYomi("一塁")}`,
-          `二塁、${umpireYomi("二塁")}`,
-          `三塁、${umpireYomi("三塁")}`,
-          `以上四氏でございます。`,
-        ].join("\n")
-    : [
-        `${inningReading}、守ります、${teamReading}のシートをお知らせします。`,
-        ...positionLabels.map(([pos, label]) => {
-          const p = positions[pos];
-          const ln = p?.lastName || "";
-          const forceFull = ln && dupLastNames.has(ln);
-
-          const yomi = forceFull
-            ? `${p?.lastNameKana || ""} ${p?.firstNameKana || ""}`
-            : `${p?.lastNameKana || ""}`;
-
-          return `${label}、${yomi}${p?.honorific || "くん"}`;
-        }),
-      ].join("、") + "です。";
-
+    const mySession = ++seatSpeakSessionRef.current;
     setSpeaking(true);
+
     void (async () => {
       try {
-        await ttsSpeak(text, { progressive: true, cache: true });
+        if (leagueMode === "boys") {
+          await speakOpening();
+          if (mySession !== seatSpeakSessionRef.current) return;
+
+          const playerLines = [
+            // 表示は「ピッチャーは」のまま。読み上げ用だけひらがなにして
+            // 「ピッチャー」の固定文一致を確実に回避する。
+            `ぴっちゃーは、${fullKana(positions["投"])}${honor(positions["投"])}`,
+            `キャッチャー、${fullKana(positions["捕"])}${honor(positions["捕"])}`,
+            `ファースト、${fullKana(positions["一"])}${honor(positions["一"])}`,
+            `セカンド、${fullKana(positions["二"])}${honor(positions["二"])}`,
+            `サード、${fullKana(positions["三"])}${honor(positions["三"])}`,
+            `ショート、${fullKana(positions["遊"])}${honor(positions["遊"])}`,
+            `レフト、${fullKana(positions["左"])}${honor(positions["左"])}`,
+            `センター、${fullKana(positions["中"])}${honor(positions["中"])}`,
+            `ライト、${fullKana(positions["右"])}${honor(positions["右"])}`,
+          ];
+
+          // 全端末共通：
+          // 8人分を speakJoinedTTS() でまとめて生成してから再生すると、
+          // キャッシュ未完成時に数秒の大きな無音が発生することがある。
+          // 1人ずつ順番に再生し、画面表示時の先読みキャッシュを利用する。
+          for (const line of playerLines) {
+            if (mySession !== seatSpeakSessionRef.current) return;
+            await ttsSpeak(line, { progressive: true, cache: true });
+          }
+          if (mySession !== seatSpeakSessionRef.current) return;
+
+          if (inning !== "1回の裏") {
+            const configuredUmpires = [
+              { role: "球審" as const, label: "球審" },
+              { role: "一塁" as const, label: "塁審、一塁" },
+              { role: "二塁" as const, label: "二塁" },
+              { role: "三塁" as const, label: "三塁" },
+            ]
+              .map(({ role, label }) => ({ label, reading: umpireYomi(role) }))
+              .filter(({ reading }) => !!reading);
+
+            // 未設定の審判は役割・名前とも読み上げ文から除外する。
+            if (configuredUmpires.length > 0) {
+              const umpireText =
+                `審判は${configuredUmpires
+                  .map(({ label, reading }) => `${label}、${reading}。`)
+                  .join("")}` +
+                (configuredUmpires.length === 4
+                  ? "以上四氏でございます。"
+                  : "以上でございます。");
+
+              if (mySession !== seatSpeakSessionRef.current) return;
+              await ttsSpeak(umpireText, { progressive: true, cache: true });
+            }
+          }
+
+          return;
+        }
+
+        await speakOpening();
+        if (mySession !== seatSpeakSessionRef.current) return;
+
+        const ponyPlayerLines = positionLabels.map(([pos, label]) => {
+          const p = positions[pos];
+          const yomi = ponyKana(p);
+          const isLastPlayer = pos === "右";
+
+          return `${label}、${yomi}${p?.honorific || "くん"}${isLastPlayer ? "です。" : ""}`;
+        });
+
+        // 全端末共通：
+        // まとめて結合生成せず、1人ずつ順番に再生する。
+        // 画面表示時に9人分を先読みしているので、選手間の生成待ちを減らす。
+        for (const line of ponyPlayerLines) {
+          if (mySession !== seatSpeakSessionRef.current) return;
+          await ttsSpeak(line, { progressive: true, cache: true });
+        }
+        if (mySession !== seatSpeakSessionRef.current) return;
       } finally {
-        setSpeaking(false);
+        if (mySession === seatSpeakSessionRef.current) {
+          setSpeaking(false);
+        }
       }
     })();
   };
   const stopSpeaking = () => {
+    seatSpeakSessionRef.current += 1;
     ttsStop();
     setSpeaking(false);
   };
@@ -318,7 +501,7 @@ const text =
 
   const umpireHTML = (role: "球審" | "一塁" | "二塁" | "三塁") => {
     const u: any = findUmpireByRole(role);
-    if (!u) return "（未設定）";
+    if (!u) return "（　）";
 
     const name =
       u?.name ||
@@ -333,7 +516,7 @@ const text =
       u?.reading ||
       "";
 
-    if (!name) return "（未設定）";
+    if (!name || String(name).trim() === "未設定") return "（　）";
     return `<ruby>${name}<rt>${furigana}</rt></ruby>`;
   };
 
@@ -377,6 +560,8 @@ const text =
         })
         .join("<br />") + "です。";
 
+
+  // 導入文だけを優先先読みし、選手紹介部分は従来どおり実再生時に処理する。
 
   if (!teamName) {
     return (

@@ -2,7 +2,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import localForage from "localforage";
 import { ScreenType } from "./App";
-import { speak as ttsSpeak, stop as ttsStop } from "./lib/tts";
+import { speak as ttsSpeak, stop as ttsStop, prefetchTTS, prewarmTTS } from "./lib/tts";
+import { pageStyle } from "./styles/pageStyle";
 
 /* ====== ミニSVGアイコン（依存なし） ====== */
 const IconBack = () => (
@@ -150,6 +151,49 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
   const timer1Ref = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timer2Ref = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // タイマー終了モーダル表示時の通知音（シートノック画面と同じ方式）
+  const playBeeps = async (
+    count = 4,
+    freq = 900,
+    durationSec = 0.14,
+    gapSec = 0.09,
+    volume = 0.22
+  ) => {
+    try {
+      const AudioCtx =
+        (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+
+      const ctx = new AudioCtx();
+      if ((ctx as any).state === "suspended" && (ctx as any).resume) {
+        await (ctx as any).resume();
+      }
+
+      const now = ctx.currentTime;
+      for (let i = 0; i < count; i++) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "square";
+        osc.frequency.value = freq;
+
+        const t0 = now + i * (durationSec + gapSec);
+        gain.gain.setValueAtTime(0, t0);
+        gain.gain.linearRampToValueAtTime(volume, t0 + 0.005);
+        gain.gain.setValueAtTime(volume, t0 + durationSec - 0.02);
+        gain.gain.linearRampToValueAtTime(0, t0 + durationSec);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + durationSec + 0.02);
+      }
+
+      window.setTimeout(() => {
+        try { ctx.close(); } catch {}
+      }, (count * (durationSec + gapSec) + 0.3) * 1000);
+    } catch {}
+  };
+
   useEffect(() => {
     const load = async () => {
       const matchInfo = await localForage.getItem("matchInfo");
@@ -243,6 +287,9 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
     load();
   }, []);
 
+  // 初回だけ VOICEVOX を温めると、最初の読み上げが速くなります
+ useEffect(() => { void prewarmTTS(); }, []);
+
  const team1 = benchSide === "1塁側" ? teamName : opponentName;
   const team3 = benchSide === "3塁側" ? teamName : opponentName;
 
@@ -327,6 +374,18 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
     return () => clearInterval(timer2Ref.current!);
   }, [timer2Active]);
 
+  useEffect(() => {
+    if (showEndModal1) {
+      void playBeeps(4, 900, 0.14, 0.09, 0.22);
+    }
+  }, [showEndModal1]);
+
+  useEffect(() => {
+    if (showEndModal2) {
+      void playBeeps(4, 900, 0.14, 0.09, 0.22);
+    }
+  }, [showEndModal2]);
+
   const formatTime = (sec: number) => {
     const m = Math.floor(sec / 60);
     const s = sec % 60;
@@ -342,6 +401,30 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
     `りょうチームはウォーミングアップニ入ってください。\n` +
     `${team1Read}はトスバッティング、\n` +
     `${team3Read}はキャッチボールを開始してください。`;
+
+  useEffect(() => {
+    // team/opponent の読み込み前に空文字を含む文章を先読みすると、
+    // 1スレッド/低性能端末では本当に必要な音声生成を邪魔する。
+    // チーム名の読み上げ文字が両方確定してから本アナウンスを先読みする。
+    if (!team1Read.trim() || !team3Read.trim()) return;
+
+    // 画面表示後は、本アナウンスを最優先で先読みする。
+    const mainTimer = window.setTimeout(() => {
+      void prefetchTTS(mainSpeak);
+    }, 40);
+
+    // 固定文は後回し。メインの動的文章の生成を邪魔しない。
+    const subTimer = window.setTimeout(() => {
+      void prefetchTTS("りょうチーム、交代してください。");
+      void prefetchTTS("ウォーミングアップを終了してください。");
+    }, 1200);
+
+    return () => {
+      window.clearTimeout(mainTimer);
+      window.clearTimeout(subTimer);
+    };
+  }, [mainSpeak, team1Read, team3Read]);
+
 
   return (
       <div 

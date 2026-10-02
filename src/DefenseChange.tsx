@@ -6,7 +6,7 @@ import { useDrag } from "react-dnd";
 import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 import localForage from "localforage";
 import { useNavigate } from "react-router-dom";
-import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
+import { speak as ttsSpeak, stop as ttsStop, prefetchTTS, prewarmTTS, preserveNameReading } from "./lib/tts";
 import {
   deriveCurrentGameState,
   reenterPlayerToPosition,
@@ -38,18 +38,21 @@ function toReadable(root: HTMLElement): string {
   // ルビは「かな」を優先
   clone.querySelectorAll("ruby").forEach(ruby => {
     const rt = ruby.querySelector("rt");
-    if (rt) {
-      ruby.replaceWith(rt.textContent || "");
-    } else {
-      ruby.replaceWith(ruby.textContent || "");
-    }
+    const next = ruby.nextElementSibling;
+    const nextIsRuby = next?.tagName?.toLowerCase() === "ruby";
+    const reading = rt
+      ? preserveNameReading(rt.textContent || "")
+      : (ruby.textContent || "");
+    // 苗字と名前が連続する場合は、読点ほど長く空けず
+    // 半角スペース1個だけ入れて短い間を残す。
+    ruby.replaceWith(reading + (nextIsRuby ? " " : ""));
   });
 
   // テキスト化
   let text = clone.innerText || "";
 
-  // ✅ 単独の「4番」だけを「よばん」に（14番/40番などは対象外）
-  text = text.replace(/(^|[^0-9])4番(?![0-9])/g, "$1よばん");
+  // ✅ 単独の「4番」だけを「ヨバン」に（14番/40番などは対象外）
+  text = text.replace(/(^|[^0-9])4番(?![0-9])/g, "$1ヨバン");
 
   // ✅ 単独の「0」は「れい」ではなく「ゼロ」
   text = text.replace(/(^|[^0-9])0(?![0-9])/g, "$1ゼロ");
@@ -80,7 +83,167 @@ text = text.replace(
   // ✅ 「○○くん背番号〇」→「○○くん、背番号〇」
   text = text.replace(/(さん|くん)\s*背番号\s*/g, "$1、背番号 ");
 
+  // ✅ 選手名と敬称の間は読み上げ時に絶対に空けない
+  // <ruby> の後ろにHTML由来の空白・改行・読点が残っても、
+  // 「ササキ くん」「ササキ、くん」ではなく「ササキくん」と一続きにする。
+  // 表示用HTMLは変更せず、toReadable() が返す読み上げ文字列だけを補正する。
+  text = text.replace(
+    /([^\s、。！？!?，,]+)[\s\u00A0\u3000、，,]+(くん|さん)/g,
+    "$1$2"
+  );
+
   return text;
+}
+
+// 守備交代モーダル専用：
+// 先読みと本番読み上げで必ず同じ完成文字列を使う。
+function buildDefenseAnnouncementSpeakText(html: string): string {
+  if (!html) return "";
+
+  const temp = document.createElement("div");
+  temp.innerHTML = html;
+
+  let text = toReadable(temp);
+
+  text = text
+    // 「に」と「入ります」を分割しない。
+    // ひらがなの「にはいります」は、音声によって「に・わ・いります」と
+    // 助詞の「は」に誤解析されるため、動詞部分だけカタカナで固定する。
+    .replace(/に\s*[、,]?\s*入ります/g, "にハイリマス")
+    .replace(/へ入ります/g, "へはいります")
+    .replace(/が\s*入り/g, "がはいり")
+    .replace(/へ\s*入り/g, "へはいり")
+    .replace(/に\s*入り/g, "にハイリ")
+    .replace(/そのまま\s*入り/g, "そのままハイリ")
+    // 「○番に○○くん」は選手名まで同じ生成単位で読む。
+    // ここに読点を入れると「○番に」と選手名が別チャンクになり、
+    // 選手名の開始待ちが発生するため、半角スペースだけ残す。
+    .replace(/([1-9１-９])番に\s*/g, "$1番に ")
+    .replace(/\u00A0/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\s*\n\s*/g, "。")
+    .replace(/。。+/g, "。")
+    .trim();
+
+  // 打順は単独なら固定MP3を使う。
+  // ただし「4番に」「8番に」のように「に」が直後に続く場合だけ、
+  // 固定MP3へ分割せずMatchaで一続きに読ませるためカタカナ読みに変える。
+  const battingOrderReadings: Record<string, string> = {
+    "1": "イチバン",
+    "2": "ニバン",
+    "3": "サンバン",
+    "4": "ヨバン",
+    "5": "ゴバン",
+    "6": "ロクバン",
+    "7": "ナナバン",
+    "8": "ハチバン",
+    "9": "キュウバン",
+  };
+  const normalizeDigit = (digit: string) =>
+    String("１２３４５６７８９".indexOf(digit) + 1 || digit);
+
+  text = text.replace(
+    /([1-9１-９])番(?=\s*に)/g,
+    (_match, digit: string) => {
+      const normalized = normalizeDigit(digit);
+      return battingOrderReadings[normalized] ?? `${normalized}番`;
+    }
+  );
+
+  // 「○番に、選手名」のような古い区切りが残っていても、
+  // 選手名の前では読点を使わない。
+  text = text
+    .replace(
+      /((?:イチ|ニ|サン|ヨ|ゴ|ロク|ナナ|ハチ|キュウ)バンに)\s*[、,]\s*/g,
+      "$1 "
+    )
+    .replace(/に\s*[、,]\s*はいります/g, "にハイリマス")
+    .replace(/に\s*[、,]\s*ハイリマス/g, "にハイリマス");
+
+  // 守備位置は単独なら固定MP3を使う。
+  // ただし「ショートの」「ピッチャーに」など助詞が直後に続く場合は、
+  // 固定MP3へ分割すると助詞との間に不自然な間ができるため、
+  // 固定文に一致しないひらがな読みへ変えてMatchaで一続きに生成する。
+  const positionReadingsWithParticle: Record<string, string> = {
+    ピッチャー: "ぴっちゃー",
+    キャッチャー: "きゃっちゃー",
+    ファースト: "ふぁーすと",
+    セカンド: "せかんど",
+    サード: "さーど",
+    ショート: "しょーと",
+    レフト: "れふと",
+    センター: "せんたー",
+    ライト: "らいと",
+    指名打者: "しめいだしゃ",
+  };
+  text = text.replace(
+    /(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)(?=\s*(?:の|に|へ|を|が|は|で|と|から|まで))/g,
+    (position) => positionReadingsWithParticle[position] ?? position
+  );
+
+  if (text && !/[。！？]$/.test(text)) text += "。";
+
+  return text;
+}
+
+// 読み上げ開始を速くするため、長い交代アナウンスを短いまとまりに分ける。
+// 文言は変えず、句点/読点の位置だけを境界として利用する。
+function splitDefenseAnnouncementSpeakParts(text: string): string[] {
+  const source = String(text ?? "").trim();
+  if (!source) return [];
+
+  const sentences =
+    source.match(/[^。！？]+[。！？]?/g)?.map((s) => s.trim()).filter(Boolean) ?? [source];
+
+  const result: string[] = [];
+
+  for (const sentence of sentences) {
+    // 「チーム名、選手の交代をお知らせいたします。」は途中で分けない。
+    // チーム名だけを先に再生すると、その後の固定文まで大きな間ができるため。
+    if (/お知らせいたします[。！？]?$/.test(sentence)) {
+      result.push(sentence);
+      continue;
+    }
+
+    if (sentence.length <= 28) {
+      result.push(sentence);
+      continue;
+    }
+
+    // 「ハチバンに、ウエダくん」のような古い読点が残っていても、
+    // 打順と選手名の境界では絶対にチャンク分割しない。
+    const sentenceForSplit = sentence.replace(
+      /((?:イチ|ニ|サン|ヨ|ゴ|ロク|ナナ|ハチ|キュウ)バンに)\s*[、,]\s*/g,
+      "$1 "
+    );
+
+    const clauses =
+      sentenceForSplit.match(/[^、]+、?/g)?.map((s) => s.trim()).filter(Boolean) ??
+      [sentenceForSplit];
+    let current = "";
+
+    for (const clause of clauses) {
+      if (!current) {
+        current = clause;
+        continue;
+      }
+
+      if ((current + clause).length <= 28) {
+        current += clause;
+      } else {
+        result.push(current);
+        current = clause;
+      }
+    }
+
+    if (current) result.push(current);
+  }
+
+  const filtered = result.filter(Boolean);
+
+  // 守備変更本文と、最後の打順確認は必ず別パートにする。
+  // 本文の守備位置はMatcha生成、最後の打順確認は固定MP3を使う。
+  return filtered;
 }
 
 
@@ -4547,6 +4710,11 @@ const preventRef = useRef<(e: Event) => void>();
 
   // === VOICEVOX 読み上げ制御用 ===
   const [speaking, setSpeaking] = useState(false);
+  const defenseAnnouncementPrefetchVersionRef = useRef(0);
+
+  // 交代アナウンスの連続再生を停止するための世代番号。
+  // 停止ボタンを押すと番号を進め、現在のforループを以後すべて無効化する。
+  const defenseAnnouncementPlaybackVersionRef = useRef(0);
 
   // 初回マウント時に VOICEVOX をウォームアップ
   useEffect(() => {
@@ -4556,6 +4724,8 @@ const preventRef = useRef<(e: Event) => void>();
   // アンマウント時に再生を止める
   useEffect(() => {
     return () => {
+      defenseAnnouncementPlaybackVersionRef.current += 1;
+      defenseAnnouncementPrefetchVersionRef.current += 1;
       ttsStop();
     };
   }, []);
@@ -4583,47 +4753,223 @@ const unlockScroll = () => {
   }
 };
 
+// 最後の打順確認行かを判定する。
+// 例: 「3番 センター ○○くん」
+//
+// この行だけは打順・守備位置の固定MP3を使う。
+// それ以外の交代本文では、守備位置を含めてMatchaで生成する。
+const isDefenseLineupSpeakPart = (part: string): boolean => {
+  const s = String(part ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!s) return false;
+
+  // 交代本文を示す語が1つでも入っていれば、打順確認行ではない。
+  //
+  // 例:
+  //   「3番に○○くんが入り セカンド」
+  //   「○○くんがセンター」
+  //   「センターの○○くんがピッチャーに入ります」
+  //
+  // これらは守備位置を含め、すべてMatcha生成にする。
+  if (
+    /(?:代わりまして|代わり|そのまま|リエントリー|がはいり|が入り|ハイリ|はいり|入ります|入り|へはいります|にハイリマス|に入ります)/u.test(
+      s
+    )
+  ) {
+    return false;
+  }
+
+  // 「○番に～」は交代本文なので固定文を使わない。
+  if (
+    /^(?:(?:イチ|ニ|サン|ヨ|ゴ|ロク|ナナ|ハチ|キュウ)バン|[1-9１-９]番)\s*に/u.test(
+      s
+    )
+  ) {
+    return false;
+  }
+
+  const order =
+    String.raw`(?:(?:イチ|ニ|サン|ヨ|ゴ|ロク|ナナ|ハチ|キュウ)バン|[1-9１-９]番)`;
+
+  const position =
+    String.raw`(?:ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)`;
+
+  // 最後の打順確認行だけtrue。
+  //
+  // 例:
+  //   「3番 セカンド ヤマダくん」
+  //   「サンバン セカンド ヤマダ タロウくん 背番号 4」
+  //
+  // 「○番 + 守備位置 + 選手名」の確認行に限定する。
+  const lineupPattern =
+    new RegExp(
+      `^${order}[\\s、,]+${position}[\\s、,]+.+(?:くん|さん)(?:[\\s、,]*背番号[\\s]*\\d+)?[。！？]?$`,
+      "u"
+    );
+
+  return lineupPattern.test(s);
+};
+
+const getDefenseSpeakOptionsForPart = (part: string) => {
+  const isLineupPart = isDefenseLineupSpeakPart(part);
+
+  return {
+    progressive: true,
+    cache: true,
+    // trueになるのは最後の打順確認行以外。
+    // 「入り セカンド」「○○がセンター」など本文中の守備位置は
+    // 空白があっても固定MP3へ分割せず、Matcha生成文として読む。
+    disableFixedBattingAndPositions: !isLineupPart,
+  } as const;
+};
+
 const speakVisibleAnnouncement = () => {
   const html = announcementText?.speakText || "";
   if (!html) return;
 
-  const temp = document.createElement("div");
-  temp.innerHTML = html;
+  const text = buildDefenseAnnouncementSpeakText(html);
+  if (!text) return;
 
-  let text = toReadable(temp);
+  const parts = splitDefenseAnnouncementSpeakParts(text);
+  if (!parts.length) return;
 
-  text = text
-    .replace(/に入ります/g, "に、はいります")
-    .replace(/へ入ります/g, "へはいります")
-    .replace(/が\s*入り/g, "がはいり")
-    .replace(/へ\s*入り/g, "へはいり")
-    .replace(/に\s*入り/g, "にはいり")
-    .replace(/そのまま\s*入り/g, "そのまま、はいり");
+  // 新しい読み上げを開始するたびに世代番号を進める。
+  // 以前の読み上げループが残っていても、この番号が違えば次のパートへ進ませない。
+  const playbackVersion =
+    ++defenseAnnouncementPlaybackVersionRef.current;
 
-  text = text
-    .replace(/\u00A0/g, " ")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\s*\n\s*/g, "。")
-    .replace(/。。+/g, "。")
-    .trim();
-
-  if (text && !/[。！？]$/.test(text)) text += "。";
-
-  ttsStop();
+  // 再生中にもう一度押された場合は、現在音声を止めて新しい世代で読み直す。
+  if (speaking) ttsStop();
   setSpeaking(true);
+
   void (async () => {
     try {
-      await ttsSpeak(text, { progressive: true, cache: true });
+      console.log("[TTS PLAY][DefenseChange] rolling lookahead start", {
+        parts: parts.length,
+        firstPartPreview: parts[0]?.slice(0, 60),
+      });
+
+      // 最初の音を最優先しつつ、現在パートの再生中に次パートを先回り生成する。
+      //
+      // モーダル表示中は先頭パートだけ先読みする。
+      // 2パート目以降は、現在パートの ttsSpeak() を開始した「あと」に
+      // foregroundLookahead=true で準備する。
+      //
+      // これにより、
+      //   固定文/現在文を再生
+      //      ↓ その再生時間を利用して次の作成文を生成
+      //      ↓
+      //   現在文終了時には次文ができている
+      // というローリング先読みになる。
+      for (let i = 0; i < parts.length; i++) {
+        // 停止ボタン、別の読み上げ開始、画面切替などで世代が変わったら
+        // ここで連続再生そのものを終了する。
+        if (
+          playbackVersion !==
+          defenseAnnouncementPlaybackVersionRef.current
+        ) {
+          console.log("[TTS PLAY][DefenseChange] cancelled before part", {
+            index: i,
+          });
+          return;
+        }
+
+        const currentPart = parts[i];
+        const nextPart = parts[i + 1];
+
+        const currentSpeakOptions =
+          getDefenseSpeakOptionsForPart(currentPart);
+
+        const nextSpeakOptions =
+          nextPart
+            ? getDefenseSpeakOptionsForPart(nextPart)
+            : null;
+
+        console.log("[TTS PLAY][DefenseChange] part", {
+          index: i,
+          preview: currentPart?.slice(0, 60),
+          lineupPart: isDefenseLineupSpeakPart(currentPart),
+          disableFixedBattingAndPositions:
+            currentSpeakOptions.disableFixedBattingAndPositions,
+          nextPreview: nextPart?.slice(0, 60),
+        });
+
+        // まず現在パートを最優先で開始。
+        const playPromise =
+          ttsSpeak(currentPart, currentSpeakOptions);
+
+        if (nextPart && nextSpeakOptions) {
+          await new Promise<void>(
+            (resolve) => window.setTimeout(resolve, 80)
+          );
+
+          // 80ms待っている間に停止された場合は、次文の先読みも開始しない。
+          if (
+            playbackVersion !==
+            defenseAnnouncementPlaybackVersionRef.current
+          ) {
+            console.log("[TTS PLAY][DefenseChange] cancelled before lookahead", {
+              index: i,
+            });
+            return;
+          }
+
+          void prefetchTTS(nextPart, {
+            ...nextSpeakOptions,
+            foregroundLookahead: true,
+          }).catch((error) => {
+            console.warn("[TTS LOOKAHEAD][DefenseChange] failed", {
+              index: i + 1,
+              preview: nextPart?.slice(0, 60),
+              error,
+            });
+          });
+        }
+
+        await playPromise;
+
+        // 現在の固定文 / Matcha音声を停止した場合、
+        // ttsSpeak() がresolveしても次のパートへ進ませない。
+        if (
+          playbackVersion !==
+          defenseAnnouncementPlaybackVersionRef.current
+        ) {
+          console.log("[TTS PLAY][DefenseChange] cancelled after part", {
+            index: i,
+          });
+          return;
+        }
+      }
     } finally {
-      setSpeaking(false);
+      // 古い読み上げループのfinallyで、
+      // 新しく開始した読み上げのspeaking状態をfalseにしない。
+      if (
+        playbackVersion ===
+        defenseAnnouncementPlaybackVersionRef.current
+      ) {
+        setSpeaking(false);
+      }
     }
   })();
 };
 
 
 
+  const stopSpeaking = () => {
+    // 現在の固定MP3 / Matcha音声を止めるだけでなく、
+    // 交代アナウンスの残りパート再生ループもすべて無効化する。
+    defenseAnnouncementPlaybackVersionRef.current += 1;
 
-  const stopSpeaking  = () => ttsStop();
+    // 進行中の通常先読みも世代変更で破棄。
+    defenseAnnouncementPrefetchVersionRef.current += 1;
+
+    ttsStop();
+    setSpeaking(false);
+
+    console.log("[TTS STOP][DefenseChange] all remaining parts cancelled");
+  };
 // ---- ここまで ----
 
   const [teamName, setTeamName] = useState("自チーム");       // 表示用
@@ -4637,6 +4983,59 @@ const speakVisibleAnnouncement = () => {
       }
     });
   }, []);
+
+  // ----------------------------------------------------------------
+  // 交代アナウンスの「出だし」は守備交代画面を開いた時点で準備する。
+  // モーダルを開いてから初めて生成すると、読み上げボタン押下直後に待ちが出る。
+  // ポニー / ボーイズ共通。
+  // ----------------------------------------------------------------
+  useEffect(() => {
+    const reading = String(teamReading ?? "").trim();
+    if (!reading || reading === "自チーム") return;
+
+    const options = {
+      progressive: true,
+      cache: true,
+      disableFixedBattingAndPositions: false,
+    } as const;
+
+    const headers = [
+      `${reading}、選手の交代をお知らせいたします。`,
+      `${reading}、選手の交代並びにシートの変更をお知らせいたします。`,
+      `${reading}、シートの変更をお知らせいたします。`,
+    ];
+
+    let cancelled = false;
+
+    void (async () => {
+      console.log("[TTS PREFETCH][DefenseChange HEADER] start", {
+        teamReading: reading,
+      });
+
+      for (const header of headers) {
+        if (cancelled) return;
+
+        try {
+          await prefetchTTS(header, options);
+        } catch (error) {
+          console.warn(
+            "[TTS PREFETCH][DefenseChange HEADER] failed",
+            { header, error }
+          );
+        }
+      }
+
+      if (!cancelled) {
+        console.log("[TTS PREFETCH][DefenseChange HEADER] ready", {
+          teamReading: reading,
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [teamReading]);
 
   useEffect(() => {
   (async () => {
@@ -5219,28 +5618,29 @@ const restoreSnapshot = async (s: DefenseSnapshot) => {
 };
 
 const normalizeIdList = (raw: unknown): number[] => {
-  if (!Array.isArray(raw)) return [];
+  // 保存時期によって number[] / string[] / Set / { ids: [] } の形があるため吸収する。
+  const source =
+    Array.isArray(raw)
+      ? raw
+      : raw instanceof Set
+        ? Array.from(raw)
+        : raw && typeof raw === "object" && Array.isArray((raw as any).ids)
+          ? (raw as any).ids
+          : [];
 
   return Array.from(
     new Set(
-      raw
+      source
         .map((v) => Number(v))
         .filter(Number.isFinite)
     )
   );
 };
 
-const getCurrentDefenseTeamId = async () => {
+const getCurrentDefenseTeamIds = async (): Promise<string[]> => {
   const team = await localForage.getItem<any>("team");
   const matchInfo = await localForage.getItem<any>("matchInfo");
   const onePersonCtx = await localForage.getItem<any>("onePersonDefenseChangeContext");
-
-  const normalTeamId =
-    team?.id ||
-    team?.teamId ||
-    team?.team?.id ||
-    team?.originalTeamId ||
-    null;
 
   // 1人用モードでは localForage の "team" が自チーム固定になることがあるため、
   // 守備交代対象のベンチ側からチームIDを補完して、ベンチ外選手を正しく除外する。
@@ -5250,29 +5650,85 @@ const getCurrentDefenseTeamId = async () => {
     onePersonCtx?.benchSide ||
     null;
 
-  const onePersonTeamId =
+  const sideTeam =
     defenseSide === "first" || defenseSide === "1塁側"
-      ? matchInfo?.firstBaseTeamId
+      ? matchInfo?.firstBaseTeam ?? matchInfo?.firstTeam ?? null
       : defenseSide === "third" || defenseSide === "3塁側"
-        ? matchInfo?.thirdBaseTeamId
+        ? matchInfo?.thirdBaseTeam ?? matchInfo?.thirdTeam ?? null
         : null;
 
-  return onePersonTeamId || normalTeamId;
+  const sideTeamId =
+    defenseSide === "first" || defenseSide === "1塁側"
+      ? matchInfo?.firstBaseTeamId ?? matchInfo?.firstTeamId
+      : defenseSide === "third" || defenseSide === "3塁側"
+        ? matchInfo?.thirdBaseTeamId ?? matchInfo?.thirdTeamId
+        : null;
+
+  // 画面の世代ごとに保存されているIDの場所が異なるため、候補をすべて拾う。
+  const candidates = [
+    sideTeamId,
+    sideTeam?.id,
+    sideTeam?.teamId,
+    onePersonCtx?.teamId,
+    onePersonCtx?.defenseTeamId,
+    onePersonCtx?.targetTeamId,
+    team?.id,
+    team?.teamId,
+    team?.team?.id,
+    team?.originalTeamId,
+  ];
+
+  return Array.from(
+    new Set(
+      candidates
+        .filter((id) => id !== null && id !== undefined && String(id).trim() !== "")
+        .map((id) => String(id))
+    )
+  );
 };
 
 const loadCurrentDefenseBenchOutIds = async () => {
-  const teamId = await getCurrentDefenseTeamId();
+  const teamIds = await getCurrentDefenseTeamIds();
+  const onePersonCtx = await localForage.getItem<any>("onePersonDefenseChangeContext");
+  const side =
+    onePersonCtx?.defenseSide === "first" || onePersonCtx?.defenseSide === "third"
+      ? onePersonCtx.defenseSide
+      : onePersonCtx?.targetSide === "first" || onePersonCtx?.targetSide === "third"
+        ? onePersonCtx.targetSide
+        : null;
 
-  const rawByTeam = teamId
-    ? await localForage.getItem<number[]>(`startingBenchOutIds_${teamId}`)
-    : null;
+  // 現行・旧版の保存キーを順に確認する。
+  const keys = [
+    ...(side
+      ? [
+          `onePerson.${side}.startingBenchOutIds`,
+          `onePerson.${side}.benchOutIds`,
+          `startingBenchOutIds_${side}`,
+        ]
+      : []),
+    ...teamIds.flatMap((teamId) => [
+      `startingBenchOutIds_${teamId}`,
+      `benchOutIds_${teamId}`,
+    ]),
+  ];
+
+  for (const key of keys) {
+    const ids = normalizeIdList(await localForage.getItem(key));
+    if (ids.length > 0) return ids;
+  }
+
+  // StartingLineup.tsx が実際に保存している共通キー。
+  // 通常モードではこの値が「出場しない選手」の正式な一覧になる。
+  const startingBenchOutIds = normalizeIdList(
+    await localForage.getItem("startingBenchOutIds")
+  );
+  if (startingBenchOutIds.length > 0) return startingBenchOutIds;
 
   // OnePersonAnnounceScreen 側から守備交代画面を開く直前に保存する保険キー。
   // チームID解決に失敗しても、対象チームのベンチ外選手を除外できるようにする。
-  const rawFallback = await localForage.getItem<number[]>("defenseChangeBenchOutIds");
+  const rawFallback = await localForage.getItem("defenseChangeBenchOutIds");
 
-  const byTeam = normalizeIdList(rawByTeam);
-  return byTeam.length > 0 ? byTeam : normalizeIdList(rawFallback);
+  return normalizeIdList(rawFallback);
 };
 
 // 新しい操作の前に履歴へ積む（永続化対応）
@@ -6498,11 +6954,26 @@ const baseSpeakText = generateAnnouncementText(
   dhDisableSnapshot
 );
 
-const displayText = [baseDisplayText, pitcherCountAnnouncement]
+// 守備交代アナウンス共通整形：
+// 「（守備位置）へ、」は「へ」を省き、「（守備位置）、」にする。
+// 表示用・読み上げ用の両方へ同じ変換をかける。
+const removeHeBeforeCommaAfterPosition = (value: string): string =>
+  String(value ?? "").replace(
+    /(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)へ\s*、/g,
+    "$1、"
+  );
+
+const normalizedBaseDisplayText =
+  removeHeBeforeCommaAfterPosition(baseDisplayText);
+
+const normalizedBaseSpeakText =
+  removeHeBeforeCommaAfterPosition(baseSpeakText);
+
+const displayText = [normalizedBaseDisplayText, pitcherCountAnnouncement]
   .filter(Boolean)
   .join("<br />");
 
-const speakText = [baseSpeakText, pitcherCountAnnouncement]
+const speakText = [normalizedBaseSpeakText, pitcherCountAnnouncement]
   .filter(Boolean)
   .join(" ");
 
@@ -6661,6 +7132,72 @@ return normalText;
 ]);
 
 useEffect(() => {
+  const html =
+    typeof announcementText === "object" && announcementText
+      ? (announcementText as any).speakText || ""
+      : "";
+
+  if (!html) return;
+
+  const text = buildDefenseAnnouncementSpeakText(html);
+  const parts = splitDefenseAnnouncementSpeakParts(text);
+  if (!parts.length) return;
+
+  const version = ++defenseAnnouncementPrefetchVersionRef.current;
+
+  // 先頭1文は読み上げ開始速度に直結するので、debounceせず即先読みする。
+  // 2つ目以降だけ、守備配置変更中の無駄な再生成を避けるため少し遅らせる。
+  const options =
+    getDefenseSpeakOptionsForPart(parts[0]);
+
+  let cancelled = false;
+
+  // モーダル表示中は先頭パートだけ先読みする。
+  // 本文なら守備位置もMatcha生成、打順確認行なら固定MP3を維持する。
+  void (async () => {
+    try {
+      console.log("[TTS PREFETCH][DefenseChange FIRST] start", {
+        showSaveModal,
+        preview: parts[0]?.slice(0, 60),
+      });
+
+      await prefetchTTS(parts[0], options);
+
+      if (
+        cancelled ||
+        version !== defenseAnnouncementPrefetchVersionRef.current
+      ) return;
+
+      console.log("[TTS PREFETCH][DefenseChange FIRST] ready", {
+        showSaveModal,
+        preview: parts[0]?.slice(0, 60),
+      });
+
+      // 画面表示中のバックグラウンド先読みはここで終了。
+      //
+      // 以前は2文目以降もここで全て生成していたため、
+      // 交代内容を変更した直後や、モーダルを開いてすぐ読み上げた場合に
+      // 古い/後続の作成文生成が1スレッドWorkerを占有し、
+      // 本番の作成文が待たされることがあった。
+      //
+      // 2文目以降は speakVisibleAnnouncement() で、
+      // 現在文を再生している間に1文ずつローリング先読みする。
+      console.log("[TTS PREFETCH][DefenseChange FIRST ONLY] ready", {
+        parts: parts.length,
+        firstPartPreview: parts[0]?.slice(0, 60),
+      });
+    } catch (error) {
+      console.warn("[TTS PREFETCH][DefenseChange] failed", error);
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [announcementText, showSaveModal]);
+
+
+useEffect(() => {
   if (dirty) return; // ★手動で守備を触ったら、自動配置で上書きしない
   if (!battingOrder || !usedPlayerInfo) return;
 
@@ -6713,7 +7250,8 @@ useEffect(() => {
         if (!Number.isFinite(id)) return false;
         if (assignedIdsNow.includes(id)) return false;
 
-        return !benchOutIds.includes(id) || forcedReturnedUsedBenchIds.has(id);
+        // 「出場しない選手」は、補正対象になっていても絶対に表示しない。
+        return !benchOutIds.includes(id);
       })
     );
   })();

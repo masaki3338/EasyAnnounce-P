@@ -1,7 +1,7 @@
 // SheetKnock.tsx（全文置き換え）
 import React, { useEffect, useState, useRef } from "react";
 import localForage from "localforage";
-import { speak as ttsSpeak, stop as ttsStop, prewarmTTS  } from "./lib/tts";
+import { speak as ttsSpeak, stop as ttsStop, prefetchTTS, prewarmTTS } from "./lib/tts";
 import { getLeagueMode } from "./lib/leagueSettings";
 
 // これを SheetKnock.tsx の先頭 import 群の直後に追加
@@ -224,6 +224,7 @@ const SheetKnock: React.FC<Props> = ({ onBack }) => {
   const [opponentTeamName, setOpponentTeamName] = useState("");
   const [announcementMode, setAnnouncementMode] =
     useState<"normal" | "single">("normal");
+  const [dataLoaded, setDataLoaded] = useState(false);
 
   const [firstTeamName, setFirstTeamName] = useState("");
   const [thirdTeamName, setThirdTeamName] = useState("");
@@ -383,17 +384,18 @@ const playBeeps = async (
 
   useEffect(() => {
     const load = async () => {
-      const team = await localForage.getItem("team");
-      const matchInfo = await localForage.getItem("matchInfo");
+      try {
+        const team = await localForage.getItem("team");
+        const matchInfo = await localForage.getItem("matchInfo");
 
-      if (team && typeof team === "object") {
+        if (team && typeof team === "object") {
         const t = team as any;
         setTeamName(t.name || "");
         setTeamReading(t.furigana || t.kana || t.reading || t.name || "");
       }
 
-      if (matchInfo && typeof matchInfo === "object") {
-        const info = matchInfo as any;
+        if (matchInfo && typeof matchInfo === "object") {
+          const info = matchInfo as any;
 
         if (info.announcementMode === "single") {
           const side = info.sheetKnockSide ?? "home";
@@ -448,16 +450,42 @@ const playBeeps = async (
           setIsHome(info.isHome === true ? "後攻" : "先攻");
           setOpponentTeamName(info.opponentTeam || "");
         }
+        }
+      } finally {
+        setDataLoaded(true);
       }
     };
     load();
   }, []);
 
+  // Matcha/Vocos/OpenJTalk を画面表示直後に共通準備。
+  // UIは待たせず、読み上げボタンが押される前に初期化を進める。
+  useEffect(() => {
+    void prewarmTTS();
+  }, []);
+
 // VOICEVOX優先の読み上げ（状態フラグも更新）
+const KNOCK_NOTICE_PAUSE_MS = 100;
+const knockNoticePrefix = "ノック時間、残り";
+const knockNoticeMinutesPart = `${noticeMinutes}分です`;
+
 const handleSpeak = async (text: string, key: string) => {
-  setReadingKey(key);          // 押したカードを「再生中」に
-  await ttsSpeak(text);        // VOICEVOX→失敗時WebSpeech
-  setReadingKey(null);         // 再生終了後に解除（※VOX完了イベントは取らないので“押下でON→終わりでOFF”の簡易管理）
+  setReadingKey(key);
+
+  try {
+    if (key === "2min" && noticeMinutes > 0) {
+      await ttsSpeak(knockNoticePrefix);
+      await new Promise<void>((resolve) =>
+        window.setTimeout(resolve, KNOCK_NOTICE_PAUSE_MS)
+      );
+      await ttsSpeak(knockNoticeMinutesPart);
+      return;
+    }
+
+    await ttsSpeak(text);
+  } finally {
+    setReadingKey(null);
+  }
 };
 
 // 停止（VOICEVOX <audio> と WebSpeech を両方止める）
@@ -539,21 +567,69 @@ const activeTeamReading =
     : teamReading;
 
 const prepDisplayMessage =
-  isHome === "後攻" ? ` ${activeTeamName}はシートノックの準備に入って下さい。` : null;
+  isHome === "後攻" ? ` ${activeTeamName}はシートノックの準備に入ってください。` : null;
 
 const prepSpeakMessage =
-  isHome === "後攻" ? ` ${activeTeamReading}はシートノックの準備に入って下さい。` : null;
+  isHome === "後攻" ? ` ${activeTeamReading}はシートノックの準備に入ってください。` : null;
 
 const mainDisplayMessage =
   isHome === "後攻"
-    ? ` ${activeTeamName}はシートノックに入って下さい。\nノック時間は、${knockMinutes}分以内です。`
-    : ` ${activeTeamName}はシートノックに入って下さい。\nノック時間は同じく${knockMinutes}分以内です。`;
+    ? ` ${activeTeamName}はシートノックに入ってください。\nノック時間は、${knockMinutes}分以内です。`
+    : ` ${activeTeamName}はシートノックに入ってください。\nノック時間は同じく${knockMinutes}分以内です。`;
 
 const mainSpeakMessage =
   isHome === "後攻"
-    ? `${activeTeamReading}はシートノックに入って下さい。\nノック時間、は${knockMinutes}分以内です。`
-    : `${activeTeamReading}はシートノックに入って下さい。\nノック時間、は同じく${knockMinutes}分以内です。`;
+    ? `${activeTeamReading}はシートノックに入ってください。\nノック時間は、${knockMinutes}分以内です。`
+    : `${activeTeamReading}はシートノックに入ってください。\nノック時間は同じく${knockMinutes}分以内です。`;
 
+useEffect(() => {
+  if (!dataLoaded) return;
+  if (!activeTeamReading.trim()) return;
+
+  let cancelled = false;
+
+  const runPrefetch = async () => {
+    // 最重要:
+    // 「チーム名～」から始まる本アナウンスを最優先で完全に先読みする。
+    // これが終わるまで他のMatcha生成を開始しない。
+    await prefetchTTS(mainSpeakMessage);
+
+    if (cancelled) return;
+
+    if (prepSpeakMessage) {
+      await prefetchTTS(prepSpeakMessage);
+    }
+
+    if (cancelled) return;
+
+    if (noticeMinutes > 0) {
+      await prefetchTTS(knockNoticePrefix);
+      if (cancelled) return;
+
+      await prefetchTTS(knockNoticeMinutesPart);
+      if (cancelled) return;
+    }
+
+    await prefetchTTS("ノックを終了してください。");
+  };
+
+  const timer = window.setTimeout(() => {
+    void runPrefetch();
+  }, 0);
+
+  return () => {
+    cancelled = true;
+    window.clearTimeout(timer);
+  };
+}, [
+  dataLoaded,
+  activeTeamReading,
+  prepSpeakMessage,
+  mainSpeakMessage,
+  noticeMinutes,
+  knockNoticePrefix,
+  knockNoticeMinutesPart,
+]);
 
   const hasTimingHint = isHome === "先攻";
   const stepNum = (n: number) => n + (hasTimingHint ? 1 : 0);
@@ -843,10 +919,30 @@ const mainSpeakMessage =
       <p id="two-min-title" className="text-2xl sm:text-3xl font-extrabold mb-6 leading-relaxed">
         ノック時間、残り{noticeMinutes}分です
       </p>
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <button
+          className={`w-full px-4 py-3 text-white rounded-xl shadow font-semibold active:scale-95 flex items-center justify-center gap-2 ${
+            readingKey === "2min" ? "bg-green-600" : "bg-blue-600 hover:bg-blue-700"
+          }`}
+          onClick={() => handleSpeak(`ノック時間、残り${noticeMinutes}分です`, "2min")}
+        >
+          <IconMic />
+          <span>読み上げ</span>
+        </button>
+        <button
+          className="w-full px-4 py-3 text-white bg-gray-600 hover:bg-gray-700 rounded-xl shadow font-semibold active:scale-95 disabled:opacity-50"
+          onClick={handleStop}
+          disabled={readingKey !== "2min"}
+        >
+          停止
+        </button>
+      </div>
       <button
-        className="min-w-28 text-lg bg-white text-red-700 px-6 py-3 rounded-2xl hover:bg-red-50 active:scale-95 shadow font-bold"
-        onClick={() => setShowTwoMinModal(false)}
-        autoFocus
+        className="w-full text-lg bg-white text-red-700 px-6 py-3 rounded-2xl hover:bg-red-50 active:scale-95 shadow font-bold"
+        onClick={() => {
+          handleStop();
+          setShowTwoMinModal(false);
+        }}
       >
         OK
       </button>
@@ -871,10 +967,30 @@ const mainSpeakMessage =
       <p id="end-title" className="text-2xl sm:text-3xl font-extrabold mb-6 leading-relaxed">
         ノックを終了してください
       </p>
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <button
+          className={`w-full px-4 py-3 text-white rounded-xl shadow font-semibold active:scale-95 flex items-center justify-center gap-2 ${
+            readingKey === "end-modal" ? "bg-green-600" : "bg-blue-600 hover:bg-blue-700"
+          }`}
+          onClick={() => handleSpeak("ノックを終了してください。", "end-modal")}
+        >
+          <IconMic />
+          <span>読み上げ</span>
+        </button>
+        <button
+          className="w-full px-4 py-3 text-white bg-gray-600 hover:bg-gray-700 rounded-xl shadow font-semibold active:scale-95 disabled:opacity-50"
+          onClick={handleStop}
+          disabled={readingKey !== "end-modal"}
+        >
+          停止
+        </button>
+      </div>
       <button
-        className="min-w-28 text-lg bg-white text-red-700 px-6 py-3 rounded-2xl hover:bg-red-50 active:scale-95 shadow font-bold"
-        onClick={() => setShowEndModal(false)}
-        autoFocus
+        className="w-full text-lg bg-white text-red-700 px-6 py-3 rounded-2xl hover:bg-red-50 active:scale-95 shadow font-bold"
+        onClick={() => {
+          handleStop();
+          setShowEndModal(false);
+        }}
       >
         OK
       </button>

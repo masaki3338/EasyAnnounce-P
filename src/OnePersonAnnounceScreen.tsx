@@ -16,7 +16,7 @@ import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { useDrag, useDrop } from "react-dnd";
 import { useNavigate } from "react-router-dom";
-import { speak, stop } from "./lib/tts";
+import { speak, speakJoinedTTS, stop, preserveNameReading, prefetchTTS } from "./lib/tts";
 import { getLeagueMode } from "./lib/leagueSettings";
 import {
   deriveCurrentGameState,
@@ -64,7 +64,7 @@ function htmlToTtsText(html: string): string {
     const rt = ruby.querySelector("rt")?.textContent?.trim();
     const rb = ruby.querySelector("rb");
     const base = (rb?.textContent ?? ruby.childNodes[0]?.textContent ?? "").trim();
-    const spoken = rt && rt.length > 0 ? rt : base;
+    const spoken = rt && rt.length > 0 ? preserveNameReading(rt) : base;
     const span = doc.createElement("span");
     span.textContent = spoken;
     ruby.replaceWith(span);
@@ -86,7 +86,7 @@ function htmlToTtsText(html: string): string {
 
   // ✅ ルビ → かな（読み上げ用）
   text = text
-    .replace(/<ruby>\s*([^<]*)\s*<rt>\s*([^<]*)\s*<\/rt>\s*<\/ruby>/g, "$2")
+    .replace(/<ruby>\s*([^<]*)\s*<rt>\s*([^<]*)\s*<\/rt>\s*<\/ruby>/g, (_m, _base, kana) => preserveNameReading(kana))
     .replace(/<rt>\s*<\/rt>/g, "");
 
   // ✅ 「回表／回裏」→「回おもて／回うら」
@@ -101,6 +101,10 @@ function htmlToTtsText(html: string): string {
     /(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)\s+/g,
     "$1、"
   );
+
+  // 背番号の直後に短い間を入れる（表示文言は変更しない）
+  // 例: 「背番号12」→ 読み上げ時だけ「背番号、12」
+  text = text.replace(/背番号\s*([0-9０-９]+)/g, "背番号、$1");
 
 
 
@@ -982,6 +986,24 @@ const getOnePersonDefenseSide = (targetIsTop: boolean) =>
 
   const [announcementHTMLStr, setAnnouncementHTMLStr] = useState<string>("");
   const [announcementHTMLOverrideStr, setAnnouncementHTMLOverrideStr] = useState<string>("");
+
+  // Matchaは読み上げボタンを押してから生成を始めると初回が遅くなるため、
+  // アナウンス文が画面に表示された時点で先読みを開始する。
+  // 既存の onTouchStart/onMouseDown 先読みも保険として残す。
+  useEffect(() => {
+    const html = announcementHTMLOverrideStr || announcementHTMLStr || "";
+    if (!html) return;
+
+    let text = htmlToTtsText(html);
+    text = normalizeJapaneseTime(text);
+    if (!text) return;
+
+    const timer = window.setTimeout(() => {
+      window.prefetchTTS?.(text);
+    }, 30);
+
+    return () => window.clearTimeout(timer);
+  }, [announcementHTMLStr, announcementHTMLOverrideStr]);
   const [tiebreakAnno, setTiebreakAnno] = useState<string | null>(null);
   const [scoreOverwrite, setScoreOverwrite] = useState(true);
   const [showIntentionalWalkPopup, setShowIntentionalWalkPopup] = useState(false);
@@ -1195,8 +1217,8 @@ const formatNameForReEntryAnnounce = (p: any) => {
 
 const formatKanaForReEntryAnnounce = (p: any) => {
   if (!p) return "";
-  const ln = (p.lastNameKana || p.lastName || "").toString();
-  const fn = (p.firstNameKana || p.firstName || "").toString();
+  const ln = preserveNameReading((p.lastNameKana || p.lastName || "").toString());
+  const fn = preserveNameReading((p.firstNameKana || p.firstName || "").toString());
   if (!hasAnyDupLastName) return ln;
   return fn ? `${ln} ${fn}` : ln;
 };
@@ -1220,7 +1242,7 @@ const RenderName = ({ p, preferLastOnly }: { p: any; preferLastOnly: boolean }) 
     if (!input) return "";
     let t = input;
     // 例：<ruby>山田<rt>やまだ</rt></ruby> → やまだ
-    t = t.replace(/<ruby>(.*?)<rt>(.*?)<\/rt><\/ruby>/gms, "$2");
+    t = t.replace(/<ruby>(.*?)<rt>(.*?)<\/rt><\/ruby>/gms, (_m, _base, kana) => preserveNameReading(kana));
     // rbタグ（使用している場合）：<rb>山田</rb><rt>やまだ</rt> の保険
     t = t.replace(/<\/?rb>/g, "").replace(/<\/?rt>/g, "");
     // 残ったタグは全除去
@@ -1254,7 +1276,7 @@ const RenderName = ({ p, preferLastOnly }: { p: any; preferLastOnly: boolean }) 
 
   // ✅ ルビ → かな（読み上げ用）
   t = t
-    .replace(/<ruby>\s*([^<]*)\s*<rt>\s*([^<]*)\s*<\/rt>\s*<\/ruby>/g, "$2")
+    .replace(/<ruby>\s*([^<]*)\s*<rt>\s*([^<]*)\s*<\/rt>\s*<\/ruby>/g, (_m, _base, kana) => preserveNameReading(kana))
     .replace(/<rt>\s*<\/rt>/g, "");
 
     return t;
@@ -1272,7 +1294,7 @@ const speakPinchModal = async () => {
   //   - <rt> が空のルビは無視
   //   - 2語連結（姓・名）の <ruby>…</ruby><ruby>…</ruby> にも対応
   let text = raw
-    .replace(/<ruby>\s*([^<]*)\s*<rt>\s*([^<]*)\s*<\/rt>\s*<\/ruby>/g, "$2")
+    .replace(/<ruby>\s*([^<]*)\s*<rt>\s*([^<]*)\s*<\/rt>\s*<\/ruby>/g, (_m, _base, kana) => preserveNameReading(kana))
     .replace(/<rt>\s*<\/rt>/g, "")      // 空の rt は除去
     .replace(/<br\s*\/?>/gi, "\n")      // 改行
     .replace(/<[^>]+>/g, " ")           // 残りのタグはスペースに
@@ -1767,6 +1789,11 @@ const hasPendingDefenseSetup = async () => {
     await localForage.removeItem("startTimePopupShown");
     await localForage.setItem("startTime", timeString);
 
+    // state反映を待たず、この時点から開始時刻アナウンスを先読み
+    void prefetchStartTimeAnnouncement(timeString).catch((error) => {
+      console.warn("[TTS PREFETCH][StartTime] failed", error);
+    });
+
     const saved = await localForage.getItem<string>("startTime");
     console.log("saved startTime after set =", saved);
 
@@ -1781,6 +1808,11 @@ const hasPendingDefenseSetup = async () => {
     setStartTime(formatted);
 
     await localForage.setItem("startTime", formatted);
+
+    // state反映を待たず、この時点から開始時刻アナウンスを先読み
+    void prefetchStartTimeAnnouncement(formatted).catch((error) => {
+      console.warn("[TTS PREFETCH][StartTime] failed", error);
+    });
   };
 
   const hasShownStartTimePopup = useRef(false);
@@ -1798,6 +1830,43 @@ const closeSubModal = () => {
 
   const [gameStartTime, setGameStartTime] = useState<string | null>(null);
   const [showStartTimePopup, setShowStartTimePopup] = useState(false);
+
+  // ✅ 開始時刻モーダル：
+  // 「〇時〇分です」を1本で生成すると時刻のイントネーションが不自然になりやすいため、
+  // 「〇時」＋「〇分です。」に分け、PCM結合時のごく短い間で自然につなぐ。
+  const buildStartTimeAnnouncementParts = (value?: string | null): string[] => {
+    const raw = String(value ?? "").trim();
+    if (!raw) return [];
+
+    const normalized = normalizeJapaneseTime(raw);
+
+    // "09:30" → normalize後 "9時30分"
+    // すでに "9時30分" の形式でもそのまま対応
+    const match = normalized.match(/^(\d{1,2})時(\d{1,2})分$/);
+    if (!match) {
+      const fallback =
+        leagueMode === "boys"
+          ? `なお、この試合の開始時刻は${normalized}です。`
+          : `この試合の開始時刻は${normalized}です。`;
+      return [fallback];
+    }
+
+    const hour = String(parseInt(match[1], 10));
+    const minute = String(parseInt(match[2], 10));
+    const prefix =
+      leagueMode === "boys"
+        ? `なお、この試合の開始時刻は${hour}時`
+        : `この試合の開始時刻は${hour}時`;
+
+    return [prefix, `${minute}分です。`];
+  };
+
+  const prefetchStartTimeAnnouncement = async (value?: string | null) => {
+    const parts = buildStartTimeAnnouncementParts(value);
+    for (const part of parts) {
+      await prefetchTTS(part);
+    }
+  };
   const [afterStartTimeAction, setAfterStartTimeAction] = useState<"scoreModal" | "afterPitchModal" | null>(null);
   const [showStartGameComplete, setShowStartGameComplete] = useState(false);
 
@@ -1834,6 +1903,21 @@ useEffect(() => {
     }
   })();
 }, []);
+
+
+/**
+ * ✅ 開始時刻は試合開始時点で確定しているため、
+ * モーダルを開く前から完成文を先読みしておく。
+ * 読み上げボタンと同じ buildStartTimeAnnouncement() を使うので
+ * キャッシュキーが完全一致する。
+ */
+useEffect(() => {
+  if (!gameStartTime) return;
+
+  void prefetchStartTimeAnnouncement(gameStartTime).catch((error) => {
+    console.warn("[TTS PREFETCH][StartTime] failed", error);
+  });
+}, [gameStartTime, leagueMode]);
 
 useEffect(() => {
   localForage.getItem<Record<number, number>>("batterAnnounceCounts").then((saved) => {
@@ -2318,9 +2402,137 @@ const [showScorePopup, setShowScorePopup] = useState(false);
 const [shouldNavigateAfterPopup, setShouldNavigateAfterPopup] = useState(false);
 const [popupMessage, setPopupMessage] = useState("");             // 表示用
 const [popupSpeakMessage, setPopupSpeakMessage] = useState("");  // 読み上げ用
+
+// 得点文を短い単位へ分け、長い全文の生成待ちを避ける。
+const buildScoreSpeakParts = (value: string): string[] => {
+  const source = String(value ?? "").trim();
+  if (!source) return [];
+
+  const marker = "この回の得点は";
+  const markerIndex = source.indexOf(marker);
+  if (markerIndex < 0) return [source];
+
+  const teamPart = source
+    .slice(0, markerIndex)
+    .replace(/[、,\s]+$/g, "")
+    .trim();
+  const scorePart = source
+    .slice(markerIndex + marker.length)
+    .replace(/^[、,\s]+/g, "")
+    .trim();
+
+  // 「3点です。」は分割せず、一続きで読み上げる。
+  return [teamPart, marker, scorePart].filter(Boolean);
+};
+
+const prefetchScoreAnnouncement = async (value: string) => {
+  for (const part of buildScoreSpeakParts(value)) {
+    await prefetchTTS(part);
+  }
+};
+
+
+// 得点モーダル表示時にも、読み上げ時と同じ分割単位で先読みする。
+useEffect(() => {
+  if (!showScorePopup) return;
+
+  const text = (popupSpeakMessage || popupMessage || "").trim();
+  if (!text) return;
+
+  void prefetchScoreAnnouncement(text).catch((error) => {
+    console.warn("[TTS PREFETCH][ScoreModal] failed", error);
+  });
+}, [
+  showScorePopup,
+  popupSpeakMessage,
+  popupMessage,
+]);
+
 const [showPitchAnnounceModal, setShowPitchAnnounceModal] = useState(false);
 const [pitchAnnounceText, setPitchAnnounceText] = useState("");
 const [pitchAnnounceAction, setPitchAnnounceAction] = useState<"notice" | "inningEnd">("inningEnd");
+
+// 合計投球数のフルネームだけ、読み上げ時に苗字と名前を分ける。
+// 表示用HTMLは変更しない。
+const buildPitchAnnounceSpeakParts = (html: string): string[] => {
+  const source = String(html ?? "").trim();
+  if (!source) return [];
+
+  return source
+    .split(/\n+/)
+    .flatMap((line) => {
+      // 投球制限のお知らせ：
+      // 「ピッチャー＋選手名＋ただいまの投球で」を一続きで生成し、
+      // その直後だけ短い結合間隔を入れる。
+      if (line.includes("ただいまの投球で")) {
+        const text = htmlToTtsText(line);
+        const marker = "、ただいまの投球で";
+        const markerIndex = text.indexOf(marker);
+
+        if (markerIndex >= 0) {
+          const namePart = text
+            .slice(0, markerIndex)
+            .replace(/^ピッチャー/, "ぴっちゃー")
+            .trim();
+          const countPart = text.slice(markerIndex + marker.length).trim();
+
+          return [
+            `${namePart}、ただいまの投球で`,
+            countPart,
+          ].filter(Boolean);
+        }
+
+        return text ? [text] : [];
+      }
+
+      if (!line.includes("合計投球数")) {
+        const text = htmlToTtsText(line);
+        return text ? [text] : [];
+      }
+
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(line, "text/html");
+      const rubies = Array.from(doc.querySelectorAll("ruby"));
+
+      // rubyFull() の「苗字」「名前」が別々のrubyになっている時だけ分割する。
+      if (rubies.length < 2) {
+        const text = htmlToTtsText(line);
+        return text ? [text] : [];
+      }
+
+      const rubyReading = (ruby: Element) => {
+        const rt = ruby.querySelector("rt")?.textContent?.trim();
+        const rb = ruby.querySelector("rb")?.textContent?.trim();
+        const base = (rb ?? ruby.childNodes[0]?.textContent ?? "").trim();
+        return rt ? preserveNameReading(rt) : base;
+      };
+
+      const lastName = rubyReading(rubies[0]);
+      const firstName = rubyReading(rubies[1]);
+
+      rubies.forEach((ruby) => ruby.remove());
+      const suffix = (doc.body.textContent ?? "").replace(/\s+/g, " ").trim();
+
+      return [lastName, `${firstName}${suffix}`].filter(Boolean);
+    })
+    .filter(Boolean);
+};
+
+// モーダルを開いている間に、本番と同じ分割単位で先読みする。
+useEffect(() => {
+  if (!showPitchAnnounceModal || !pitchAnnounceText) return;
+
+  const parts = buildPitchAnnounceSpeakParts(pitchAnnounceText);
+  const options = { progressive: false, cache: true } as const;
+  void (async () => {
+    for (const part of parts) {
+      await prefetchTTS(part, options);
+    }
+  })().catch((error) => {
+    console.warn("[TTS PREFETCH][OnePersonPitchModal] failed", error);
+  });
+}, [showPitchAnnounceModal, pitchAnnounceText]);
+
 const [inputScore, setInputScore] = useState("");
 const [editInning, setEditInning] = useState<number | null>(null);
 const [editTopBottom, setEditTopBottom] = useState<"top" | "bottom" | null>(null);
@@ -2612,6 +2824,18 @@ const applyRunnerSelection = (player: any) => {
   const base = selectedBase;
   const runnerId = selectedRunnerIndex != null ? battingOrder[selectedRunnerIndex].id : null;
   const replaced = runnerId ? getPlayer(runnerId) : null;
+
+  // 選手をタップした瞬間に、選手名を含む後半だけ先読み開始。
+  const selectedTail = buildRunnerSelectedTail(
+    base,
+    player,
+    !!tempRunnerFlags[base]
+  );
+  if (selectedTail) {
+    void prefetchTTS(selectedTail, SUB_MODAL_TTS_OPTIONS).catch((error) => {
+      console.warn("[TTS PREFETCH][OnePerson Runner SELECT] failed", error);
+    });
+  }
 
   setRunnerAssignments(prev => ({ ...prev, [base]: player }));
   setReplacedRunners(prev => ({ ...prev, [base]: replaced || null }));
@@ -6283,11 +6507,15 @@ const snapshot =
 
   if (score > 0) {
     if (leagueMode === "boys") {
+      const scoreSpeakText = `この回の得点は、${score}点。`;
       setPopupMessage(`この回の得点は${score}点。`);
-      setPopupSpeakMessage(`この回の得点は${score}点。`);
+      setPopupSpeakMessage(scoreSpeakText);
+      void prefetchScoreAnnouncement(scoreSpeakText);
     } else {
+      const scoreSpeakText = `${teamReading}、この回の得点は、${score}点です。`;
       setPopupMessage(`${teamName}、この回の得点は${score}点です。`);
-      setPopupSpeakMessage(`${teamReading}、この回の得点は${score}点です。`);
+      setPopupSpeakMessage(scoreSpeakText);
+      void prefetchScoreAnnouncement(scoreSpeakText);
     }
 
   if (isConfiguredGroundMaintenance(inning, isTop)) {
@@ -6299,8 +6527,10 @@ const snapshot =
   } else {
     // ★ ボーイズリーグは0点でも得点モーダルを表示
     if (leagueMode === "boys") {
+      const scoreSpeakText = "この回の得点は 無得点";
       setPopupMessage("この回の得点は 無得点");
-      setPopupSpeakMessage("この回の得点は 無得点");
+      setPopupSpeakMessage(scoreSpeakText);
+      void prefetchScoreAnnouncement(scoreSpeakText);
 
     if (isConfiguredGroundMaintenance(inning, isTop)) {
       setPendingGroundPopup(true);
@@ -6542,6 +6772,308 @@ const announce = async (text: string | string[]) => {
   const plain = normalizeForTTS(joined); // ruby→かな & タグ除去
   await speak(plain);
 };
+
+
+// -----------------------------------------------------------------------------
+// 代打・代走モーダル専用TTS
+// ・打順/守備位置の固定MP3分割を使わず、選手名までMatchaで一続きに生成
+// ・モーダル表示/選手選択時に先読み
+// ・読み上げボタン押下後は次文生成より「最初の音」を絶対優先
+// -----------------------------------------------------------------------------
+const SUB_MODAL_TTS_OPTIONS = {
+  progressive: true,
+  cache: true,
+  disableFixedBattingAndPositions: true,
+} as const;
+
+const battingOrderKatakana = (order1: number): string => {
+  const map: Record<number, string> = {
+    1: "イチバン",
+    2: "ニバン",
+    3: "サンバン",
+    4: "ヨバン",
+    5: "ゴバン",
+    6: "ロクバン",
+    7: "ナナバン",
+    8: "ハチバン",
+    9: "キュウバン",
+  };
+  return map[order1] ?? `${order1}番`;
+};
+
+const buildRunnerStableHead = (
+  base: "1塁" | "2塁" | "3塁",
+  replaced: any
+): string => {
+  if (!replaced) return "";
+
+  const prefix = getRunnerLabel(base);
+  const honor = replaced.isFemale ? "さん" : "くん";
+
+  const fromKana = dupLastNames.has(String(replaced.lastName ?? "").trim())
+    ? `${preserveNameReading(String(replaced.lastNameKana ?? replaced.lastName ?? ""))} ${preserveNameReading(String(replaced.firstNameKana ?? replaced.firstName ?? ""))}`
+    : preserveNameReading(String(replaced.lastNameKana ?? replaced.lastName ?? ""));
+
+  return `${prefix} ${fromKana}${honor}に代わりまして、`;
+};
+
+const buildRunnerSelectedTail = (
+  base: "1塁" | "2塁" | "3塁",
+  sub: any,
+  isTemp: boolean
+): string => {
+  if (!sub) return "";
+
+  const prefix = getRunnerLabel(base);
+  const honor = sub.isFemale ? "さん" : "くん";
+
+  const fullKana =
+    `${preserveNameReading(String(sub.lastNameKana ?? sub.lastName ?? ""))} ${preserveNameReading(String(sub.firstNameKana ?? sub.firstName ?? ""))}`;
+
+  const lastKana = dupLastNames.has(String(sub.lastName ?? "").trim())
+    ? fullKana
+    : preserveNameReading(String(sub.lastNameKana ?? sub.lastName ?? ""));
+
+  const num = String(sub.number ?? "").trim();
+
+  if (isTemp) {
+    return (
+      `臨時代走、${lastKana}${honor}、` +
+      `臨時代走は ${lastKana}${honor}` +
+      `${num ? `、背番号 ${num}。` : "。"}`
+    );
+  }
+
+  return (
+    `${fullKana}${honor}、` +
+    `${prefix}は ${lastKana}${honor}` +
+    `${num ? `、背番号 ${num}。` : "。"}`
+  );
+};
+
+const buildRunnerModalSpeakParts = (): string[] => {
+  const parts: string[] = [];
+
+  for (const base of ["1塁", "2塁", "3塁"] as const) {
+    const replaced = replacedRunners[base];
+    const sub = runnerAssignments[base];
+    if (!replaced || !sub) continue;
+
+    const head = buildRunnerStableHead(base, replaced);
+    const tail = buildRunnerSelectedTail(base, sub, !!tempRunnerFlags[base]);
+
+    if (head) parts.push(head);
+    if (tail) parts.push(tail);
+  }
+
+  return parts.filter(Boolean);
+};
+
+const buildRunnerModalSpeakText = (): string =>
+  buildRunnerModalSpeakParts().join("");
+
+const speakRunnerModalLikePinch = async () => {
+  const parts = buildRunnerModalSpeakParts();
+  if (!parts.length) return;
+
+  console.log("[TTS PLAY][OnePerson RunnerModal] first-audio priority", {
+    parts: parts.length,
+    firstPreview: parts[0]?.slice(0, 70),
+  });
+
+  for (const part of parts) {
+    await speak(part, SUB_MODAL_TTS_OPTIONS);
+  }
+};
+
+
+// 代打/リエントリー：先読みと本番で同じ文字列を使う
+const buildPinchModalStableParts = (): string[] => {
+  if (subModalMode === "reentry") return [];
+
+  const replaced = getPlayer(battingOrder[currentBatterIndex]?.id);
+  if (!replaced) return [];
+
+  const honor = replaced.isFemale ? "さん" : "くん";
+  const fromKana = dupLastNames.has(String(replaced.lastName ?? "").trim())
+    ? `${preserveNameReading(String(replaced.lastNameKana ?? replaced.lastName ?? ""))} ${preserveNameReading(String(replaced.firstNameKana ?? replaced.firstName ?? ""))}`
+    : preserveNameReading(String(replaced.lastNameKana ?? replaced.lastName ?? ""));
+
+  const parts: string[] = [];
+
+  if (isLeadingBatter) {
+    parts.push(
+      `${inning}回の${isTop ? "表" : "裏"}、${teamReading || "自チーム"}の攻撃は、`
+    );
+  }
+
+  parts.push(
+    `${battingOrderKatakana(currentBatterIndex + 1)} ` +
+    `${fromKana}${honor}に代わりまして、`
+  );
+
+  return parts.filter(Boolean);
+};
+
+const buildPinchSelectedTail = (sub: any): string => {
+  if (!sub) return "";
+
+  const honor = sub.isFemale ? "さん" : "くん";
+  const fullKana =
+    `${preserveNameReading(String(sub.lastNameKana ?? sub.lastName ?? ""))} ${preserveNameReading(String(sub.firstNameKana ?? sub.firstName ?? ""))}`;
+
+  const lastKana = dupLastNames.has(String(sub.lastName ?? "").trim())
+    ? fullKana
+    : preserveNameReading(String(sub.lastNameKana ?? sub.lastName ?? ""));
+
+  const num = String(sub.number ?? "").trim();
+
+  return (
+    `${fullKana}${honor}、` +
+    `バッターは ${lastKana}${honor}` +
+    `${num ? `、背番号 ${num}。` : "。"}`
+  );
+};
+
+const prefetchPinchSelectedPlayer = (sub: any) => {
+  const tail = buildPinchSelectedTail(sub);
+  if (!tail) return;
+
+  void prefetchTTS(tail, SUB_MODAL_TTS_OPTIONS).catch((error) => {
+    console.warn("[TTS PREFETCH][OnePerson Pinch SELECT] failed", error);
+  });
+};
+
+const buildPinchModalSpeakParts = (): string[] => {
+  if (subModalMode === "reentry") {
+    if (!reEntryTargetPlayer || reEntryOrder1 == null || !reEntryFromPlayer) return [];
+
+    const honorA = reEntryFromPlayer.isFemale ? "さん" : "くん";
+    const honorB = reEntryTargetPlayer.isFemale ? "さん" : "くん";
+    const kanaA = formatKanaForReEntryAnnounce(reEntryFromPlayer);
+    const kanaB = formatKanaForReEntryAnnounce(reEntryTargetPlayer);
+
+    const header =
+      isLeadingBatter
+        ? `${inning}回の${isTop ? "表" : "裏"}、${teamReading || "自チーム"}の攻撃は、`
+        : `${teamReading || "自チーム"}、選手の交代をお知らせいたします。`;
+
+    const change =
+      `${battingOrderKatakana(reEntryOrder1)} ${kanaA}${honorA}に代わりまして、` +
+      `${kanaB}${honorB}がリエントリーで戻ります。`;
+
+    const batter = `バッターは ${kanaB}${honorB}。`;
+
+    return [header, change, batter].filter(Boolean);
+  }
+
+  const stable = buildPinchModalStableParts();
+  const tail = buildPinchSelectedTail(selectedSubPlayer);
+
+  return [...stable, ...(tail ? [tail] : [])].filter(Boolean);
+};
+
+const buildPinchModalSpeakText = (): string =>
+  buildPinchModalSpeakParts().join("");
+
+const speakPinchModalFast = async () => {
+  const parts = buildPinchModalSpeakParts();
+  if (!parts.length) return;
+
+  console.log("[TTS PLAY][OnePerson PinchModal] first-audio priority", {
+    parts: parts.length,
+    firstPreview: parts[0]?.slice(0, 70),
+  });
+
+  for (const part of parts) {
+    await speak(part, SUB_MODAL_TTS_OPTIONS);
+  }
+};
+
+
+// モーダルを開いた時点で、選手選択前でも確定している先頭部分を先読み
+useEffect(() => {
+  if (!showSubModal) return;
+
+  let cancelled = false;
+
+  void (async () => {
+    try {
+      if (subModalMode === "reentry") {
+        for (const part of buildPinchModalSpeakParts()) {
+          if (cancelled) return;
+          await prefetchTTS(part, SUB_MODAL_TTS_OPTIONS);
+        }
+        return;
+      }
+
+      for (const part of buildPinchModalStableParts()) {
+        if (cancelled) return;
+        await prefetchTTS(part, SUB_MODAL_TTS_OPTIONS);
+      }
+
+      if (cancelled) return;
+
+      if (selectedSubPlayer) {
+        const tail = buildPinchSelectedTail(selectedSubPlayer);
+        if (tail) await prefetchTTS(tail, SUB_MODAL_TTS_OPTIONS);
+      }
+    } catch (error) {
+      console.warn("[TTS PREFETCH][OnePerson PinchModal] failed", error);
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [
+  showSubModal,
+  subModalMode,
+  selectedSubPlayer,
+  reEntryTargetPlayer,
+  reEntryFromPlayer,
+  reEntryOrder1,
+  currentBatterIndex,
+  battingOrder,
+  dupLastNames,
+  isLeadingBatter,
+  inning,
+  isTop,
+  teamReading,
+]);
+
+
+// 代走は現在できている各部品を短い単位で順番に先読み
+useEffect(() => {
+  if (!showRunnerModal) return;
+
+  const parts = buildRunnerModalSpeakParts();
+  if (!parts.length) return;
+
+  let cancelled = false;
+
+  void (async () => {
+    try {
+      for (const part of parts) {
+        if (cancelled) return;
+        await prefetchTTS(part, SUB_MODAL_TTS_OPTIONS);
+      }
+    } catch (error) {
+      console.warn("[TTS PREFETCH][OnePerson RunnerModal] failed", error);
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [
+  showRunnerModal,
+  runnerAssignments,
+  replacedRunners,
+  tempRunnerFlags,
+  dupLastNames,
+]);
+
 
 // 補助アナウンス（クーリング／グラウンド整備等）が終わった後の共通処理
 // 代打・代走がある場合は、通常モードと同じ「守備位置の設定」モーダルを先に表示する。
@@ -8532,7 +9064,14 @@ useEffect(() => {
                       <div className="mt-4 grid grid-cols-2 gap-2">
                         <button
                           onClick={async () => {
-                            await speak(popupSpeakMessage || popupMessage);
+                            const text = popupSpeakMessage || popupMessage;
+                            const parts = buildScoreSpeakParts(text);
+
+                            if (parts.length > 1) {
+                              await speakJoinedTTS(parts, { progressive: false, cache: true });
+                            } else {
+                              await speak(text);
+                            }
                           }}
                           className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                                     inline-flex items-center justify-center gap-2"
@@ -8890,6 +9429,7 @@ useEffect(() => {
                           key={p.id}
                           type="button"
                           onClick={() => {
+                            prefetchPinchSelectedPlayer(p);
                             setSelectedSubPlayer(p);
                             setSubModalMode("pinch");
                             setReEntryFromPlayer(null);
@@ -9016,59 +9556,7 @@ useEffect(() => {
                     {/* 読み上げ・停止 */}
                     <div className="grid grid-cols-2 gap-2">
                       <button
-                        onClick={async () => {
-                        if (subModalMode === "reentry") {
-                          if (!reEntryTargetPlayer || reEntryOrder1 == null || !reEntryFromPlayer) return;
-
-                          const honorA = reEntryFromPlayer.isFemale ? "さん" : "くん";
-                          const honorB = reEntryTargetPlayer.isFemale ? "さん" : "くん";
-
-                          const kanaA = formatKanaForReEntryAnnounce(reEntryFromPlayer);
-                          const kanaB = formatKanaForReEntryAnnounce(reEntryTargetPlayer);
-
-                          await speak(
-                            `${isLeadingBatter
-                                ? `${inning}回の${isTop ? "表" : "裏"}、${teamReading || "自チーム"}の攻撃は、`
-                                : `${teamReading || "自チーム"}、選手の交代をお知らせいたします。`
-                              }` +
-                              `${reEntryOrder1}番 ${kanaA}${honorA}に代わりまして ` +
-                              `${kanaB}${honorB}がリエントリーで戻ります。` +
-                              `バッターは ${kanaB}${honorB}。`,
-                            { progressive: true }
-                          );
-                          return;
-                        }
-
-                        const replaced = getPlayer(battingOrder[currentBatterIndex]?.id);
-                        const sub = selectedSubPlayer;
-                        if (!replaced || !sub) return;
-
-                        const honorBef = replaced.isFemale ? "さん" : "くん";
-                        const honorSub = sub.isFemale ? "さん" : "くん";
-
-const fromKana = dupLastNames.has(String(replaced.lastName ?? "").trim())
-  ? `${replaced.lastNameKana ?? replaced.lastName ?? ""}、${replaced.firstNameKana ?? replaced.firstName ?? ""}`
-  : `${replaced.lastNameKana ?? replaced.lastName ?? ""}`;
-
-const toKanaFull = `${sub.lastNameKana ?? sub.lastName ?? ""}、${sub.firstNameKana ?? sub.firstName ?? ""}`;
-
-const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
-  ? `${sub.lastNameKana ?? sub.lastName ?? ""}、${sub.firstNameKana ?? sub.firstName ?? ""}`
-  : `${sub.lastNameKana ?? sub.lastName ?? ""}`;
-
-                        const num = (sub.number ?? "").trim();
-
-                        await speak(
-                          `${isLeadingBatter
-                              ? `${inning}回の${isTop ? "表" : "裏"}、${teamReading || "自チーム"}の攻撃は、`
-                              : ""
-                            }` +
-                            `${currentBatterIndex + 1}番 ${fromKana}${honorBef}に代わりまして、` +
-                            `${toKanaFull}${honorSub}、` +
-                            `バッターは ${toKanaLast}${honorSub}` +
-                            `${num ? `、背番号 ${num}。` : "。"}`
-                        );
-                        }}
+                        onClick={speakPinchModalFast}
                         className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                                   inline-flex items-center justify-center gap-2 shadow-md ring-1 ring-white/40"
                       >
@@ -9525,6 +10013,7 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
                       if (usedBenchActionType === "runner" && selectedBase) {
                         applyRunnerSelection(p);
                       } else {
+                        prefetchPinchSelectedPlayer(p);
                         setSelectedSubPlayer(p);
                       }
 
@@ -9983,21 +10472,7 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
         <div className="grid grid-cols-2 gap-2">
           {/* 読み上げ＝青 */}
           <button
-            onClick={() =>
-              announce(
-                ["1塁", "2塁", "3塁"]
-                  .map((base) => {
-                    const kanji = base.replace("1", "一").replace("2", "二").replace("3", "三");
-                    return runnerAnnouncement.find(
-                      (msg) =>
-                        msg.startsWith(`${base}ランナー`) ||
-                        msg.startsWith(`${kanji}ランナー`)
-                    );
-                  })
-                  .filter(Boolean)
-                  .join("、")
-              )
-            }
+            onClick={speakRunnerModalLikePinch}
             className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                       inline-flex items-center justify-center gap-2 shadow-md ring-1 ring-white/40"
           >
@@ -10773,11 +11248,16 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
                         className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                                   inline-flex items-center justify-center gap-2 shadow-md"
                         onClick={async () => {
-                          const startTimeAnnouncement =
-                            leagueMode === "boys"
-                              ? `なお、この試合の開始時刻は${gameStartTime}です。`
-                              : `この試合の開始時刻は${gameStartTime}です。`;
-                          await speak(normalizeJapaneseTime(startTimeAnnouncement));
+                          const parts = buildStartTimeAnnouncementParts(gameStartTime);
+                          if (!parts.length) return;
+
+                          if (parts.length === 1) {
+                            await speak(parts[0]);
+                          } else {
+                            // PCM結合側の短い接続間隔だけを使う。
+                            // 「、」を入れないので長いポーズにはならない。
+                            await speakJoinedTTS(parts);
+                          }
                         }}
                       >
                         <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
@@ -10995,7 +11475,13 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
                 <button
                   type="button"
                   onClick={async () => {
-                    await speak(htmlToTtsText(pitchAnnounceText));
+                    const parts = buildPitchAnnounceSpeakParts(pitchAnnounceText);
+
+                    if (parts.length > 1) {
+                      await speakJoinedTTS(parts, { progressive: false, cache: true });
+                    } else if (parts[0]) {
+                      await speak(parts[0]);
+                    }
                   }}
                   className="rounded-xl bg-blue-600 py-3 font-bold text-white shadow active:scale-95"
                 >

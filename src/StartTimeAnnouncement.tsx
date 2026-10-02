@@ -1,7 +1,7 @@
 // StartTimeAnnouncement.tsx
 import React, { useEffect, useState } from "react";
 import localForage from "localforage";
-import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
+import { speak as ttsSpeak, stop as ttsStop, prefetchTTS, prewarmTTS } from "./lib/tts";
 
 interface Props {
   onNavigate: (screen: string) => void;
@@ -160,7 +160,14 @@ const message = `お知らせいたします。
 const startTimeSpeak = formatTimeForSpeak(startHour, startMinute);
 const knockTimeSpeak = formatTimeForSpeak(knockHour, knockMinute);
 
-const messageSpeak = `おしらせいたします。だい${matchNumber}しあいは${startTimeSpeak}、かいしのよていでございます。なお、シートノックは${knockTimeSpeak}をよていしております。いましばらくおまちください。`;
+const messageSpeak = `お知らせいたします。第${matchNumber}試合は${startTimeSpeak}、開始の予定でございます。なお、シートノックは${knockTimeSpeak}を予定しております。今しばらくお待ちください。`;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void prefetchTTS(messageSpeak);
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [messageSpeak]);
   const handleSpeak = () => {
     setReading(true);
     void ttsSpeak(messageSpeak, { progressive: true, cache: true }).finally(() =>

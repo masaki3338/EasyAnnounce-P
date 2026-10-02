@@ -1,7 +1,12 @@
 // StartGreeting.tsx（全文置き換え）
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import localForage from "localforage";
-import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
+import {
+  speak as ttsSpeak,
+  stop as ttsStop,
+  prefetchTTS,
+  prewarmTTS,
+} from "./lib/tts";
 
 interface Props {
   onNavigate: (screen: string) => void;
@@ -33,8 +38,18 @@ const IconMic = () => (
   </svg>
 );
 
+const GREETING_LEAD = "おまたせいたしました。";
+
+// 「○○」「対」「○○」を完全に別々の音声として読み、
+// それぞれの間にだけ短い間を入れる。
+const MATCHUP_PART_PAUSE_MS = 120;
+
+const wait = (ms: number) =>
+  new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+
 const StartGreeting: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
   const [reading, setReading] = useState(false);
+  const speakRunRef = useRef(0);
   const [tournamentName, setTournamentName] = useState("");
   const [matchNumber, setMatchNumber] = useState("");
   const [teamName, setTeamName] = useState("");
@@ -42,6 +57,7 @@ const StartGreeting: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
   const [benchSide, setBenchSide] = useState<"1塁側" | "3塁側">("1塁側");
   const [teamFurigana, setTeamFurigana] = useState("");
   const [opponentFurigana, setOpponentFurigana] = useState("");
+  const [dataLoaded, setDataLoaded] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -59,11 +75,14 @@ const StartGreeting: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
         setOpponentFurigana(matchInfo.opponentTeamFurigana || "");
       }
     };
-    load();
+    void load().finally(() => setDataLoaded(true));
   }, []);
 
-  // 初回だけ VOICEVOX を温める
-  useEffect(() => { void prewarmTTS(); }, []);
+  // エンジンと冒頭の短い音声を画面表示直後から準備する
+  useEffect(() => {
+    void prewarmTTS();
+    void prefetchTTS(GREETING_LEAD);
+  }, []);
 
   const team1st = benchSide === "1塁側" ? teamName : opponentName;
   const team3rd = benchSide === "3塁側" ? teamName : opponentName;
@@ -73,12 +92,56 @@ const StartGreeting: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
   const team3rdRead = benchSide === "3塁側" ? (teamFurigana || teamName) : (opponentFurigana || opponentName);
   const isBoys = leagueMode === "boys";
 
-  const messageSpeak = isBoys
-    ? `おまたせいたしました。${team1stRead}たい${team3rdRead}のしあい、まもなくかいしでございます。`
-    : `おまたせいたしました。${tournamentName}。` +
-      `ほんじつの だい${matchNumber}しあい、` +
-      `${team1stRead}たい${team3rdRead}のしあい、` +
-      `まもなくかいしでございます。`;
+  const tournamentSpeak = `${tournamentName}。`;
+  const matchNumberSpeak = `ほんじつの だい${matchNumber}しあい、`;
+
+  // 「1塁側チーム名＋たい」を1つの読み上げ単位にし、
+  // 対戦相手へ切り替わる直前だけ短い間を入れる。
+  // 例: 「東京武蔵ぽにーたい」→ 120ms →「墨田ポニーファルコンズのしあい」
+  const team1stWithVersusSpeak = `${team1stRead}たい`;
+  const team3rdSpeak = `${team3rdRead}のしあい、`;
+
+  const closingSpeak = "まもなくかいしでございます。";
+
+  // 読み上げに使う「まったく同じ単位」を画面表示中に先読みしておく。
+  // 特に「チーム名 / 対 / チーム名の試合」は、再生ボタン押下後に生成しないようにする。
+  useEffect(() => {
+    if (!dataLoaded) return;
+
+    const parts = isBoys
+      ? [team1stWithVersusSpeak, team3rdSpeak, closingSpeak]
+      : [
+          tournamentSpeak,
+          matchNumberSpeak,
+          team1stWithVersusSpeak,
+          team3rdSpeak,
+          closingSpeak,
+        ];
+
+    // 大会名は生成時間が長くなりやすいため最優先で先読みする。
+    if (!isBoys && tournamentSpeak.trim()) {
+      console.log("[StartGreeting PREFETCH] tournament priority", {
+        tournamentSpeak,
+      });
+      void prefetchTTS(tournamentSpeak);
+    }
+
+    const remainingParts = isBoys
+      ? parts
+      : parts.filter((part) => part !== tournamentSpeak);
+
+    void Promise.all(
+      remainingParts.map((part) => prefetchTTS(part))
+    );
+  }, [
+    dataLoaded,
+    isBoys,
+    tournamentSpeak,
+    matchNumberSpeak,
+    team1stWithVersusSpeak,
+    team3rdSpeak,
+    closingSpeak,
+  ]);
 
   const message = isBoys
     ? `お待たせいたしました\n${team1st} 対 ${team3rd} の試合、\nまもなく開始でございます。`
@@ -87,13 +150,77 @@ const StartGreeting: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
       `${team1st} 対 ${team3rd} の試合、\n` +
       `まもなく開始でございます。`;
 
-  // VOICEVOX優先：押して“すぐ返す”。最初の1文を先に鳴らす（progressive）
+  // 「○○たい」を1つの読み上げにし、
+  // 対戦相手のチーム名へ切り替わるところだけ短い間を入れる。
   const handleSpeak = () => {
+    const runId = ++speakRunRef.current;
     setReading(true);
-    void ttsSpeak(messageSpeak, { progressive: true, cache: true })
-      .finally(() => setReading(false));
+
+    void (async () => {
+      if (speakRunRef.current !== runId) return;
+
+      // 固定MP3なので、先読み済みならほぼ即時再生。
+      await ttsSpeak(GREETING_LEAD, {
+        progressive: true,
+        cache: true,
+      });
+
+      if (speakRunRef.current !== runId) return;
+
+      if (!isBoys) {
+        await ttsSpeak(tournamentSpeak, {
+          progressive: true,
+          cache: true,
+        });
+
+        if (speakRunRef.current !== runId) return;
+
+        await ttsSpeak(matchNumberSpeak, {
+          progressive: true,
+          cache: true,
+        });
+
+        if (speakRunRef.current !== runId) return;
+      }
+
+      console.log("[StartGreeting MATCHUP PAUSE]", {
+        firstSide: team1stWithVersusSpeak,
+        secondSide: team3rdSpeak,
+        pauseMs: MATCHUP_PART_PAUSE_MS,
+      });
+
+      // ① 「東京武蔵ぽにーたい」のように「たい」まで続けて読む
+      await ttsSpeak(team1stWithVersusSpeak, {
+        progressive: true,
+        cache: true,
+      });
+
+      if (speakRunRef.current !== runId) return;
+
+      // ② 対戦相手へ切り替わる直前だけ120ms空ける
+      await wait(MATCHUP_PART_PAUSE_MS);
+
+      if (speakRunRef.current !== runId) return;
+
+      // ③ 「墨田ポニーファルコンズのしあい、」
+      await ttsSpeak(team3rdSpeak, {
+        progressive: true,
+        cache: true,
+      });
+
+      if (speakRunRef.current !== runId) return;
+
+      await ttsSpeak(closingSpeak, {
+        progressive: true,
+        cache: true,
+      });
+    })()
+      .finally(() => {
+        if (speakRunRef.current === runId) setReading(false);
+      });
   };
   const handleStop = () => {
+    speakRunRef.current += 1;
     ttsStop();        // VOICEVOXの <audio> と Web Speech の両方を停止
     setReading(false);
   };
