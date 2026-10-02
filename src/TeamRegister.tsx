@@ -1710,7 +1710,22 @@ const saveTeam = async () => {
         onClick={handleQrShare}
         className="inline-flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-3 rounded-xl shadow active:scale-95 font-bold"
       >
-        📱 QR共有
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-5 w-5 shrink-0"
+        >
+          <rect x="3" y="3" width="6" height="6" rx="1" />
+          <rect x="15" y="3" width="6" height="6" rx="1" />
+          <rect x="3" y="15" width="6" height="6" rx="1" />
+          <path d="M15 15h2v2h-2zM19 15h2M19 19h2v2h-2zM15 19v2" />
+        </svg>
+        <span>QR共有</span>
       </button>
 
       <button
@@ -2078,7 +2093,7 @@ const saveTeam = async () => {
                 <div className="mt-2 space-y-2 text-[13px] leading-5 text-slate-700">
                   <p>
                     共有したい内容を各画面で保存してから、
-                    <span className="font-bold text-fuchsia-700">【📱 QR共有】</span>
+                    <span className="font-bold text-fuchsia-700">【QR共有】</span>
                     を押します。
                   </p>
                   <p>
