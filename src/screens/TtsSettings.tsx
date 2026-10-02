@@ -152,8 +152,15 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
       console.error("[TTS settings] AI performance check failed:", error);
       setAiPerformance(null);
       setAiPerformanceProgress(null);
+      const detail =
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : typeof error === "string"
+          ? error
+          : JSON.stringify(error);
+
       setAiPerformanceError(
-        "AI音声の動作チェックに失敗しました。もう一度お試しください。"
+        `AI音声の動作チェックに失敗しました。\n\n【エラー詳細】\n${detail || "不明なエラー"}`
       );
     } finally {
       setIsCheckingAiPerformance(false);
@@ -589,7 +596,9 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
 
               {!isCheckingAiPerformance && aiPerformanceError && (
                 <div className="mt-3 rounded-xl border border-amber-300/50 bg-amber-400/15 px-4 py-3 text-sm text-amber-50">
-                  {aiPerformanceError}
+                  <div className="whitespace-pre-wrap break-words select-text text-left">
+                    {aiPerformanceError}
+                  </div>
                   <button
                     type="button"
                     onClick={() => void runAiPerformanceCheck()}
