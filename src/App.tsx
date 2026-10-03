@@ -214,7 +214,92 @@ const BottomTab: React.FC<{
 
 
 const App = () => {
-  const [screen, setScreen] = useState<ScreenType>("menu");
+  const [screen, setScreenState] = useState<ScreenType>("menu");
+  const startupUpdateAllowed = useRef(true);
+  const startupUpdateCommitting = useRef(false);
+  const startupUpdateAbort = useRef<AbortController | null>(null);
+  const [startupUpdateMessage, setStartupUpdateMessage] = useState("");
+
+  // 初期メニューを一度離れたら、メニューに戻っても自動更新を再開しない。
+  const setScreen: React.Dispatch<React.SetStateAction<ScreenType>> = (next) => {
+    if (startupUpdateCommitting.current) return;
+    startupUpdateAllowed.current = false;
+    startupUpdateAbort.current?.abort();
+    setScreenState(next);
+  };
+
+  useEffect(() => {
+    if (import.meta.env.DEV || !navigator.onLine || !import.meta.env.VITE_APP_BUILD_ID) return;
+    const abort = new AbortController();
+    startupUpdateAbort.current = abort;
+    const allowed = () => startupUpdateAllowed.current && !abort.signal.aborted;
+    // 通信・SWの待ち合わせには上限を設ける。画面表示は待たない。
+    const timer = window.setTimeout(() => abort.abort(), 30000);
+    const pause = () => new Promise<void>((resolve) => window.setTimeout(resolve, 100));
+    const run = async () => {
+      try {
+        const base = new URL(import.meta.env.BASE_URL, window.location.origin);
+        const url = new URL("app-update.json", base);
+        url.searchParams.set("__easy_update_check", Date.now().toString());
+        const response = await fetch(url.href, { cache: "no-store", signal: abort.signal });
+        if (!response.ok || !allowed()) return;
+        const latest = await response.json();
+        if (!allowed() || typeof latest?.buildId !== "string" || !latest.buildId ||
+            latest.buildId === import.meta.env.VITE_APP_BUILD_ID) return;
+        // 同じ公開IDへの再読み込みは1回のみ。配信遅延時の無限ループを防ぐ。
+        const guardKey = "easyannounce:startup-update-target";
+        try {
+          if (sessionStorage.getItem(guardKey) === latest.buildId) return;
+        } catch { return; }
+
+        let waiting: ServiceWorker | null = null;
+        if ("serviceWorker" in navigator) {
+          const registration = await navigator.serviceWorker.getRegistration();
+          if (!allowed()) return;
+          if (registration) {
+            await registration.update();
+            if (!allowed()) return;
+            while (registration.installing && !registration.waiting && allowed()) await pause();
+            if (!allowed()) return;
+            waiting = registration.waiting;
+          }
+        }
+        // ネットワークから最新HTMLを取得できることを確認してから更新を確定する。
+        const htmlUrl = new URL("index.html", base);
+        htmlUrl.searchParams.set("__easy_updated", latest.buildId);
+        const htmlResponse = await fetch(htmlUrl.href, { cache: "no-store", signal: abort.signal });
+        if (!htmlResponse.ok || !allowed() || !navigator.onLine) return;
+        const html = await htmlResponse.text();
+        if (!allowed() || !/<script[^>]+src=/i.test(html)) return;
+
+        sessionStorage.setItem(guardKey, latest.buildId);
+        startupUpdateCommitting.current = true;
+        setStartupUpdateMessage("新しいバージョンに更新しています…");
+        if (waiting) {
+          waiting.postMessage({ type: "SKIP_WAITING" });
+          while (waiting.state !== "activated" && waiting.state !== "redundant" && allowed()) await pause();
+          if (!allowed() || waiting.state !== "activated") return;
+        }
+        if (!allowed() || !navigator.onLine) return;
+        const reloadUrl = new URL(window.location.href);
+        reloadUrl.searchParams.set("__easy_updated", latest.buildId);
+        window.location.replace(reloadUrl.href);
+      } catch {
+        // 起動時の通信失敗は操作を妨げず、現在のバージョンで続行。
+      } finally {
+        window.clearTimeout(timer);
+        if (startupUpdateAbort.current === abort) startupUpdateAbort.current = null;
+        startupUpdateCommitting.current = false;
+        setStartupUpdateMessage("");
+      }
+    };
+    void run();
+    return () => {
+      abort.abort();
+      window.clearTimeout(timer);
+    };
+  }, []);
+
   // AI音声の準備状態は表示だけ。準備中でも全操作・読み上げボタンを使用可能。
   const [isTtsStarting, setIsTtsStarting] = useState(() => {
     const engine = localStorage.getItem("tts:engine");
@@ -1386,6 +1471,14 @@ const handleSpeak = async () => {
 
 return (
   <>
+    {startupUpdateMessage && (
+      <div className="fixed inset-0 z-[20000] flex items-center justify-center bg-black/60 p-6" role="dialog" aria-modal="true" aria-label="アプリを更新中">
+        <div role="status" aria-live="polite" className="w-full max-w-sm rounded-2xl bg-white p-6 text-center text-gray-900 shadow-xl">
+          <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-4 border-sky-100 border-t-sky-600" aria-hidden="true" />
+          <p className="font-bold">{startupUpdateMessage}</p>
+        </div>
+      </div>
+    )}
     {(isTtsStarting || showTtsReady) && (
       <div
         className={`fixed z-[10000] top-[max(10px,env(safe-area-inset-top))] right-3 pointer-events-none rounded-full border px-3 py-2 text-white shadow-lg flex items-center gap-2 ${
