@@ -1,5 +1,5 @@
 // VersionInfo.tsx（更新確認・強制再読み込み対応）
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 type Props = {
   version: string;
@@ -85,6 +85,10 @@ export default function VersionInfo({ version, onBack }: Props) {
   const [checking, setChecking] = useState(false);
   const [updateMessage, setUpdateMessage] = useState("");
   const updateLock = useRef(false);
+  const updateAbort = useRef<AbortController | null>(null);
+  const [applying, setApplying] = useState(false);
+  useEffect(() => () => { updateAbort.current?.abort(); }, []);
+
 
   // ビルド時に埋め込んだIDと、公開先の小さなJSONを比較する。
   const checkForUpdate = async () => {
@@ -97,18 +101,30 @@ export default function VersionInfo({ version, onBack }: Props) {
     setChecking(true);
     setUpdateMessage("最新版を確認しています…");
     const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 15000);
+    updateAbort.current = controller;
+    let timedOut = false;
+    let timeout = window.setTimeout(() => { timedOut = true; controller.abort(); }, 8000);
+    const abortError = () => new DOMException("更新を中止しました", "AbortError");
+    // fetch以外のブラウザーAPIにもタイムアウトを適用する。
+    const wait = <T,>(operation: Promise<T>): Promise<T> => new Promise((resolve, reject) => {
+      const onAbort = () => { cleanup(); reject(abortError()); };
+      const cleanup = () => controller.signal.removeEventListener("abort", onAbort);
+      if (controller.signal.aborted) { reject(abortError()); return; }
+      controller.signal.addEventListener("abort", onAbort, { once: true });
+      operation.then((value) => { cleanup(); resolve(value); }, (error) => { cleanup(); reject(error); });
+    });
+    const pause = () => wait(new Promise<void>((resolve) => window.setTimeout(resolve, 100)));
     try {
       const entryUrl = new URL(import.meta.env.BASE_URL, window.location.origin);
       const checkUrl = new URL("app-update.json", entryUrl);
       checkUrl.searchParams.set("__easy_update_check", Date.now().toString());
-      const response = await fetch(checkUrl.href, {
+      const response = await wait(fetch(checkUrl.href, {
         cache: "no-store",
         credentials: "same-origin",
         signal: controller.signal,
-      });
+      }));
       if (!response.ok) throw new Error("server");
-      const latest = await response.json();
+      const latest = await wait(response.json());
       const currentBuildId = import.meta.env.VITE_APP_BUILD_ID;
       if (typeof latest?.buildId !== "string" || !latest.buildId || !currentBuildId) {
         setUpdateMessage("更新情報を確認できませんでした。更新用の設定が公開されているか確認してください。");
@@ -120,28 +136,54 @@ export default function VersionInfo({ version, onBack }: Props) {
           : "現在お使いのアプリは最新版です。");
         return;
       }
-      setUpdateMessage("新しいバージョンがあります。更新して再読み込みしています…");
-      // このページを対象とするSWのみ解除し、次のナビゲーションで最新版を取得。
-      // localStorage・IndexedDB・音声モデルのキャッシュには触れない。
+      window.clearTimeout(timeout);
+      timeout = window.setTimeout(() => { timedOut = true; controller.abort(); }, 30000);
+      setUpdateMessage("新しいバージョンがあります。更新ファイルを準備しています…（音声の取得で時間がかかる場合があります）");
+      let waiting: ServiceWorker | null = null;
       if ("serviceWorker" in navigator) {
-        const registration = await navigator.serviceWorker.getRegistration(window.location.href);
-        if (registration) await registration.unregister();
+        const registration = await wait(navigator.serviceWorker.getRegistration(window.location.href));
+        if (registration) {
+          await wait(registration.update());
+          while (registration.installing && !registration.waiting) await pause();
+          waiting = registration.waiting;
+        }
       }
+      // 再読み込み前に公開先のHTMLにも接続できることを確認。
+      const htmlUrl = new URL("index.html", entryUrl);
+      htmlUrl.searchParams.set("__easy_updated", latest.buildId);
+      const htmlResponse = await wait(fetch(htmlUrl.href, { cache: "no-store", signal: controller.signal }));
+      if (!htmlResponse.ok || !/<script[^>]+src=/i.test(await wait(htmlResponse.text()))) throw new Error("html");
+      if (controller.signal.aborted) throw abortError();
+      if (!navigator.onLine) throw new Error("offline");
+      setApplying(true);
+      setUpdateMessage("更新を適用しています…");
+      if (waiting) {
+        waiting.postMessage({ type: "SKIP_WAITING" });
+        while (waiting.state !== "activated" && waiting.state !== "redundant") await pause();
+        if (waiting.state !== "activated") throw new Error("activation");
+      }
+      if (controller.signal.aborted) throw abortError();
+      if (!navigator.onLine) throw new Error("offline");
+      setUpdateMessage("更新の準備ができました。アプリを再読み込みしています…");
       const reloadUrl = new URL(window.location.href);
-      reloadUrl.searchParams.set("__easy_updated", Date.now().toString());
+      reloadUrl.searchParams.set("__easy_updated", latest.buildId);
       window.location.replace(reloadUrl.href);
     } catch (error) {
       if (!navigator.onLine) {
         setUpdateMessage("ネットワークにつながっていません。インターネットに接続してから、もう一度お試しください。");
       } else if (error instanceof Error && error.name === "AbortError") {
-        setUpdateMessage("通信がタイムアウトしました。接続状況を確認して、もう一度お試しください。");
+        setUpdateMessage(timedOut
+          ? "確認・更新の待ち時間を超えました。Wi-Fiなど接続状況を確認して、もう一度お試しください。"
+          : "更新を中止しました。現在のバージョンで引き続き使用できます。");
       } else {
         setUpdateMessage("最新版を確認・更新できませんでした。インターネット接続やサーバーの状態を確認して、もう一度お試しください。");
       }
     } finally {
       window.clearTimeout(timeout);
+      if (updateAbort.current === controller) updateAbort.current = null;
       updateLock.current = false;
       setChecking(false);
+      setApplying(false);
     }
   };
 
@@ -161,7 +203,8 @@ export default function VersionInfo({ version, onBack }: Props) {
         {/* ヘッダー */}
         <div className="w-[100svw] -mx-6 md:mx-0 md:w-full flex items-center justify-between mb-3">
           <button
-            onClick={onBack}
+            disabled={applying}
+            onClick={() => { updateAbort.current?.abort(); onBack(); }}
             className="flex items-center gap-1 text-white/90 active:scale-95 px-3 py-2 rounded-lg bg-white/10 border border-white/10"
           >
             <IconBack />
@@ -202,6 +245,11 @@ export default function VersionInfo({ version, onBack }: Props) {
             >
               {checking ? "確認・更新中…" : "最新版を確認・更新"}
             </button>
+            {checking && !applying && (
+              <button type="button" onClick={() => updateAbort.current?.abort()} className="w-full min-h-[44px] rounded-xl border border-white/30 px-4 py-2 text-sm">
+                確認・更新準備を中止
+              </button>
+            )}
             <p className="text-center text-xs text-gray-300">
               新しいバージョンがある場合、更新してアプリを再読み込みします。
               入力中の内容は保存してから押してください。
