@@ -4,6 +4,57 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomUUID, createHash } from 'node:crypto';
+
+// 固定音声は内容が変わったファイルだけURLを変更する。
+// 公開前のビルド時のみ計算するため、更新確認時の通信量は増えない。
+function readAudioRevisions(): Record<string, string> {
+  const revisions: Record<string, string> = {};
+  const audioRoot = path.resolve(process.cwd(), 'public/audio');
+  const visit = (directory: string) => {
+    if (!fs.existsSync(directory)) return;
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const file = path.join(directory, entry.name);
+      if (entry.isDirectory()) visit(file);
+      else if (entry.isFile() && /\.mp3$/i.test(entry.name)) {
+        const key = 'audio/' + path.relative(audioRoot, file).split(path.sep).join('/');
+        revisions[key] = createHash('sha256').update(fs.readFileSync(file)).digest('hex').slice(0, 20);
+      }
+    }
+  };
+  visit(audioRoot);
+  return revisions;
+}
+const audioRevisions = readAudioRevisions();
+
+// ビルドごとにIDを生成。公開ファイル全体を同じリリースとして扱う。
+function appUpdateInfo(): Plugin {
+  const buildId = randomUUID();
+  const info = JSON.stringify({ buildId, builtAt: new Date().toISOString() });
+  return {
+    name: 'easyannounce-update-info',
+    config() {
+      return { define: {
+        'import.meta.env.VITE_APP_BUILD_ID': JSON.stringify(buildId),
+        'import.meta.env.VITE_FIXED_AUDIO_REVISIONS': JSON.stringify(JSON.stringify(audioRevisions)),
+      } };
+    },
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if ((req.url || '').split('?')[0].endsWith('/app-update.json')) {
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.setHeader('Cache-Control', 'no-store');
+          res.end(info);
+          return;
+        }
+        next();
+      });
+    },
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'app-update.json', source: info });
+    },
+  };
+}
 
 function ortRuntimeAssets(): Plugin {
   const ortDist = path.resolve(
@@ -92,6 +143,7 @@ function ortRuntimeAssets(): Plugin {
 export default defineConfig({
   plugins: [
     react(),
+    appUpdateInfo(),
     ortRuntimeAssets(),
 
     VitePWA({
@@ -106,9 +158,41 @@ export default defineConfig({
         ],
         globIgnores: [
           'ort/**',
+          'app-update.json',
         ],
         maximumFileSizeToCacheInBytes:
           10 * 1024 * 1024,
+        // 更新情報は必ずネットワークから取得。オフラインの古いIDを返さない。
+        // オフライン用の事前保存も、tts.tsと同じ音声URLに揃える。
+        manifestTransforms: [async (entries) => ({
+          manifest: entries.map((entry) => {
+            const revision = audioRevisions[entry.url.replace(/^\//, '')];
+            return revision
+              ? { ...entry, url: `${entry.url}?audio_rev=${revision}`, revision: null }
+              : entry;
+          }),
+          warnings: [],
+        })],
+        runtimeCaching: [
+          {
+            urlPattern: /\/app-update\.json(?:\?|$)/,
+            handler: 'NetworkOnly',
+          },
+          {
+            urlPattern: /[?&]__easy_updated=/,
+            handler: 'NetworkOnly',
+          },
+          {
+            urlPattern: /\/audio\/.*\.mp3\?audio_rev=/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'easyannounce-fixed-audio-v1',
+              cacheableResponse: { statuses: [200] },
+              rangeRequests: true,
+            },
+          },
+        ],
+        navigateFallbackDenylist: [/[?&]__easy_updated=/],
         clientsClaim: true,
         skipWaiting: true,
       },
