@@ -148,7 +148,7 @@ export default defineConfig({
 
     VitePWA({
       registerType: 'prompt',
-      injectRegister: 'auto',
+      injectRegister: false,
 
       workbox: {
         // ORTの巨大WASM/MJSはprecacheしない。
@@ -194,7 +194,9 @@ export default defineConfig({
         ],
         navigateFallbackDenylist: [/[?&]__easy_updated=/],
         clientsClaim: false,
-        skipWaiting: false,
+        // 旧版に適用ボタンがなくても更新がwaitingで止まらないようにする。
+        // SWの更新準備と画面の再読み込みは別。main.tsxは自動reloadしない。
+        skipWaiting: true,
       },
 
       includeAssets: [
