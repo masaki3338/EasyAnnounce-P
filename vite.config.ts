@@ -147,7 +147,7 @@ export default defineConfig({
     ortRuntimeAssets(),
 
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       injectRegister: 'auto',
 
       workbox: {
@@ -193,8 +193,8 @@ export default defineConfig({
           },
         ],
         navigateFallbackDenylist: [/[?&]__easy_updated=/],
-        clientsClaim: true,
-        skipWaiting: true,
+        clientsClaim: false,
+        skipWaiting: false,
       },
 
       includeAssets: [
