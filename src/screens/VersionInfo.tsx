@@ -1,5 +1,5 @@
-// VersionInfo.tsx（UIのみ刷新・機能は完全据え置き）
-import React, { useState } from "react";
+// VersionInfo.tsx（更新確認・強制再読み込み対応）
+import React, { useRef, useState } from "react";
 
 type Props = {
   version: string;
@@ -82,6 +82,69 @@ const historyData: HistoryItem[] = [
 export default function VersionInfo({ version, onBack }: Props) {
   const [openIndex, setOpenIndex] = useState<number | null>(0); // 最新を最初から開く
 
+  const [checking, setChecking] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState("");
+  const updateLock = useRef(false);
+
+  // ビルド時に埋め込んだIDと、公開先の小さなJSONを比較する。
+  const checkForUpdate = async () => {
+    if (updateLock.current) return;
+    if (!navigator.onLine) {
+      setUpdateMessage("ネットワークにつながっていません。インターネットに接続してから、もう一度お試しください。");
+      return;
+    }
+    updateLock.current = true;
+    setChecking(true);
+    setUpdateMessage("最新版を確認しています…");
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15000);
+    try {
+      const entryUrl = new URL(import.meta.env.BASE_URL, window.location.origin);
+      const checkUrl = new URL("app-update.json", entryUrl);
+      checkUrl.searchParams.set("__easy_update_check", Date.now().toString());
+      const response = await fetch(checkUrl.href, {
+        cache: "no-store",
+        credentials: "same-origin",
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error("server");
+      const latest = await response.json();
+      const currentBuildId = import.meta.env.VITE_APP_BUILD_ID;
+      if (typeof latest?.buildId !== "string" || !latest.buildId || !currentBuildId) {
+        setUpdateMessage("更新情報を確認できませんでした。更新用の設定が公開されているか確認してください。");
+        return;
+      }
+      if (latest.buildId === currentBuildId) {
+        setUpdateMessage(import.meta.env.DEV
+          ? "開発画面です。現在の開発サーバーと更新IDが一致しています。公開版の更新確認はVercelのURLで行ってください。"
+          : "現在お使いのアプリは最新版です。");
+        return;
+      }
+      setUpdateMessage("新しいバージョンがあります。更新して再読み込みしています…");
+      // このページを対象とするSWのみ解除し、次のナビゲーションで最新版を取得。
+      // localStorage・IndexedDB・音声モデルのキャッシュには触れない。
+      if ("serviceWorker" in navigator) {
+        const registration = await navigator.serviceWorker.getRegistration(window.location.href);
+        if (registration) await registration.unregister();
+      }
+      const reloadUrl = new URL(window.location.href);
+      reloadUrl.searchParams.set("__easy_updated", Date.now().toString());
+      window.location.replace(reloadUrl.href);
+    } catch (error) {
+      if (!navigator.onLine) {
+        setUpdateMessage("ネットワークにつながっていません。インターネットに接続してから、もう一度お試しください。");
+      } else if (error instanceof Error && error.name === "AbortError") {
+        setUpdateMessage("通信がタイムアウトしました。接続状況を確認して、もう一度お試しください。");
+      } else {
+        setUpdateMessage("最新版を確認・更新できませんでした。インターネット接続やサーバーの状態を確認して、もう一度お試しください。");
+      }
+    } finally {
+      window.clearTimeout(timeout);
+      updateLock.current = false;
+      setChecking(false);
+    }
+  };
+
   const start = 2025;
   const y = new Date().getFullYear();
   const year = start === y ? `${y}` : `${start}–${y}`;
@@ -127,6 +190,27 @@ export default function VersionInfo({ version, onBack }: Props) {
               <IconInfo />
               <span className="font-semibold">Version {version}</span>
             </span>
+          </div>
+
+          <div className="mx-auto w-full max-w-md space-y-3">
+            <button
+              type="button"
+              onClick={checkForUpdate}
+              disabled={checking}
+              aria-busy={checking}
+              className="w-full min-h-[48px] rounded-xl bg-sky-500 px-4 py-3 text-base font-bold text-white shadow active:scale-[0.99] disabled:opacity-60 disabled:cursor-wait"
+            >
+              {checking ? "確認・更新中…" : "最新版を確認・更新"}
+            </button>
+            <p className="text-center text-xs text-gray-300">
+              新しいバージョンがある場合、更新してアプリを再読み込みします。
+              入力中の内容は保存してから押してください。
+            </p>
+            {updateMessage && (
+              <p role="status" aria-live="polite" className="rounded-xl border border-sky-300/30 bg-sky-950/50 px-4 py-3 text-sm leading-relaxed">
+                {updateMessage}
+              </p>
+            )}
           </div>
 
           {/* 更新履歴アコーディオン */}
