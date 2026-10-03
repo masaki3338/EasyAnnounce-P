@@ -105,6 +105,35 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
   const [aiPerformanceProgress, setAiPerformanceProgress] =
     useState<MatchaPerformanceProgress | null>(null);
   const [aiPerformanceError, setAiPerformanceError] = useState("");
+  const [aiProgressPercent, setAiProgressPercent] = useState(0);
+
+  // Matcha側からは処理段階だけ通知されるため、段階の間も数字をゆっくり進めて
+  // 「フリーズしていない」ことが分かるようにする。
+  useEffect(() => {
+    if (!isCheckingAiPerformance) return;
+
+    const target =
+      aiPerformanceProgress === "preparing" ? 35 :
+      aiPerformanceProgress === "g2p" ? 60 :
+      aiPerformanceProgress === "inference" ? 85 :
+      aiPerformanceProgress === "judging" ? 98 :
+      aiPerformanceProgress === "complete" ? 100 : 5;
+
+    setAiProgressPercent((current) => {
+      if (aiPerformanceProgress === "complete") return 100;
+      return Math.max(current, 1);
+    });
+
+    if (aiPerformanceProgress === "complete") return;
+
+    const timer = window.setInterval(() => {
+      setAiProgressPercent((current) =>
+        current < target ? Math.min(current + 1, target) : current
+      );
+    }, 1500);
+
+    return () => window.clearInterval(timer);
+  }, [isCheckingAiPerformance, aiPerformanceProgress]);
 
   const onceRef = useRef(false);
   useEffect(() => {
@@ -138,6 +167,7 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
     if (isCheckingAiPerformance) return;
 
     setIsCheckingAiPerformance(true);
+    setAiProgressPercent(0);
     setAiPerformance(null);
     setAiPerformanceProgress("preparing");
     setAiPerformanceError("");
@@ -459,23 +489,18 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
 
               {isCheckingAiPerformance && (
                 <>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+                  <div className="mt-3 flex items-end justify-between gap-3">
+                    <div className="text-xs font-semibold text-cyan-100">
+                      AI音声を準備しています
+                    </div>
+                    <div className="text-2xl font-extrabold text-cyan-200 tabular-nums leading-none">
+                      {aiProgressPercent}%
+                    </div>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
                     <div
                       className="h-full rounded-full bg-cyan-300 transition-all duration-300"
-                      style={{
-                        width:
-                          aiPerformanceProgress === "preparing"
-                            ? "15%"
-                            : aiPerformanceProgress === "g2p"
-                            ? "40%"
-                            : aiPerformanceProgress === "inference"
-                            ? "70%"
-                            : aiPerformanceProgress === "judging"
-                            ? "90%"
-                            : aiPerformanceProgress === "complete"
-                            ? "100%"
-                            : "5%",
-                      }}
+                      style={{ width: `${aiProgressPercent}%` }}
                     />
                   </div>
 
