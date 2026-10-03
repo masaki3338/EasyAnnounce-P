@@ -207,8 +207,20 @@ function getFixedAudioFolder(): string {
   return getSelectedMatchaVoice() === "uguisu" ? "2" : "1";
 }
 
+// 内容が変わった音声のみURLを変更する。モデル・選手データは削除しない。
+const fixedAudioRevisions: Record<string, string> = (() => {
+  try {
+    return JSON.parse(import.meta.env.VITE_FIXED_AUDIO_REVISIONS || "{}");
+  } catch {
+    return {};
+  }
+})();
+
 function getFixedAudioSrc(baseName: string): string {
-  return `/audio/${getFixedAudioFolder()}/${baseName}.mp3`;
+  const key = `audio/${getFixedAudioFolder()}/${baseName}.mp3`;
+  const src = `${import.meta.env.BASE_URL}${key}`;
+  const revision = fixedAudioRevisions[key];
+  return revision ? `${src}?audio_rev=${encodeURIComponent(revision)}` : src;
 }
 
 const fixedAudioPrefetchInFlight = new Map<string, Promise<boolean>>();
