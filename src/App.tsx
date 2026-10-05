@@ -218,7 +218,6 @@ const App = () => {
   const startupUpdateAllowed = useRef(true);
   const startupUpdateCommitting = useRef(false);
   const startupUpdateAbort = useRef<AbortController | null>(null);
-  const [startupUpdateMessage, setStartupUpdateMessage] = useState("");
 
   // 初期メニューを一度離れたら、メニューに戻っても自動更新を再開しない。
   const setScreen: React.Dispatch<React.SetStateAction<ScreenType>> = (next) => {
@@ -274,7 +273,6 @@ const App = () => {
 
         sessionStorage.setItem(guardKey, latest.buildId);
         startupUpdateCommitting.current = true;
-        setStartupUpdateMessage("新しいバージョンに更新しています…");
         if (waiting) {
           waiting.postMessage({ type: "SKIP_WAITING" });
           while (waiting.state !== "activated" && waiting.state !== "redundant" && allowed()) await pause();
@@ -290,7 +288,6 @@ const App = () => {
         window.clearTimeout(timer);
         if (startupUpdateAbort.current === abort) startupUpdateAbort.current = null;
         startupUpdateCommitting.current = false;
-        setStartupUpdateMessage("");
       }
     };
     void run();
@@ -1471,14 +1468,6 @@ const handleSpeak = async () => {
 
 return (
   <>
-    {startupUpdateMessage && (
-      <div className="fixed inset-0 z-[20000] flex items-center justify-center bg-black/60 p-6" role="dialog" aria-modal="true" aria-label="アプリを更新中">
-        <div role="status" aria-live="polite" className="w-full max-w-sm rounded-2xl bg-white p-6 text-center text-gray-900 shadow-xl">
-          <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-4 border-sky-100 border-t-sky-600" aria-hidden="true" />
-          <p className="font-bold">{startupUpdateMessage}</p>
-        </div>
-      </div>
-    )}
     {(isTtsStarting || showTtsReady) && (
       <div
         className={`fixed z-[10000] top-[max(10px,env(safe-area-inset-top))] right-3 pointer-events-none rounded-full border px-3 py-2 text-white shadow-lg flex items-center gap-2 ${
