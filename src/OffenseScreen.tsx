@@ -17,6 +17,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import { useDrag, useDrop } from "react-dnd";
 import { useNavigate } from "react-router-dom";
 import { speak, speakJoinedTTS, stop, preserveNameReading, prefetchTTS } from "./lib/tts";
+import { addAnnouncementHistory } from "./lib/announcementHistory";
 import { getLeagueMode } from "./lib/leagueSettings";
 import {
   deriveCurrentGameState,
@@ -1993,6 +1994,128 @@ const [showRunnerModal, setShowRunnerModal] = useState(false);
 const [showRunnerHelpModal, setShowRunnerHelpModal] = useState(false);
 const [isRunnerConfirmed, setIsRunnerConfirmed] = useState(false);
 const [runnerAnnouncement, setRunnerAnnouncement] = useState<string[]>([]);
+
+// ===== アナウンス履歴：閉じると再表示できない試合中アナウンスだけ保存 =====
+const pinchHistoryHtmlRef = useRef("");
+
+const getCurrentHistoryInningLabel = () => `${inning}回${isTop ? "表" : "裏"}`;
+const getEndedHistoryInningLabel = () => {
+  const ended = lastEndedHalfRef.current;
+  return ended
+    ? `${ended.inning}回${ended.isTop ? "表" : "裏"}`
+    : getCurrentHistoryInningLabel();
+};
+
+useEffect(() => {
+  if (!showScorePopup) return;
+  const displayText = String(popupMessage || "").trim();
+  const speechText = String(popupSpeakMessage || popupMessage || "").trim();
+  if (displayText) void addAnnouncementHistory({ category: "得点", displayText, speechText, inningLabel: getEndedHistoryInningLabel() });
+}, [showScorePopup, popupMessage, popupSpeakMessage]);
+
+useEffect(() => {
+  if (!showStartTimePopup || !gameStartTime) return;
+  const text = `この試合の開始時刻は ${formatJaTime(gameStartTime)} です。`;
+  void addAnnouncementHistory({ category: "開始時刻", displayText: text, speechText: text, inningLabel: getCurrentHistoryInningLabel() });
+}, [showStartTimePopup, gameStartTime]);
+
+useEffect(() => {
+  if (!showMemberExchangeModal || !memberExchangeText.trim()) return;
+  void addAnnouncementHistory({ category: "メンバー交換", displayText: memberExchangeText, speechText: memberExchangeText, inningLabel: getEndedHistoryInningLabel() });
+}, [showMemberExchangeModal, memberExchangeText]);
+
+useEffect(() => {
+  if (!showIntentionalWalkPopup || !intentionalWalkText.trim()) return;
+  void addAnnouncementHistory({
+    category: "申告敬遠",
+    displayText: intentionalWalkText,
+    speechText: intentionalWalkText.replaceAll("進塁", "しんるい"),
+    inningLabel: getCurrentHistoryInningLabel(),
+  });
+}, [showIntentionalWalkPopup, intentionalWalkText]);
+
+useEffect(() => {
+  if (!showGroundPopup) return;
+  const inningLabel = getEndedHistoryInningLabel();
+  const startText = "両チームはグランド整備をお願いします。";
+  const endText = "グランド整備、ありがとうございました。";
+
+  // グラウンド整備は開始案内と終了案内を別々の履歴として残す。
+  // 履歴は新しい順表示のため、終了案内を先に登録して開始案内を上側にする。
+  void (async () => {
+    await addAnnouncementHistory({
+      category: "グラウンド整備終了",
+      displayText: endText,
+      speechText: endText,
+      inningLabel,
+    });
+    await addAnnouncementHistory({
+      category: "グラウンド整備開始",
+      displayText: startText,
+      speechText: startText,
+      inningLabel,
+    });
+  })();
+}, [showGroundPopup]);
+
+useEffect(() => {
+  if (!showCombinedAuxModal) return;
+  if (combinedAuxTabs.includes("ground")) {
+    const inningLabel = getEndedHistoryInningLabel();
+    const startText = "両チームはグランド整備をお願いします。";
+    const endText = "グランド整備、ありがとうございました。";
+
+    void (async () => {
+      await addAnnouncementHistory({
+        category: "グラウンド整備終了",
+        displayText: endText,
+        speechText: endText,
+        inningLabel,
+      });
+      await addAnnouncementHistory({
+        category: "グラウンド整備開始",
+        displayText: startText,
+        speechText: startText,
+        inningLabel,
+      });
+    })();
+  }
+  if (combinedAuxTabs.includes("member") && memberExchangeText.trim()) {
+    void addAnnouncementHistory({ category: "メンバー交換", displayText: memberExchangeText, speechText: memberExchangeText, inningLabel: getEndedHistoryInningLabel() });
+  }
+  if (combinedAuxTabs.includes("cooling")) {
+    const text = combinedCoolingNotice || `ただいまから${combinedCoolingMinutes}分間のクーリングタイムを取ります。`;
+    void addAnnouncementHistory({ category: "クーリングタイム", displayText: text, speechText: text, inningLabel: getEndedHistoryInningLabel() });
+  }
+}, [showCombinedAuxModal, combinedAuxTabs, memberExchangeText, combinedCoolingNotice, combinedCoolingMinutes]);
+
+// 代打／代走は「表示しただけ」では履歴に残さない。
+// 確定ボタンを押した時だけ、その瞬間の完成アナウンスを保存する。
+const savePinchHistoryOnConfirm = (confirmedHtml?: string) => {
+  // 確定後に打順が書き換わると pinch-preview の「交代される選手」も変わるため、
+  // 必ず確定ボタン押下直前に退避したHTMLを最優先で保存する。
+  const el = document.getElementById("pinch-preview");
+  const html = (confirmedHtml || pinchHistoryHtmlRef.current || el?.innerHTML || "").trim();
+  if (!html) return;
+  pinchHistoryHtmlRef.current = html;
+  void addAnnouncementHistory({
+    category: "代打",
+    displayHtml: html,
+    inningLabel: getCurrentHistoryInningLabel(),
+  });
+};
+
+const saveRunnerHistoryOnConfirm = () => {
+  if (!runnerAnnouncement?.length) return;
+  const displayHtml = runnerAnnouncement.filter(Boolean).join("<br />");
+  if (!displayHtml.trim()) return;
+  void addAnnouncementHistory({
+    category: runnerAnnouncement.some((x) => String(x).includes("臨時代走")) ? "臨時代走" : "代走",
+    displayHtml,
+    inningLabel: getCurrentHistoryInningLabel(),
+  });
+};
+
 const [runnerAssignments, setRunnerAssignments] = useState<{ [base: string]: any | null }>({
   "1塁": null,
   "2塁": null,
@@ -3703,17 +3826,45 @@ const prefetchBattersInBackground = async () => {
 
 const updateAnnouncement = () => {
 
-  const entry = battingOrder[currentBatterIndex];
-  const player = getPlayer(entry?.id);
-  const pos = getPosition(entry?.id);
-  console.log("leagueMode", leagueMode, "player.id", player.id, "announced", announcedIdsRef.current);
-
-  if (!player || !pos) {
+  // 攻撃画面を開いた直後は localForage からの復元順によって、
+  // battingOrder / players / currentBatterIndex のどれかだけが先に更新される瞬間がある。
+  // その間はアナウンス生成を行わず、必要なデータが揃ってから次の useEffect で再生成する。
+  if (!Array.isArray(battingOrder) || battingOrder.length === 0) {
     setAnnouncement("");
     setAnnouncementHTMLStr("");
     setAnnouncementHTMLOverrideStr("");
     return;
   }
+
+  const safeIndex = Number(currentBatterIndex);
+  if (!Number.isInteger(safeIndex) || safeIndex < 0 || safeIndex >= battingOrder.length) {
+    setAnnouncement("");
+    setAnnouncementHTMLStr("");
+    setAnnouncementHTMLOverrideStr("");
+    return;
+  }
+
+  const entry = battingOrder[safeIndex];
+  const playerId = Number(entry?.id);
+
+  if (!Number.isFinite(playerId)) {
+    setAnnouncement("");
+    setAnnouncementHTMLStr("");
+    setAnnouncementHTMLOverrideStr("");
+    return;
+  }
+
+  const player = getPlayer(playerId);
+  const pos = getPosition(playerId);
+
+  if (!player || typeof player !== "object" || !pos) {
+    setAnnouncement("");
+    setAnnouncementHTMLStr("");
+    setAnnouncementHTMLOverrideStr("");
+    return;
+  }
+
+  console.log("leagueMode", leagueMode, "playerId", playerId, "announced", announcedIdsRef.current);
 
   const number = player.number;
   const honorific = player?.isFemale ? "さん" : "くん";
@@ -3728,7 +3879,7 @@ const updateAnnouncement = () => {
     displayLines.push(`${inning}回の${isTop ? "表" : "裏"}、${teamName}の攻撃は、<br />`);
     speakLines.push(`${inning}回の${isTop ? "表" : "裏"}、${teamReading}の攻撃は、<br />`);
   }
-  const isChecked = checkedIds.includes(player.id);
+  const isChecked = checkedIds.includes(playerId);
 
 
 // 既存の rubyLast / rubyFirst は残してOK（posPrefix 等もそのまま使用）
@@ -3738,7 +3889,7 @@ const nameHTML = isChecked
 
 const num = String(number ?? "").trim();
 const isBoys = leagueMode === "boys";
-const currentPlayerId = Number(player.id);
+const currentPlayerId = playerId;
 
 if (!isChecked) {
   if (isBoys) {
@@ -5903,6 +6054,10 @@ useEffect(() => {
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       onClick={async () => {
+                        // 履歴用：打順を書き換える前の表示内容を固定しておく。
+                        const confirmedPinchHistoryHtml =
+                          (document.getElementById("pinch-preview")?.innerHTML || "").trim();
+
                         // =========================
                         // リエントリー確定
                         // =========================
@@ -6002,6 +6157,7 @@ useEffect(() => {
 
                             setAnnouncementHTML(html);
 
+                            savePinchHistoryOnConfirm(confirmedPinchHistoryHtml);
                             closeSubModal();
                             return;
                           }
@@ -6114,6 +6270,7 @@ useEffect(() => {
                             setAnnouncementHTMLOverrideStr(speakHtml);
                           }
 
+                          savePinchHistoryOnConfirm(confirmedPinchHistoryHtml);
                           closeSubModal();
                         }
                       }}
@@ -6666,7 +6823,7 @@ useEffect(() => {
                                 alt="mic"
                                 className="w-5 h-5 translate-y-0.5"
                               />
-                            <div className="space-y-1 font-bold text-red-600 [&_rt]:text-red-700">
+                            <div id="runner-announcement-preview" className="space-y-1 font-bold text-red-600 [&_rt]:text-red-700">
                               {["1塁", "2塁", "3塁"].map((base) => {
                                 const labels = [
                                   `${base}ランナー`,
@@ -6906,6 +7063,7 @@ useEffect(() => {
                 }
               }
 
+              saveRunnerHistoryOnConfirm();
               setShowRunnerModal(false);
               setRunnerAssignments({ "1塁": null, "2塁": null, "3塁": null });
               setReplacedRunners({ "1塁": null, "2塁": null, "3塁": null });

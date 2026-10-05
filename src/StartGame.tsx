@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import localForage from "localforage";
+import { clearAnnouncementHistory } from "./lib/announcementHistory";
 import {
   getAnnouncementMode,
   type AnnouncementMode,
@@ -646,6 +647,10 @@ const handleStart = async () => {
 // 2) モーダルの「OK」で本当に開始（元の handleStart の中身をこちらへ）
 const proceedStart = async () => {
   const isHome = !isFirstAttack;
+
+  // ✅ 新しい試合を本当に開始する時点で、前試合のアナウンス履歴を全削除
+  // 「試合を開始する」押下直後ではなく、確認モーダルのOK時だけ実行する。
+  await clearAnnouncementHistory();
 
   // （↓↓ここからは、元の handleStart 内の“アラート以外の処理”をそのまま↓）
   // ★ 先攻×初回のみ：… というalertブロックは削除してOK（モーダルに置換したため）

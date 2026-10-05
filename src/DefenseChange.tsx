@@ -7,6 +7,7 @@ import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 import localForage from "localforage";
 import { useNavigate } from "react-router-dom";
 import { speak as ttsSpeak, stop as ttsStop, prefetchTTS, prewarmTTS, preserveNameReading } from "./lib/tts";
+import { addAnnouncementHistory } from "./lib/announcementHistory";
 import {
   deriveCurrentGameState,
   reenterPlayerToPosition,
@@ -8380,6 +8381,20 @@ const confirmChange = async () => {
   skipUnannouncedConfirmRef.current = false;
 
   await pushHistory(); // ★確定直前スナップショットを永続化まで行う
+
+  // ✅ アナウンス履歴：守備交代は「交代確定」時点の完成文だけを保存する。
+  // プレビュー途中は保存しない。選手名のruby HTMLもそのまま保持する。
+  if (announcementText && typeof announcementText === "object") {
+    const displayHtml = String((announcementText as any).displayText || "").trim();
+    const speechText = String((announcementText as any).speakText || "").trim();
+    if (displayHtml) {
+      await addAnnouncementHistory({
+        category: "守備交代",
+        displayHtml,
+        speechText,
+      });
+    }
+  }
 
   let usedInfo: Record<
     number,

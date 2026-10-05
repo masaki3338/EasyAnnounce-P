@@ -11,6 +11,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import localForage from 'localforage';
 import { speak as ttsSpeak, speakJoinedTTS, stop as ttsStop, prefetchTTS, prewarmTTS, preserveNameReading } from "./lib/tts";
+import { addAnnouncementHistory } from "./lib/announcementHistory";
 import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 
 const IconMic = () => (
@@ -280,6 +281,7 @@ useEffect(() => {
   const [announceMessages, setAnnounceMessages] = useState<string[]>([]);
   const [pitchLimitMessages, setPitchLimitMessages] = useState<string[]>([]);
   const [showPitchLimitModal, setShowPitchLimitModal] = useState(false);
+
   const [showRestoreConfirmModal, setShowRestoreConfirmModal] = useState(false);
   const [showRestoreCompleteModal, setShowRestoreCompleteModal] = useState(false);
   const [restoreCompleteMessage, setRestoreCompleteMessage] =
@@ -2556,6 +2558,23 @@ const handleStop = () => { ttsStop(); };
   <button
     type="button"
     onClick={async () => {
+      // イニング終了ボタンを押した時点の投球数アナウンスを履歴へ保存。
+      // announcementHistory 側で古い「投球数」履歴は自動的に削除されるため、
+      // 投球数履歴は常に最新1件だけ残る。
+      if (announceMessages.length > 0) {
+        const displayHtml = announceMessages.map((m) => String(m)).join("<br />");
+        const speechText = announceMessages
+          .map((m) => String(m).replace(/<[^>]+>/g, " "))
+          .join("。 ");
+
+        void addAnnouncementHistory({
+          category: "投球数",
+          displayHtml,
+          speechText,
+          inningLabel: `${inning}回${isTop ? "表" : "裏"}`,
+        });
+      }
+
       const idx = Number(inning) - 1;
       const half: "top" | "bottom" = isTop ? "top" : "bottom";
       const currentScore = scores?.[idx]?.[half] ?? 0;

@@ -11,6 +11,8 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import { useKeepScreenAwake } from "./hooks/useKeepScreenAwake";
 
 import { speak, speakJoinedTTS, stop, prefetchTTS, prewarmTTS } from "./lib/tts";
+import AnnouncementHistoryModal from "./components/AnnouncementHistoryModal";
+import { addAnnouncementHistory } from "./lib/announcementHistory";
 
 import ManualViewer from "./ManualViewer"; // ← 追加
 const manualPdfURL = "/manual.pdf#zoom=page-fit"; // ページ全体にフィット
@@ -544,6 +546,7 @@ useEffect(() => {
   const [waterBreakNotice, setWaterBreakNotice] = useState("");
   const [coolingPopupMessage, setCoolingPopupMessage] = useState("");
   const [showCoolingPopup, setShowCoolingPopup] = useState(false);
+  const [showAnnouncementHistory, setShowAnnouncementHistory] = useState(false);
 
   useEffect(() => {
     const loadCoolingSettings = async () => {
@@ -905,6 +908,17 @@ const formatWaterBreakTime = (sec: number) => {
 };
 
 const waterBreakMessage = `ただいまから${waterBreakMinutes}分間のクーリングタイムを取ります。`;
+
+useEffect(() => {
+  if (!showWaterBreakPopup) return;
+  const text = (waterBreakNotice || waterBreakMessage || "").trim();
+  if (!text) return;
+  void addAnnouncementHistory({
+    category: leagueMode === "boys" ? "給水タイム" : "クーリングタイム",
+    displayText: text,
+    speechText: text,
+  });
+}, [showWaterBreakPopup, waterBreakNotice, waterBreakMessage, leagueMode]);
 
   // クーリングタイムは設定時間・残り時間で文言が変わるため、
   // waterBreakMessage の定義後に先読みする。
@@ -1941,6 +1955,12 @@ return (
               onChange={async (e) => {
                 const value = e.target.value;
 
+                if (value === "history") {
+                  setShowAnnouncementHistory(true);
+                  setOtherOption("");
+                  return;
+                }
+
                 if (value === "end") {
                   console.group("[END] その他→試合終了");
 
@@ -2216,6 +2236,7 @@ return (
               <option value="" disabled hidden>
                 その他
               </option>
+              <option value="history">アナウンス履歴</option>
               {isBoys ? (
                 <>
                   <option value="waterBreak">給水タイム</option>
@@ -2298,6 +2319,12 @@ return (
         value={otherOption}
         onChange={async (e) => {
         const value = e.target.value;
+
+        if (value === "history") {
+          setShowAnnouncementHistory(true);
+          setOtherOption("");
+          return;
+        }
 
         if (value === "end") {
           console.group("[END] その他→試合終了");
@@ -2567,6 +2594,7 @@ return (
       <option value="" disabled hidden>
         その他
       </option>
+      <option value="history">アナウンス履歴</option>
 
       {isBoys ? (
         <>
@@ -2709,6 +2737,12 @@ return (
         value={otherOption}
         onChange={async (e) => {
           const value = e.target.value;
+
+          if (value === "history") {
+            setShowAnnouncementHistory(true);
+            setOtherOption("");
+            return;
+          }
 
           if (value === "end") {
             console.group("[END] その他→試合終了");
@@ -2976,6 +3010,7 @@ return (
           その他
         </option>
 
+        <option value="history">アナウンス履歴</option>
         {isBoys ? (
           <>
             <option value="waterBreak">給水タイム</option>
@@ -4940,6 +4975,11 @@ return (
     </div>
   </div>
 )}
+
+<AnnouncementHistoryModal
+  open={showAnnouncementHistory}
+  onClose={() => setShowAnnouncementHistory(false)}
+/>
     </>
   );
 };
