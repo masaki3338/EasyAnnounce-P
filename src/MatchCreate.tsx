@@ -371,8 +371,18 @@ const stopExchangeMessage = () => {
                 : "3塁審",
     }));
 
-  const getUmpireRoleLabel = (index: number, role: string) =>
-    isTwoUmp && index === 1 ? "塁審" : role;
+  const getUmpireRoleLabel = (index: number, _role: string) => {
+    if (index === 0) return "球審";
+
+    if (index === 1) {
+      return isTwoUmp ? "塁審" : "1塁審";
+    }
+
+    if (index === 2) return "2塁審";
+    if (index === 3) return "3塁審";
+
+    return "";
+  };
 
   const handleUmpireChange = (
     index: number,
@@ -839,38 +849,42 @@ return (
         <div className="font-semibold">審判</div>
       </div>
 
-      {!isBoys && (
-        <div
-          className="flex items-center gap-3 text-sm select-none flex-wrap"
-          role="radiogroup"
-          aria-label="審判人数"
-        >
-          <label className="inline-flex items-center gap-1 whitespace-nowrap">
-            <input
-              type="radio"
-              name="umpireMode"
-              className="w-4 h-4 accent-emerald-600"
-              checked={isTwoUmp === true}
-              onChange={() => setIsTwoUmp(true)}
-            />
-            2審
-          </label>
+      {announcementMode !== "single" && (
+        <>
+          {!isBoys && (
+            <div
+              className="flex items-center gap-3 text-sm select-none flex-wrap"
+              role="radiogroup"
+              aria-label="審判人数"
+            >
+              <label className="inline-flex items-center gap-1 whitespace-nowrap">
+                <input
+                  type="radio"
+                  name="umpireMode"
+                  className="w-4 h-4 accent-emerald-600"
+                  checked={isTwoUmp === true}
+                  onChange={() => setIsTwoUmp(true)}
+                />
+                2審
+              </label>
 
-          <label className="inline-flex items-center gap-1 whitespace-nowrap">
-            <input
-              type="radio"
-              name="umpireMode"
-              className="w-4 h-4 accent-emerald-600"
-              checked={isTwoUmp === false}
-              onChange={() => setIsTwoUmp(false)}
-            />
-            4審
-          </label>
+              <label className="inline-flex items-center gap-1 whitespace-nowrap">
+                <input
+                  type="radio"
+                  name="umpireMode"
+                  className="w-4 h-4 accent-emerald-600"
+                  checked={isTwoUmp === false}
+                  onChange={() => setIsTwoUmp(false)}
+                />
+                4審
+              </label>
+            </div>
+          )}
 
-          <span className="text-xs text-white/70 whitespace-nowrap">
+          <span className="ml-2 text-xs text-white/70 whitespace-nowrap">
             後攻チームのみ使用
           </span>
-        </div>
+        </>
       )}
     </div>
   </div>

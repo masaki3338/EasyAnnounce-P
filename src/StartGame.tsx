@@ -1116,7 +1116,7 @@ return (
         {isTwoUmpires ? (
           <ul className="text-sm text-white/90 grid grid-cols-2 gap-x-4 gap-y-1">
             <li>球審：<span className="font-medium">{umpires["球審"] || "未設定"}</span></li>
-            <li>1塁審：<span className="font-medium">{umpires["1塁審"] || "未設定"}</span></li>
+            <li>塁審：<span className="font-medium">{umpires["塁審"] || "未設定"}</span></li>
           </ul>
         ) : (
           <ul className="text-sm text-white/90 grid grid-cols-2 gap-x-4 gap-y-1">
