@@ -77,6 +77,14 @@ const historyData: HistoryItem[] = [
        ・チーム選手データのQRコード共有追加`,
     ],
   },
+  {
+    date: "2026.10.05",
+    version: "Version 1.06",
+    details: ["アナウンス履歴機能を追加"],
+  },
+
+
+
 ];
 
 export default function VersionInfo({ version, onBack }: Props) {
