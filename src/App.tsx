@@ -68,7 +68,7 @@ const DEFAULT_ANNOUNCEMENT_TIMING_SETTINGS: AnnouncementTimingSettings = {
   groundMaintenanceInning: 5,
 };
 
-const APP_VERSION = "1.05"
+const APP_VERSION = "1.06"
 
 // iOS 判定を共通で使えるようにグローバル定数として定義
 const isIOS = (() => {
