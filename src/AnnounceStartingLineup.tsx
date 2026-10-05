@@ -684,17 +684,49 @@ const handleSpeak = () => {
     for (let i = 0; i < parts.length; i += 1) {
       if (session !== speakSessionRef.current) return;
 
-      // 現在の行を再生している間に、次の選手の音声を作っておく。
-      const nextReady = parts[i + 1]
-        ? prefetchTTS(parts[i + 1])
+      // まず現在行の読み上げを開始する。
+      // ttsSpeak() は本番読み上げ開始時に通常のバックグラウンド先読みを
+      // キャンセルするため、先に next 行を prefetch すると無効になることがある。
+      const currentPlay = ttsSpeak(parts[i], {
+        progressive: false,
+        cache: true,
+      });
+
+      // 現在行が推論Workerを先に確保したあと、再生中に次の行を先読みする。
+      // foregroundLookahead=true にすることで、本番読み上げ開始による
+      // バックグラウンド先読みキャンセルの対象外にする。
+      //
+      // 次行を開始する前にはこの先読み完了を待つので、
+      // 「守備位置（固定MP3）」の直後で選手名の生成待ちが発生しにくくなる。
+      const nextReady: Promise<void> = parts[i + 1]
+        ? new Promise<void>((resolve) => {
+            window.setTimeout(() => {
+              if (session !== speakSessionRef.current) {
+                resolve();
+                return;
+              }
+
+              void prefetchTTS(parts[i + 1], {
+                foregroundLookahead: true,
+              })
+                .catch(() => {
+                  // 先読み失敗時でも本番読み上げは継続する。
+                })
+                .finally(resolve);
+            }, 120);
+          })
         : Promise.resolve();
 
       // 1人分は途中分割せずに再生し、氏名の途中に生成待ちを入れない。
       // 本来の打順・守備位置は固定MP3を使用する。
       // 選手名の中に含まれる「ライト」等だけは、tts.ts側の
       // 選手名範囲保護により固定MP3へ置き換えない。
-      await ttsSpeak(parts[i], { progressive: false, cache: true });
+      await currentPlay;
       if (session !== speakSessionRef.current) return;
+
+      // 次の行は音声生成を済ませてから開始する。
+      // 待ち時間が必要な場合も「現在の選手と次の選手の間」に置き、
+      // 「守備位置と選手名の間」には入れない。
       await nextReady;
     }
   })().finally(() => {

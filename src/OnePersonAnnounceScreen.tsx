@@ -125,6 +125,25 @@ function htmlToTtsText(html: string): string {
   return text;
 }
 
+// 1人モードの打者紹介専用。
+// 守備位置は固定MP3をそのまま使い、その直後の選手名だけ間を空けずに続ける。
+// htmlToTtsText() では「ショート、ヤマダ...」になるため、
+// 「守備位置＋読点＋カタカナ選手名」の時だけ読点を外す。
+// 他の通常文・モーダル文には影響させない。
+function tightenBatterPositionNameGap(text: string): string {
+  return String(text ?? "").replace(
+    /(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)、(?=[ァ-ヶヷヸヹヺー])/g,
+    // 普通の半角スペースではなく NBSP を使う。
+    // fixed MP3 の照合では空白として無視される一方、
+    // tts.ts の「選手名範囲」判定には巻き込まれない。
+    // そのため、
+    //   ショート = 守備位置 → 固定MP3
+    //   河村ショートくん内のショート → TTS
+    // を両立できる。
+    "$1\u00A0"
+  );
+}
+
 
 // 「アナウンス文言エリア」に現在表示されている内容を読ませる
 async function speakFromAnnouncementArea(
@@ -996,10 +1015,24 @@ const getOnePersonDefenseSide = (targetIsTop: boolean) =>
 
     let text = htmlToTtsText(html);
     text = normalizeJapaneseTime(text);
+
+    // 通常の打者紹介では、守備位置の直後の選手名を間なく続ける。
+    // 読み上げ本番と先読みで同じ文字列にしてキャッシュキーを一致させる。
+    if (!announcementHTMLOverrideStr && !tiebreakAnno) {
+      text = tightenBatterPositionNameGap(text);
+    }
+
     if (!text) return;
 
     const timer = window.setTimeout(() => {
-      window.prefetchTTS?.(text);
+      // 通常の window.prefetchTTS は最初のTTS部分だけで先読みを止める。
+      // 1人モードの打者紹介では
+      // 「打順(固定) → 守備位置(固定) → 選手名(TTS) → 守備位置(固定) → 苗字(TTS)」
+      // のように複数セグメントになるため、全セグメントを先に準備しておく。
+      // これにより PCM結合再生にしても、読み上げボタン押下後の待ちを増やしにくい。
+      void prefetchTTS(text, {
+        foregroundLookahead: true,
+      });
     }, 30);
 
     return () => window.clearTimeout(timer);
@@ -7406,10 +7439,34 @@ const handleRead = async () => {
       // 読み上げ後の通常の再描画に任せる。
     }
 
-    await speakFromAnnouncementArea(
-      announcementHTMLOverrideStr || htmlFallback,
-      announcementHTMLStr || htmlFallback
-    );
+    // 通常の打者紹介は、守備位置の固定MP3の直後に選手名をすぐ続ける。
+    // 特殊アナウンス/タイブレークは従来どおり。
+    if (!announcementHTMLOverrideStr && !tiebreakAnno && announcementHTMLStr) {
+      let batterText = htmlToTtsText(announcementHTMLStr);
+      batterText = normalizeJapaneseTime(batterText);
+      batterText = tightenBatterPositionNameGap(batterText);
+
+      if (batterText) {
+        // 固定MP3と選手名TTSを別々に再生すると、
+        // 「ショート …… ヤマダ」のように守備位置の後で再生開始待ちが入る。
+        //
+        // speakJoinedTTS() は内部で
+        //   打順固定MP3
+        //   守備位置固定MP3
+        //   選手名Matcha音声
+        // をPCMへ揃えてから1本として再生するため、
+        // 守備位置の直後から選手名をほぼ連続して読める。
+        //
+        // 選手名に「ショート」「ライト」等が含まれる場合の
+        // 固定MP3除外判定は tts.ts 側をそのまま使用する。
+        await speakJoinedTTS([batterText]);
+      }
+    } else {
+      await speakFromAnnouncementArea(
+        announcementHTMLOverrideStr || htmlFallback,
+        announcementHTMLStr || htmlFallback
+      );
+    }
   } finally {
     release();
   }
@@ -7667,7 +7724,12 @@ useEffect(() => {
   teamName,
   checkedIds,
   announcedIds,
-  leagueMode, // ← 追加
+  leagueMode,
+  // 同一苗字一覧は localForage から後から読み込まれるため、
+  // 取得後に表示用・読み上げ用HTMLを必ず再生成する。
+  // これが無いと、画面はフルネームでも announcementHTMLStr が
+  // 苗字だけの古い状態のまま残ることがある。
+  dupLastNames,
 ]);
 
 
