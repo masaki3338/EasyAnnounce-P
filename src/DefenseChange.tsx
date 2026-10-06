@@ -11137,7 +11137,7 @@ const posNumberOptionsWithPlayer = posNumbersForModal.map((n) => {
   return {
     n: String(n),
     label: p
-      ? `【${n}】(${posName})${p.lastName} #${p.number}`
+      ? `【${n}】(${posName})${p.lastName} #${String(p.number ?? "").trim() === "undefined" ? "" : String(p.number ?? "").trim()}`
       : `【${n}】(${posName})—`,
   };
 });
@@ -11183,11 +11183,13 @@ const p = typeof id === "number" ? teamPlayers.find((x) => x.id === id) : null;
   // ===== ここまで追加 =====
 
   // 通常表示
-  const normalLabel = p ? `${posName} ${p.lastName} #${p.number}` : `${posName} —`;
+  const normalLabel = p
+    ? `${posName} ${p.lastName} #${String(p.number ?? "").trim() === "undefined" ? "" : String(p.number ?? "").trim()}`
+    : `${posName} —`;
 
   // ★代打/代走なら表示を変更
   const label = pinchTag && p
-    ? `${pinchTag} ${p.lastName} #${p.number}`
+    ? `${pinchTag} ${p.lastName} #${String(p.number ?? "").trim() === "undefined" ? "" : String(p.number ?? "").trim()}`
     : `【${n}】${normalLabel}`;
 
   return {
