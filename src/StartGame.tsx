@@ -291,6 +291,23 @@ const StartGame = ({
   const teamKey = (teamId: string, name: string) =>
     `${name}_${teamId}`;
 
+  // 空のドラフトが保存済みスタメンを隠さないようにする。
+  const hasAssignmentPlayers = (
+    value: Record<string, number | null> | null | undefined
+  ) =>
+    !!value &&
+    Object.values(value).some(
+      (id) => id !== null && id !== undefined && Number.isFinite(Number(id))
+    );
+
+  const hasBattingEntries = (
+    value: BattingEntry[] | null | undefined
+  ) =>
+    Array.isArray(value) &&
+    value.some((entry: any) =>
+      Number.isFinite(Number(typeof entry === "number" ? entry : entry?.id))
+    );
+
   const loadTeamBenchOutIds = async (teamId: any) => {
     if (!teamId) return [];
 
@@ -458,16 +475,32 @@ setOnePersonFirstAttackSide(
       return;
     }
 
-    // ▼▼▼ ここから置換：assign / order / benchOutIds を draft 優先で取得 ▼▼▼
+    // ▼▼▼ 空ドラフトは無視し、実データが入っている候補だけ採用する ▼▼▼
+    const draftAssign =
+      await localForage.getItem<Record<string, number | null>>("startingassignments_draft");
+    const savedAssign =
+      await localForage.getItem<Record<string, number | null>>("startingassignments");
+    const oldAssign =
+      await localForage.getItem<Record<string, number | null>>("lineupAssignments");
+
     const assign =
-      (await localForage.getItem<Record<string, number | null>>("startingassignments_draft")) ??
-      (await localForage.getItem<Record<string, number | null>>("startingassignments")) ??
-      (await localForage.getItem<Record<string, number | null>>("lineupAssignments"));
+      hasAssignmentPlayers(draftAssign) ? draftAssign :
+      hasAssignmentPlayers(savedAssign) ? savedAssign :
+      hasAssignmentPlayers(oldAssign) ? oldAssign :
+      {};
+
+    const draftOrder =
+      await localForage.getItem<BattingEntry[]>("startingBattingOrder_draft");
+    const savedOrder =
+      await localForage.getItem<BattingEntry[]>("startingBattingOrder");
+    const oldOrder =
+      await localForage.getItem<BattingEntry[]>("battingOrder");
 
     const order =
-      (await localForage.getItem<BattingEntry[]>("startingBattingOrder_draft")) ??
-      (await localForage.getItem<BattingEntry[]>("startingBattingOrder")) ??
-      (await localForage.getItem<BattingEntry[]>("battingOrder"));
+      hasBattingEntries(draftOrder) ? draftOrder :
+      hasBattingEntries(savedOrder) ? savedOrder :
+      hasBattingEntries(oldOrder) ? oldOrder :
+      [];
 
     const extraPos =
       (await localForage.getItem<ExtraPositionMap>("startingExtraPositionMap_draft")) ??
@@ -856,7 +889,12 @@ const draftA = await localForage.getItem<Record<string, number | null>>("startin
 const savedA = await localForage.getItem<Record<string, number | null>>("startingassignments");
 const stateA = assignments; // ← StartGame画面に表示されているもの
 const oldA   = await localForage.getItem<Record<string, number | null>>("lineupAssignments");
-const adoptA = draftA ?? savedA ?? stateA ?? oldA ?? {};
+const adoptA =
+  hasAssignmentPlayers(draftA) ? draftA :
+  hasAssignmentPlayers(savedA) ? savedA :
+  hasAssignmentPlayers(stateA) ? stateA :
+  hasAssignmentPlayers(oldA) ? oldA :
+  {};
 const normA: Record<string, number | null> = Object.fromEntries(
   Object.entries(adoptA).map(([k, v]) => [k, v == null ? null : Number(v)])
 );
@@ -874,7 +912,13 @@ const draftO = await localForage.getItem<BattingEntry[]>("startingBattingOrder_d
 const savedO = await localForage.getItem<BattingEntry[]>("startingBattingOrder");
 const stateO = battingOrder; // ← StartGame画面に表示されている打順
 const oldO   = await localForage.getItem<BattingEntry[]>("battingOrder");
-let adoptO = sanitizeGameStartBattingOrder(draftO ?? savedO ?? stateO ?? oldO ?? []);
+const adoptOSource =
+  hasBattingEntries(draftO) ? draftO :
+  hasBattingEntries(savedO) ? savedO :
+  hasBattingEntries(stateO) ? stateO :
+  hasBattingEntries(oldO) ? oldO :
+  [];
+let adoptO = sanitizeGameStartBattingOrder(adoptOSource);
 
 const draftExtraPos = await localForage.getItem<ExtraPositionMap>("startingExtraPositionMap_draft");
 const savedExtraPos = await localForage.getItem<ExtraPositionMap>("startingExtraPositionMap");

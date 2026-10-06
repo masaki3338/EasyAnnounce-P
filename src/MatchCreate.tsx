@@ -146,6 +146,13 @@ const getOwnTeamFolder = () => {
 };
 
 const saveOwnTeamToLocalForage = async () => {
+  // ✅ 通常モードでは team を絶対に書き換えない。
+  // 通常モードの自チームは、すでに "team" に保存されているチームが正本。
+  // 1塁側/3塁側の teamId は「1人で両チームをアナウンス」用なので、
+  // 通常モードでここを使うと別チームの選手一覧で上書きされ、
+  // StartGame の打順IDと players が一致せず全員「未設定」になる。
+  if (announcementMode !== "single") return;
+
   const ownTeamFolder = getOwnTeamFolder();
   if (!ownTeamFolder) return;
 
@@ -977,7 +984,10 @@ return (
           benchSide,
           umpires: getUmpiresForSave(),
           twoUmpires: isBoys ? false : isTwoUmp,         // ✅ 2審制を記憶
-          teamName: getRegisteredTeamName(getOwnTeamFolder()) || (base as any)?.teamName || team?.name || "",
+          teamName:
+            announcementMode === "single"
+              ? (getRegisteredTeamName(getOwnTeamFolder()) || (base as any)?.teamName || team?.name || "")
+              : ((base as any)?.teamName || team?.name || ""),
           noNextGame,
           announcementMode,
           thirdBaseTeamId,
