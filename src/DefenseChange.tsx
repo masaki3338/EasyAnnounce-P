@@ -948,6 +948,29 @@ Object.entries(usedPlayerInfo || {}).forEach(([origIdStr, info]) => {
   const subPlayer = teamPlayers.find(p => p.id === currentId);
   if (!subPlayer) return;
 
+  // ✅ 最優先：フィールド図で青枠になるリエントリー対象は、
+  // SAME-POS-PINCH の「控えがそのまま入り」では処理しない。
+  //
+  // 例：
+  // 山本(先発投手) → 岡本
+  // 岡本に代打 伊藤
+  // 次の守備で 伊藤に代わって山本が投手へ戻る
+  //
+  // 山本は starterIdsAtStart / alwaysReentryIds 由来で青枠になるが、
+  // initialAssignments は「この守備交代画面を開いた時点」の配置なので、
+  // 山本を元スタメンと判定できないケースがある。
+  // generateAnnouncementText には alwaysReentryIds を含む effectiveReentryIds が
+  // reentryPreviewIds / reentryFixedIds として渡されているため、
+  // isReentryBlue() をここで使って青枠と同じ判定に揃える。
+  if (isReentryBlue(Number(subPlayer.id))) {
+    console.log("[SAME-POS-PINCH] skip: blue reentry player", {
+      playerId: subPlayer.id,
+      posSym,
+      latestPinchId,
+    });
+    return;
+  }
+
   // 元スタメンなら「控えがそのまま入り」ではない
   if (Object.values(initialAssignments).includes(subPlayer.id)) return;
 
@@ -1770,8 +1793,8 @@ if (
 ) {
   lineupLines.push({
     order: orderB,
-    // リエントリーは背番号なしの体裁
-    text: `${orderB}番 ${posFull2} ${fullNameWithHonor(B2)} 背番号 ${B2.number}`
+    // リエントリーの打順表示は守備位置変更と同じ「打順・守備位置・苗字」の体裁
+    text: `${orderB}番 ${posFull2} ${nameRuby(B2)}${B2.isFemale ? "さん" : "くん"}`
   });
 }
 
@@ -2521,7 +2544,7 @@ const pitcherUnchangedThisTurn =
     ) {
       lineupLines.push({
         order: r.order,
-        text: `${r.order}番 ${reentryToPosLabel} ${nameWithHonor(r.to)}`
+        text: `${r.order}番 ${reentryToPosLabel} ${nameRuby(r.to)}${r.to.isFemale ? "さん" : "くん"}`
       });
     }
     if (normalizeAnnouncePos(reentryToPosSym) === "投" && r.order <= 0) {
@@ -2558,7 +2581,7 @@ const pitcherUnchangedThisTurn =
       ) {
         lineupLines.push({
           order: r.order,
-          text: `${r.order}番 ${reentryToPosLabel} ${nameWithHonor(r.to)}`
+          text: `${r.order}番 ${reentryToPosLabel} ${nameRuby(r.to)}${r.to.isFemale ? "さん" : "くん"}`
         });
       }
 
@@ -2612,7 +2635,7 @@ const pitcherUnchangedThisTurn =
   ) {
     lineupLines.push({
       order: r.order,
-      text: `${r.order}番 ${reentryToPosLabel} ${nameWithHonor(r.to)}`
+      text: `${r.order}番 ${reentryToPosLabel} ${nameRuby(r.to)}${r.to.isFemale ? "さん" : "くん"}`
     });
   }
 
@@ -2969,7 +2992,7 @@ if (r.order > 0 && !isOriginalPitcherEnteringBattingOrderOnly) {
   // 背番号の表記：希望どおり「背番号22」形式（スペース無し）
   const num = (r.to as any)?.number ?? "";
   const text = isReentryTo
-    ? `${r.order}番 ${posJP[r.pos]} ${nameWithHonor(r.to)}`
+    ? `${r.order}番 ${posJP[r.pos]} ${nameRuby(r.to)}${r.to.isFemale ? "さん" : "くん"}`
     : `${r.order}番 ${posJP[r.pos]} ${fullNameWithHonor(r.to)}${backNoSuffix(r.to)}`;
 
     const idx = lineupLines.findIndex(
@@ -3183,7 +3206,7 @@ handledMixedKeys.add(mixedKey);
     ) {
       lineupLines.push({
         order: r.order,
-        text: `${r.order}番 ${posJP[normalizeAnnouncePos(r.toPos)] ?? posJP.指} ${nameWithHonor(r.to)}`
+        text: `${r.order}番 ${posJP[normalizeAnnouncePos(r.toPos)] ?? posJP.指} ${nameRuby(r.to)}${r.to.isFemale ? "さん" : "くん"}`
       });
     }
 
@@ -3227,7 +3250,7 @@ if (isReentryBlue(r.to.id)) {
   ) {
     lineupLines.push({
       order: r.order,
-      text: `${r.order}番 ${posJP[normalizeAnnouncePos(r.toPos)] ?? posJP.指} ${nameWithHonor(r.to)}`
+      text: `${r.order}番 ${posJP[normalizeAnnouncePos(r.toPos)] ?? posJP.指} ${nameRuby(r.to)}${r.to.isFemale ? "さん" : "くん"}`
     });
   }
 
@@ -3352,7 +3375,7 @@ if (
     lineupLines.push({
       order: r.order,
       text: isReentryTo
-      ? `${r.order}番 ${posJP[normalizeAnnouncePos(r.toPos)] ?? posJP.指} ${nameWithHonor(r.to)}`
+      ? `${r.order}番 ${posJP[normalizeAnnouncePos(r.toPos)] ?? posJP.指} ${nameRuby(r.to)}${r.to.isFemale ? "さん" : "くん"}`
       : `${r.order}番 ${posJP[normalizeAnnouncePos(r.toPos)] ?? posJP.指} ${fullNameWithHonor(r.to)}${backNoSuffix(r.to)}`
     });
   }
@@ -3455,7 +3478,7 @@ Object.entries(usedPlayerInfo || {}).forEach(([origIdStr, info]) => {
   ) {
     lineupLines.push({
       order: orderIdx + 1,
-      text: `${orderIdx + 1}番 ${posJP[posNowSym as keyof typeof posJP]} ${nameWithHonor(returned)}`
+      text: `${orderIdx + 1}番 ${posJP[posNowSym as keyof typeof posJP]} ${nameRuby(returned)}${returned.isFemale ? "さん" : "くん"}`
     });
   }
 
@@ -4426,6 +4449,212 @@ if (isOhtaniSinglePitcherPlayerChange) {
           result[i] = line;
         }
       }
+    }
+  }
+}
+
+// ============================================================
+// ✅ 最終整合チェック：青枠リエントリーなら、最終アナウンスも必ずリエントリーにする
+//
+// DefenseChange は SAME-POS-PINCH / replace / mixed / shift など
+// 複数の特別分岐で本文を生成するため、
+// 青枠判定が成立していても前段の通常交代文が残るケースがある。
+//
+// ここでは UI の青枠判定と同じ isReentryBlue() を最終的な正とし、
+// 青枠選手について通常交代文が残っていればリエントリー文へ統一する。
+// 守備位置が元の守備と同じかどうかは問わない。
+// ============================================================
+{
+  const priorityReentryRecords = records.filter(
+    (rec): rec is Extract<ChangeRecord, { type: "replace" | "mixed" }> =>
+      (rec.type === "replace" || rec.type === "mixed") &&
+      isReentryBlue(Number(rec.to.id))
+  );
+
+  priorityReentryRecords.forEach((rec) => {
+    const toPlayer = rec.to;
+    const fromPlayer = rec.from;
+
+    // 実際に配置された現在守備を最優先
+    const actualToPosSym =
+      Object.entries(assignments ?? {}).find(
+        ([, id]) => Number(id) === Number(toPlayer.id)
+      )?.[0] ??
+      (rec.type === "mixed" ? rec.toPos : rec.pos);
+
+    const toPosLabel =
+      posJP[normalizeAnnouncePos(actualToPosSym)] ??
+      posJP[actualToPosSym as keyof typeof posJP] ??
+      actualToPosSym;
+
+    const fromPosSym =
+      rec.type === "mixed" ? rec.fromPos : rec.pos;
+
+    const fromPosLabel =
+      posJP[normalizeAnnouncePos(fromPosSym)] ??
+      posJP[fromPosSym as keyof typeof posJP] ??
+      fromPosSym;
+
+    // 外される選手が代打/代走なら「先ほど～」を優先
+    const usedHit = Object.values(usedPlayerInfo || {}).find(
+      (info: any) =>
+        Number(info?.subId) === Number(fromPlayer.id) &&
+        ["代打", "代走", "臨時代走"].includes(String(info?.reason ?? "").trim())
+    ) as any;
+
+    const currentReason =
+      battingOrder.find(
+        (e: any) => Number(e?.id) === Number(fromPlayer.id)
+      )?.reason;
+
+    const reason = String(
+      currentReason || usedHit?.reason || reasonMap[fromPlayer.id] || ""
+    ).trim();
+
+    const head =
+      reason === "代走"
+        ? `先ほど代走いたしました${nameWithHonor(fromPlayer)}に代わりまして、`
+        : reason === "臨時代走"
+          ? `先ほど臨時代走${nameWithHonor(fromPlayer)}に代わりまして、`
+          : reason === "代打"
+            ? `先ほど代打いたしました${nameWithHonor(fromPlayer)}に代わりまして、`
+            : `${fromPosLabel} ${nameWithHonor(fromPlayer)}に代わりまして、`;
+
+    const canonicalLine =
+      `${head}${nameWithHonor(toPlayer)}がリエントリーで${toPosLabel}に入ります。`;
+
+    const alreadyCorrectIndex = result.findIndex(
+      (line) =>
+        line.includes(nameRuby(toPlayer)) &&
+        line.includes("リエントリー")
+    );
+
+    if (alreadyCorrectIndex >= 0) {
+      // 守備位置だけ古い場合も、現在配置で統一
+      result[alreadyCorrectIndex] = canonicalLine;
+    } else {
+      // 通常交代として作られてしまった本文を探して置換
+      const normalIndex = result.findIndex((line) => {
+        const s = String(line ?? "");
+        if (/お知らせいたします。$/.test(s.trim())) return false;
+        if (/^\d+番 /.test(s.trim())) return false;
+        if (s.trim().endsWith("以上に代わります。")) return false;
+
+        const mentionsTo =
+          s.includes(nameRuby(toPlayer)) ||
+          s.includes(fullName(toPlayer));
+
+        const mentionsFrom =
+          s.includes(nameRuby(fromPlayer)) ||
+          s.includes(fullName(fromPlayer));
+
+        return (
+          mentionsTo &&
+          (
+            mentionsFrom ||
+            s.includes("そのまま入り") ||
+            s.includes("が入り")
+          )
+        );
+      });
+
+      if (normalIndex >= 0) {
+        console.log("[FINAL REENTRY SYNC] replace normal -> reentry", {
+          fromId: fromPlayer.id,
+          toId: toPlayer.id,
+          toPos: actualToPosSym,
+          before: result[normalIndex],
+          after: canonicalLine,
+        });
+        result[normalIndex] = canonicalLine;
+      } else {
+        // 本文が別特別処理で消えていた場合も、青枠成立を優先して本文を補う
+        const headerIndex = result.findIndex(
+          (line) => /お知らせいたします。$/.test(String(line).trim())
+        );
+        const insertAt = headerIndex >= 0 ? headerIndex + 1 : 0;
+        result.splice(insertAt, 0, canonicalLine);
+      }
+    }
+
+    // 打順行もリエントリー仕様（打順・守備位置・苗字）へ統一
+    const order =
+      rec.order > 0
+        ? rec.order
+        : (() => {
+            const idx = battingOrder.findIndex(
+              (e) =>
+                Number(e.id) === Number(toPlayer.id) ||
+                Number(e.id) === Number(fromPlayer.id)
+            );
+            return idx >= 0 ? idx + 1 : 0;
+          })();
+
+    if (order > 0) {
+      for (let i = result.length - 1; i >= 0; i--) {
+        if (new RegExp(`^${order}番\\s`).test(String(result[i]).trim())) {
+          result.splice(i, 1);
+        }
+      }
+
+      const reentryLineupText =
+        `${order}番 ${toPosLabel} ${nameRuby(toPlayer)}${toPlayer.isFemale ? "さん" : "くん"}`;
+
+      // ✅ 「以上に代わります。」がすでに存在する場合、
+      // 打順行をその後ろに push すると、直後の endAt 処理で切り捨てられてしまう。
+      // 必ず締め文の直前へ挿入する。
+      const closingIndex = result.findIndex(
+        (line) => String(line ?? "").trim().endsWith("以上に代わります。")
+      );
+
+      if (closingIndex >= 0) {
+        result.splice(closingIndex, 0, reentryLineupText);
+      } else {
+        result.push(reentryLineupText);
+      }
+
+      console.log("[FINAL REENTRY SYNC] lineup inserted", {
+        order,
+        toId: toPlayer.id,
+        toPos: actualToPosSym,
+        beforeClosing: closingIndex >= 0,
+        text: reentryLineupText,
+      });
+    }
+
+    reentryOccurred = true;
+  });
+}
+
+// ✅ 最終整合処理で作り直したリエントリー文も、
+// 後ろに別の交代本文が続く場合は「入ります。」を繰り返さない。
+// 途中行： 「～リエントリーでファーストに入り、」
+// 最終行： 「～ピッチャーに入ります。」
+{
+  const isBodyLine = (line: string) => {
+    const t = String(line ?? "").trim();
+    if (!t) return false;
+    if (/^\d+番\s/.test(t)) return false;
+    if (/お知らせいたします。$/.test(t)) return false;
+    if (/以上に代わります。$/.test(t)) return false;
+    return true;
+  };
+
+  const bodyIndexes = result
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => isBodyLine(line))
+    .map(({ index }) => index);
+
+  for (let n = 0; n < bodyIndexes.length - 1; n++) {
+    const index = bodyIndexes[n];
+    const line = String(result[index] ?? "").trim();
+
+    // リエントリー本文だけを対象にする。
+    // 後ろに本文が続くときは
+    // 「リエントリーでファーストに入ります。」ではなく
+    // 「リエントリーでファースト、」の形でつなぐ。
+    if (/リエントリーで/.test(line) && /に入ります。$/.test(line)) {
+      result[index] = line.replace(/に入ります。$/, "、");
     }
   }
 }
@@ -6994,11 +7223,11 @@ if (replacement) {
 // generateAnnouncementText には従来 reentryPreviewIds / reentryFixedIds しか渡していなかったため、
 // 「青枠なのにアナウンスでは通常交代」という不一致が発生していた。
 const effectiveReentryIds = new Set<number>([
-  ...Array.from(reentryPreviewIds),
-  ...Array.from(reentryFixedIds),
-  ...Array.from(alwaysReentryIds).filter(
-    (id) => !isOhtaniPitcherStillActiveWithDhOnlyHistory(Number(id))
-  ),
+  // ✅ 実際にリエントリー判定が成立した選手だけをアナウンス側へ渡す。
+  // alwaysReentryIds は「出場済みの元スタメン候補」であって、
+  // リエントリー成立済みを意味しないため使用しない。
+  ...Array.from(reentryPreviewIds).map((id) => Number(id)),
+  ...Array.from(reentryFixedIds).map((id) => Number(id)),
 ]);
 
 // 既存：通常のアナウンス文
@@ -7207,6 +7436,13 @@ return normalText;
   usedPlayerInfo,
   dupLastNamesTick,
   pitcherCountAnnouncement,
+
+  // ✅ リエントリー判定の状態が変わったら、
+  // フィールドの青枠だけでなくアナウンス文も必ず再計算する。
+  // 例：山本→岡本→代打伊藤→山本リエントリー
+  reentryPreviewIds,
+  reentryFixedIds,
+  ohtaniRule,
 ]);
 
 useEffect(() => {
@@ -7660,10 +7896,45 @@ newAssignments = normalizeFieldAssignments(newAssignments, {
   allowPitcherDhDuplicate,
 });
 
+// ✅ 控え選手を通常の守備位置へ配置した場合は、
+// 最終的に「実際にドロップした守備位置」を必ず優先する。
+// 何らかの一時的な重複で同じ選手IDが「指」に残った場合、
+// normalizeFieldAssignments() の走査順によって守備側が消えて
+// DHだけが残ることがあるため、ここで明示的に補正する。
+//
+// なお、DHへ直接ドロップした場合は当然そのまま。
+// 大谷ルールの「投手＋DH」重複は別ID/別条件で従来処理を維持する。
+if (toPos !== "指") {
+  if (Number(newAssignments["指"]) === Number(playerId)) {
+    newAssignments["指"] = null;
+  }
+
+  // ドロップ先を最優先で再保証
+  newAssignments[toPos] = playerId;
+
+  // 同じ選手が他守備に残っていたらドロップ先以外を除去
+  for (const pos of Object.keys(newAssignments)) {
+    if (
+      pos !== toPos &&
+      pos !== "指" &&
+      Number(newAssignments[pos]) === Number(playerId)
+    ) {
+      newAssignments[pos] = null;
+    }
+  }
+}
+
 // normalize 後も、投手だけ交代ならDHをもう一度保証する
 if (isPitcherOnlyChangeWithDh && dhIdBeforePitcherChange != null) {
   newAssignments["指"] = dhIdBeforePitcherChange;
 }
+
+    console.log("[BENCH DROP FINAL ASSIGNMENT]", {
+      playerId,
+      requestedToPos: toPos,
+      finalToPosId: newAssignments[toPos],
+      finalDhId: newAssignments["指"] ?? null,
+    });
 
     if (typeof replacedId === "number") {
       updateLog(toPos, replacedId, toPos, playerId);
@@ -7734,6 +8005,23 @@ if (isPitcherOnlyChangeWithDh && dhIdBeforePitcherChange != null) {
 
     return next;
   });
+
+  // ✅ フィールドから外れた選手がリエントリー青枠だった場合は解除する。
+  // その選手がもうフィールドにいないのに reentryFixedIds が残り続けると、
+  // 次の通常交代までリエントリー状態の影響を受けるため。
+  if (typeof replacedId === "number" && Number(replacedId) !== Number(playerId)) {
+    setReentryPreviewIds((prev) => {
+      const next = new Set(prev);
+      next.delete(Number(replacedId));
+      return next;
+    });
+
+    setReentryFixedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(Number(replacedId));
+      return next;
+    });
+  }
 
   setHoverPos(null);
   setDraggingFrom(null);
@@ -7928,13 +8216,31 @@ const keepExistingReentryBlue =
 
 // ★ ベンチ→守備のときだけ、新規リエントリー成立判定を行う
 // ==== v2 リエントリー判定 ====
+//
+// ✅ 未出場の「控え選手」はリエントリー判定へ入れない。
+// 画面上で「控え選手」と「出場済み選手」を分けているのと同じ基準で処理する。
+// これにより、リエントリー成立後でも通常の控え選手をそのまま交代配置できる。
 if (!fromIsField && toPos !== BENCH) {
-  const ok = checkReentryForBenchToField({
-    toPos,
-    toId: Number(toId),
-    fromId: Number(fromId),
-  });
-  if (!ok) return;
+  const incomingId = Number(toId);
+
+  const isNeverPlayedBenchPlayer = benchNeverPlayed.some(
+    (p) => Number(p.id) === incomingId
+  );
+
+  if (!isNeverPlayedBenchPlayer) {
+    const ok = checkReentryForBenchToField({
+      toPos,
+      toId: incomingId,
+      fromId: Number(fromId),
+    });
+    if (!ok) return;
+  } else {
+    console.log("[BENCH DROP] fresh bench player -> normal substitution", {
+      toPos,
+      incomingId,
+      fromId,
+    });
+  }
 } else {
   const keepExistingReentryBlue =
     toPos !== BENCH && reentryFixedIds.size > 0;
@@ -8021,6 +8327,85 @@ if (!fromIsField && toPos !== BENCH) {
         
         return; // ✅ ここで通常の assignments 分岐へ行かない
       }
+    }
+
+    // ✅ ベンチ → 通常守備位置は、ここで単独処理して終了する。
+    //
+    // これまでは下の setAssignments(prev => { ... }) の中から
+    // applyBenchDropToField() を呼び、その applyBenchDropToField() の中でも
+    // setAssignments() を呼ぶ「state updater の二重呼び出し」になっていた。
+    // そのため、内側で正しい守備位置へ配置しても外側の return prev と競合し、
+    // 状態が巻き戻る／別位置（DH表示を含む）になる不安定な挙動が起こり得た。
+    //
+    // srcFrom は DataTransfer / touchDrag まで含めて上で正規化済みなので、
+    // draggingFrom ではなく srcFrom を基準に判定する。
+    if (srcFrom === BENCH && toPos !== BENCH && toPos !== "指") {
+      const incomingId = Number(toId);
+      if (!Number.isFinite(incomingId)) {
+        setHoverPos(null);
+        setDraggingFrom(null);
+        return;
+      }
+
+      const replacedId =
+        typeof fromId === "number"
+          ? Number(fromId)
+          : getDisplayedPlayerIdForPos(toPos);
+
+      console.log("[BENCH DROP EARLY] apply once", {
+        srcFrom,
+        toPos,
+        incomingId,
+        replacedId,
+      });
+
+      applyBenchDropToField({
+        toPos,
+        playerId: incomingId,
+        replacedId:
+          typeof replacedId === "number" ? Number(replacedId) : null,
+      });
+
+      // 打順ドラフトも、従来のベンチ→守備交代と同じ条件で同期する。
+      // DH運用中の「控え→投」は投手だけの交代なので打順は触らない。
+      const isOhtaniStartForBenchDrop =
+        ohtaniRule &&
+        typeof initialAssignments?.["投"] === "number" &&
+        typeof initialAssignments?.["指"] === "number" &&
+        Number(initialAssignments["投"]) === Number(initialAssignments["指"]);
+
+      const dhStillActiveForPitcherOnlyChange =
+        !pendingDisableDH &&
+        (
+          typeof assignments?.["指"] === "number" ||
+          dhEnabledAtStart
+        );
+
+      const skipDraftSwap =
+        toPos === "投" &&
+        (
+          isOhtaniStartForBenchDrop ||
+          dhStillActiveForPitcherOnlyChange
+        );
+
+      if (!skipDraftSwap && typeof fromId === "number") {
+        setBattingOrderDraft((prev) => {
+          const base =
+            prev?.length === battingOrder.length
+              ? [...prev]
+              : [...battingOrder];
+
+          const idx = base.findIndex((e) => Number(e.id) === Number(fromId));
+          if (idx >= 0) {
+            base[idx] = { ...base[idx], id: incomingId };
+          }
+          return base;
+        });
+      }
+
+      setHoverPos(null);
+      setDraggingFrom(null);
+      return;
     }
 
     // ✅ DH制：投手を他の守備位置へ動かしてもDHは解除しない
@@ -8287,23 +8672,10 @@ if (srcFrom === "指" && toPos !== BENCH && toPos !== "指") {
       }
 
       // ===== ベンチ → フィールド（配置）=====
-// ===== ベンチ → フィールド（配置）=====
-if (fromPos === BENCH && toPos !== BENCH) {
-  console.log("✅ BENCH DROP branch", { fromPos, toPos });
-
-  const playerIdStr =
-    e.dataTransfer.getData("playerId") || e.dataTransfer.getData("text/plain");
-  if (!playerIdStr) return prev;
-
-  const playerId = Number(playerIdStr);
-
-  // ✅ 画面に実際に表示されている選手IDを使う
-  const replacedId = getDisplayedPlayerIdForPos(toPos);
-
-  // ✅ 本体処理は共通関数へ
-  applyBenchDropToField({ toPos, playerId, replacedId });
-
-  // ここでは prev を返す（更新は applyBenchDropToField 内の setAssignments で行う）
+// 通常守備へのベンチ配置は handleDrop 上部の [BENCH DROP EARLY] で
+// setAssignments の外側から1回だけ処理する。
+// ここで applyBenchDropToField() を再度呼ぶと setAssignments の二重更新になるため行わない。
+if (fromPos === BENCH && toPos !== BENCH && toPos !== "指") {
   return prev;
 }
 
@@ -9370,8 +9742,36 @@ const checkReentryForBenchToField = ({
   }
 
   // toId = ベンチから来た選手
-  const origIdForTo = resolveOriginalStarterId(toId, usedPlayerInfo, initialAssignments);
-  const wasStarter = origIdForTo !== null;
+  // ✅ リエントリーの「元スタメン」判定は、この守備交代画面を開いた時点の
+  // initialAssignments ではなく、試合開始時のスタメン情報を基準にする。
+  //
+  // 例：
+  // 山本(先発投手) → 岡本
+  // 岡本に代打 伊藤
+  // 次の守備で山本を戻す
+  //
+  // この画面を開いた時点では山本は initialAssignments にいない場合があるが、
+  // 試合開始時スタメンであること自体は変わらない。
+  const wasStarterAtGameStart =
+    starterIdsAtStart.has(Number(toId)) ||
+    startingOrderRef.current.some(
+      (e) => Number(e.id) === Number(toId)
+    );
+
+  const resolvedOrigId = resolveOriginalStarterId(
+    toId,
+    usedPlayerInfo,
+    initialAssignments
+  );
+
+  const origIdForTo =
+    wasStarterAtGameStart
+      ? Number(toId)
+      : resolvedOrigId;
+
+  const wasStarter =
+    wasStarterAtGameStart ||
+    origIdForTo !== null;
 
   // ✅ 大谷ルール：
   // DH側に代打/代走が出ただけで投手本人は「投」に残っている場合、
@@ -9390,12 +9790,26 @@ const checkReentryForBenchToField = ({
     return true;
   }
 
-  // ✅ 出場済み判定（元スタメンはorigId、途中出場はtoId自身）
+  // ✅ 出場済み判定
+  // usedPlayerInfo だけでは、守備交代で退いた元スタメンを拾えないことがあるため、
+  // 試合開始時スタメン・守備出場履歴・現在までの playedIds も含めて判定する。
   const isUsedAlready =
-    (wasStarter && !!(usedPlayerInfo as any)?.[Number(origIdForTo)]) ||
-    (!!(usedPlayerInfo as any)?.[Number(toId)]);
+    wasStarterAtGameStart ||
+    persistedDefensePlayedIds.has(Number(toId)) ||
+    playedIds.has(Number(toId)) ||
+    (wasStarter &&
+      origIdForTo != null &&
+      !!(
+        (usedPlayerInfo as any)?.[String(origIdForTo)] ??
+        (usedPlayerInfo as any)?.[Number(origIdForTo)]
+      )) ||
+    !!(
+      (usedPlayerInfo as any)?.[String(toId)] ??
+      (usedPlayerInfo as any)?.[Number(toId)]
+    );
 
-  // ✅ 未出場（控え）ならリエントリー判定せず通常交代
+  // ✅ 未出場の普通の控え選手は、従来どおり通常交代。
+  // 「リエントリー対象ではありません」確認は、出場済み選手に対して行う。
   if (!isUsedAlready) {
     if (!keepExistingReentryBlue) {
       resetBlue?.();
@@ -9416,7 +9830,7 @@ const checkReentryForBenchToField = ({
 
   // ★ 元の打順：スタメン時点の打順を使う
   const originalOrderSource =
-    startingOrderRef.current?.length === 9
+    startingOrderRef.current?.length > 0
       ? startingOrderRef.current
       : battingOrder;
 
@@ -9533,6 +9947,7 @@ const checkReentryForBenchToField = ({
     fromId,
     toPos,
     origIdForTo,
+    wasStarterAtGameStart,
     wasStarter,
     isUsedAlready,
     isOffField,
@@ -11095,7 +11510,9 @@ const currentId =
 const isReentryBlue =
   player
     ? (
-        alwaysReentryIds.has(player.id) &&
+        // ✅ 青枠は「元スタメン候補」ではなく、
+        // checkReentryForBenchToField() で実際にリエントリー成立した選手だけ。
+        isReentryBlueId(Number(player.id)) &&
         !isOhtaniPitcherStillActiveWithDhOnlyHistory(Number(player.id))
       )
     : false;
