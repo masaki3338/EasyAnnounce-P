@@ -12573,9 +12573,9 @@ const canDropHere =
     />
 
     {/* panel */}
-    <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl ring-1 ring-black/10 overflow-hidden">
+    <div className="relative flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-2xl ring-1 ring-black/10 overflow-hidden">
       {/* header */}
-      <div className="sticky top-0 bg-slate-50/95 backdrop-blur border-b border-slate-100 px-4 pt-4 pb-3">
+      <div className="sticky top-0 z-10 shrink-0 bg-slate-50/95 backdrop-blur border-b border-slate-100 px-4 pt-3 pb-2">
         <div className="relative">
           {/* タイトル＋右ボタン */}
           <div className="relative flex items-center justify-center min-h-[44px]">
@@ -12615,15 +12615,7 @@ const canDropHere =
           <p className="mt-2 text-sm text-slate-600 text-center px-2">
             「1 が 9」「1 に代わり ○○」のように入力できます
           </p>
-          <p className="mt-2 text-sm text-slate-600 text-Left px-2">
-            「が」＝同じ選手が別の守備へ移動
-          </p>
-          <p className="mt-2 text-sm text-slate-600 text-Left px-2">
-            「と」＝出場中の2人が守備を入れ替え
-          </p>
-          <p className="mt-2 text-sm text-slate-600 text-Left px-2">
-            「に代わり」＝控え選手との交代
-          </p>
+
         </div>
 
         {/* error */}
@@ -12635,7 +12627,40 @@ const canDropHere =
       </div>
 
       {/* body */}
-      <div className="max-h-[70vh] overflow-y-auto px-4 py-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 overscroll-contain">
+        {/* 操作記号の説明：スクロール領域に置き、タイトル／？／✕は常に表示 */}
+        <div className="mb-3 space-y-1.5">
+          <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5">
+            <span className="text-base shrink-0" aria-hidden>➡️</span>
+            <span className="inline-flex min-w-[4.8rem] justify-center rounded-md bg-white px-2 py-0.5 text-sm font-extrabold text-emerald-700 shadow-sm">
+              「が」
+            </span>
+            <span className="text-[13px] font-medium text-slate-700">
+              同じ選手が別の守備へ
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5">
+            <span className="text-base shrink-0" aria-hidden>🔄</span>
+            <span className="inline-flex min-w-[4.8rem] justify-center rounded-md bg-white px-2 py-0.5 text-sm font-extrabold text-sky-700 shadow-sm">
+              「と」
+            </span>
+            <span className="text-[13px] font-medium text-slate-700">
+              出場中の2人が守備を入替
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5">
+            <span className="text-base shrink-0" aria-hidden>👤</span>
+            <span className="inline-flex min-w-[4.8rem] justify-center rounded-md bg-white px-2 py-0.5 text-sm font-extrabold text-rose-700 shadow-sm">
+              「に代わり」
+            </span>
+            <span className="text-[13px] font-medium text-slate-700">
+              控え選手と交代
+            </span>
+          </div>
+        </div>
+
         <MiniScribblePad
           value={posNumberMemoDataUrl}
           onChange={setPosNumberMemoDataUrl}
