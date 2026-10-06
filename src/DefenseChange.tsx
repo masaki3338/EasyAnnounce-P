@@ -10372,7 +10372,13 @@ for (const row of normalReplaceRows) {
     });
 
     if (!ok) {
-      // リエントリー対象外確認モーダルを表示して、
+      // ✅ 守備番号モーダルの裏に確認メッセージが隠れないよう、
+      // 先に守備番号モーダルを閉じてから対象外確認を表示する。
+      //
+      // checkReentryForBenchToField() 内ですでに
+      // showNonReentryConfirm=true / pendingNonReentryDrop が設定されている。
+      setShowPosNumberModal(false);
+
       // 守備番号変更自体はいったん確定しない。
       return;
     }
