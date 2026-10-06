@@ -78,9 +78,12 @@ const historyData: HistoryItem[] = [
     ],
   },
   {
-    date: "2026.10.05",
+    date: "2026.10.06",
     version: "Version 1.06",
-    details: ["アナウンス履歴機能を追加"],
+    details: [
+      `・アナウンス履歴機能を追加
+       ・リエントリー交代不具合修正`,
+    ],
   },
 
 
