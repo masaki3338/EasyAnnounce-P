@@ -4659,6 +4659,59 @@ if (isOhtaniSinglePitcherPlayerChange) {
   }
 }
 
+// ============================================================
+// ✅ アナウンスヘッダー最終保証
+//
+// 一部の特殊分岐で skipHeader=true になったあとに本文が生成されると、
+// 「チーム名、選手の交代をお知らせいたします。」等のヘッダーだけ
+// 欠ける場合があるため、return 直前に必ず整合を取る。
+//
+// 既にヘッダーがある場合は何もしない。
+// ============================================================
+{
+  const hasHeader = result.some((line) =>
+    /お知らせいたします。$/.test(String(line ?? "").trim())
+  );
+
+  if (!hasHeader) {
+    const hasBody = result.some((line) => {
+      const t = String(line ?? "").trim();
+      if (!t) return false;
+      if (/^\d+番\s/.test(t)) return false;
+      if (t.endsWith("以上に代わります。")) return false;
+      return true;
+    });
+
+    if (hasBody) {
+      // replace / mixed は「選手の交代」を含む。
+      // shift が同時にあれば「並びにシートの変更」。
+      const hasPlayerChange =
+        records.some((rec) => rec.type === "replace" || rec.type === "mixed") ||
+        reentryOccurred;
+
+      const hasSeatChange =
+        records.some((rec) => rec.type === "shift" || rec.type === "mixed");
+
+      const finalHeader =
+        hasPlayerChange && hasSeatChange
+          ? `${teamName}、選手の交代並びにシートの変更をお知らせいたします。`
+          : hasPlayerChange
+            ? `${teamName}、選手の交代をお知らせいたします。`
+            : hasSeatChange
+              ? `${teamName}、シートの変更をお知らせいたします。`
+              : `${teamName}、選手の交代をお知らせいたします。`;
+
+      result.unshift(finalHeader);
+
+      console.log("[ANN HEADER FINAL GUARANTEE]", {
+        hasPlayerChange,
+        hasSeatChange,
+        finalHeader,
+      });
+    }
+  }
+}
+
 // ▼ 最初の「以上に代わります。」以降は出さない（特別処理が先に出していてもOK）
 const endAt = result.findIndex(l => l.trim().endsWith("以上に代わります。"));
 if (endAt !== -1) {
@@ -11307,6 +11360,13 @@ const p = typeof id === "number" ? teamPlayers.find((x) => x.id === id) : null;
     {/* コンテンツカード（スマホ感のある白カード） */}
     <div className="max-w-4xl mx-auto px-4 py-4 pb-[calc(112px+env(safe-area-inset-bottom))] md:pb-4">
       <div className="p-0">
+        {/* 枠色の凡例 */}
+        <div className="mb-2 flex items-center justify-center gap-3 text-xs sm:text-sm font-semibold text-slate-700 whitespace-nowrap">
+          <span>🔴 交代</span>
+          <span>🟡 守備変更</span>
+          <span>🔵 リエントリー</span>
+        </div>
+
         {/* フィールド図 + 札（そのまま） */}
         <div className="relative mb-6 w-[100svw] -mx-4 md:mx-auto md:w-full md:max-w-2xl">
           <img
@@ -11622,6 +11682,25 @@ const currentId =
   const isChanged = currentId !== initialId;
   const isSub = reason === "代打" || reason === "臨時代走" || reason === "代走";
 
+  // ✅ 枠色判定
+  // - 控えから入った交代選手：赤
+  // - 守備位置を移動した選手：黄
+  // - リエントリー選手：青
+  //
+  // 「控えから入った」は、この守備交代画面を開いた時点の
+  // initialAssignments にいなかった選手が現在フィールドにいる場合。
+  // 元からフィールドにいた選手の守備位置変更は isChanged=true でも黄色のまま。
+  const wasOnFieldWhenOpened =
+    currentId != null &&
+    Object.values(initialAssignments || {}).some(
+      (id) => Number(id) === Number(currentId)
+    );
+
+  const isBenchEntry =
+    currentId != null &&
+    !wasOnFieldWhenOpened &&
+    isChanged;
+
   // ★ 追加：リエントリー青枠フラグ（handleDropでセットしたIDを参照）
 // 絶対条件のみで青枠にする
 const isReentryBlue =
@@ -11669,7 +11748,7 @@ const canDropHere =
       }}
     >
       {player ? (
-        // ★ 内側チップに見た目を集約（青＞黄の優先でリング）
+        // ★ 内側チップに見た目を集約（青＞赤＞黄の優先でリング）
         <div
           draggable={!isTouchDevice()}
           onDragStart={(e) => handlePositionDragStart(e, pos)}
@@ -11683,11 +11762,11 @@ const canDropHere =
           ${
             draggingFrom === pos
               ? "ring-2 ring-inset ring-emerald-400"
-              : isForcedNormal
-                ? "ring-2 ring-inset ring-yellow-400"
-                : isReentryBlue
-                  ? "ring-2 ring-inset ring-blue-400"
-                  : (isSub || isChanged)
+              : isReentryBlue
+                ? "ring-2 ring-inset ring-blue-400"
+                : (isBenchEntry || isForcedNormal || isSub)
+                  ? "ring-2 ring-inset ring-red-500"
+                  : isChanged
                     ? "ring-2 ring-inset ring-yellow-400"
                     : hoverPos === pos
                       ? "ring-2 ring-inset ring-emerald-400"
