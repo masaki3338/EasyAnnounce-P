@@ -10268,8 +10268,68 @@ for (const n of posNumbersForModal.map(Number)) {
         : null
     );
   } else {
-    const v = assignments[sym];
-    currentByNum.set(n, typeof v === "number" ? v : null);
+    // ✅ 守備番号モーダルでも、assignments の生IDではなく
+    // フィールド図に実際に表示されている選手IDを使う。
+    //
+    // 例：
+    // 山本 → 岡本 → 岡本に代打 伊藤
+    // assignments 側に岡本等の古いIDが残っていても、
+    // 守備番号交代では現在表示中の伊藤を交代される選手として扱う。
+    const displayedId = getDisplayedIdForPositionNumberModal(sym, n);
+
+    currentByNum.set(
+      n,
+      typeof displayedId === "number" && Number.isFinite(displayedId)
+        ? Number(displayedId)
+        : null
+    );
+  }
+}
+
+// ✅ 守備番号での「控え選手が入る交代」も、
+// フィールド図へのドラッグと同じリエントリー判定を通す。
+//
+// 未出場の通常控えはそのまま通常交代。
+// 出場済み選手は checkReentryForBenchToField() で判定し、
+// 成立すれば markReentryBlue() により青枠になる。
+// 不成立なら既存の「リエントリー対象選手ではありません」確認へ回す。
+for (const row of normalReplaceRows) {
+  const fromNum = Number(row.from);
+  const toNum = Number(row.to);
+  const incomingId = Number(row.benchPlayerId);
+
+  if (!Number.isFinite(incomingId)) continue;
+
+  const toSym = numToSym(toNum);
+  if (!toSym) continue;
+
+  const outgoingId = currentByNum.get(fromNum) ?? null;
+  if (typeof outgoingId !== "number") continue;
+
+  const isNeverPlayedBenchPlayer = benchNeverPlayed.some(
+    (p) => Number(p.id) === incomingId
+  );
+
+  if (!isNeverPlayedBenchPlayer) {
+    console.log("[POS NUMBER REENTRY CHECK]", {
+      fromNum,
+      toNum,
+      toSym,
+      incomingId,
+      outgoingId,
+    });
+
+    const ok = checkReentryForBenchToField({
+      toPos: toSym,
+      toId: incomingId,
+      fromId: Number(outgoingId),
+    });
+
+    if (!ok) {
+      // リエントリー対象外確認モーダルを表示して、
+      // 守備番号変更自体はいったん確定しない。
+      return;
+    }
   }
 }
 
@@ -10820,6 +10880,11 @@ setBattingReplacements(nextBattingReplacements);
 setBattingOrderDraft(nextBattingOrderDraft);
 setBenchPlayers(nextBenchPlayers);
 setAssignments(nextAssignments);
+
+console.log("[POS NUMBER APPLY] reentry blue ids", {
+  preview: Array.from(reentryPreviewIds),
+  fixed: Array.from(reentryFixedIds),
+});
 
 if (didBreakDh) {
   setOhtaniRule(false);
