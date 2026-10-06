@@ -195,6 +195,10 @@ async function clearUsedSubstitutionStateOnGameStart() {
       k.includes("usedPlayers") ||
       k.includes("appearedPlayerIds") ||
       k.includes("playedPlayerIds") ||
+      // ✅ DefenseChange側で保存している「守備で一度出場した選手」の履歴も
+      // 新しい試合開始時には必ず削除する。
+      // これが残ると、前試合の選手が新しい試合の「出場済み選手」に表示される。
+      k.includes("defensePlayedIds") ||
       k.includes("substitutedPlayerIds") ||
       k.includes("pinchHitterUsedIds") ||
       k.includes("pinchRunnerUsedIds") ||

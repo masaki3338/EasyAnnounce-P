@@ -2469,6 +2469,20 @@ replace.forEach((r) => {
     fromId: r.from.id, toId: r.to.id, pos: r.pos, rOrder: r.order,
   });
 
+  // ✅ リエントリー後の守備位置は「交代される選手の位置(r.pos)」ではなく、
+  // 実際にリエントリー選手(r.to)を配置した現在の守備位置を使う。
+  // 例：センター岡本 → 森浦をピッチャーへ
+  //     「センター岡本くんに代わりまして、森浦くんがリエントリーでピッチャー」
+  const reentryToPosSym =
+    Object.entries(assignments ?? {}).find(
+      ([, id]) => Number(id) === Number(r.to.id)
+    )?.[0] ?? r.pos;
+
+  const reentryToPosLabel =
+    posJP[normalizeAnnouncePos(reentryToPosSym)] ??
+    posJP[reentryToPosSym as keyof typeof posJP] ??
+    reentryToPosSym;
+
 // ✅ “開始時点で投=指だったか” は「現在のohtaniRule」ではなく initialAssignments だけで判定する
 const startedAsOhtani =
   typeof initialAssignments?.["投"] === "number" &&
@@ -2493,7 +2507,7 @@ const pitcherUnchangedThisTurn =
 
     replaceLines.push(
       `${posJP[r.pos]} ${nameWithHonor(r.from)}に代わりまして、` +
-      `${nameWithHonor(r.to)}がリエントリーで${posJP[r.pos]}`
+      `${nameWithHonor(r.to)}がリエントリーで${reentryToPosLabel}`
     );
 
     // 打順行（重複防止）
@@ -2501,16 +2515,16 @@ const pitcherUnchangedThisTurn =
       r.order > 0 &&
       !lineupLines.some(l =>
         l.order === r.order &&
-        l.text.includes(posJP[r.pos]) &&
+        l.text.includes(reentryToPosLabel) &&
         l.text.includes(nameRuby(r.to))
       )
     ) {
       lineupLines.push({
         order: r.order,
-        text: `${r.order}番 ${posJP[r.pos]} ${nameWithHonor(r.to)}`
+        text: `${r.order}番 ${reentryToPosLabel} ${nameWithHonor(r.to)}`
       });
     }
-    if (r.pos === "投" && r.order <= 0) {
+    if (normalizeAnnouncePos(reentryToPosSym) === "投" && r.order <= 0) {
       // 打順が無くても投手は別行で出す（スタメン発表の「ピッチャーは…」と同じ扱い）
       if (!lineupLines.some(l => l.text.includes("ピッチャー") && l.text.includes(nameRuby(r.to)))) {
         lineupLines.push({
@@ -2523,7 +2537,7 @@ const pitcherUnchangedThisTurn =
 
     handledPlayerIds.add(r.from.id);
     handledPlayerIds.add(r.to.id);
-    handledPositions.add(r.pos);
+    handledPositions.add(reentryToPosSym);
     reentryOccurred = true;
     return; // ← 以降の通常分岐へ進ませない
   }
@@ -2531,7 +2545,7 @@ const pitcherUnchangedThisTurn =
   if (isReentryBlue(r.to.id)) {
     replaceLines.push(
       `${posJP[r.pos]} ${nameWithHonor(r.from)}に代わりまして、` +
-      `${nameWithHonor(r.to)}がリエントリーで${posJP[r.pos]}`
+      `${nameWithHonor(r.to)}がリエントリーで${reentryToPosLabel}`
     );
 
     if (
@@ -2544,13 +2558,13 @@ const pitcherUnchangedThisTurn =
       ) {
         lineupLines.push({
           order: r.order,
-          text: `${r.order}番 ${posJP[r.pos]} ${nameWithHonor(r.to)}`
+          text: `${r.order}番 ${reentryToPosLabel} ${nameWithHonor(r.to)}`
         });
       }
 
     handledPlayerIds.add(r.from.id);
     handledPlayerIds.add(r.to.id);
-    handledPositions.add(r.pos);
+    handledPositions.add(reentryToPosSym);
     reentryOccurred = true;
     return; // ← 通常の交代分岐へ進ませない
   }
@@ -2585,7 +2599,7 @@ const pitcherUnchangedThisTurn =
     // 本文のみ。末尾の「に入ります。」は後段の整形で付与される
     replaceLines.push(
       `${posJP[r.pos]} ${nameWithHonor(r.from)}に代わりまして、` +
-      `${nameWithHonor(r.to)}がリエントリーで${posJP[r.pos]}`
+      `${nameWithHonor(r.to)}がリエントリーで${reentryToPosLabel}`
     );
 
   if (
@@ -2598,13 +2612,13 @@ const pitcherUnchangedThisTurn =
   ) {
     lineupLines.push({
       order: r.order,
-      text: `${r.order}番 ${posJP[r.pos]} ${nameWithHonor(r.to)}`
+      text: `${r.order}番 ${reentryToPosLabel} ${nameWithHonor(r.to)}`
     });
   }
 
     handledPlayerIds.add(r.from.id);
     handledPlayerIds.add(r.to.id);
-    handledPositions.add(r.pos);
+    handledPositions.add(reentryToPosSym);
     reentryOccurred = true;
     return; // ← 通常の交代分岐や打順行追加へ進ませない
   }
@@ -2635,11 +2649,11 @@ console.log("[ANN][REPLACE:check-reentryEarly]", { from: r.from.id, to: r.to.id,
 if (isReentryEarly) {
   console.log("[ANN][REPLACE:fired-reentryEarly]", { from: r.from.id, to: r.to.id, pos: r.pos });
   replaceLines.push(
-    `${posJP[r.pos]} ${nameWithHonor(r.from)}に代わりまして、${nameWithHonor(r.to)}がリエントリーで${posJP[r.pos]}`
+    `${posJP[r.pos]} ${nameWithHonor(r.from)}に代わりまして、${nameWithHonor(r.to)}がリエントリーで${reentryToPosLabel}`
   );
   handledPlayerIds.add(r.from.id);
   handledPlayerIds.add(r.to.id);
-  handledPositions.add(r.pos);
+  handledPositions.add(reentryToPosSym);
   reentryOccurred = true;
   return;  // 以降の通常分岐へは進まない
 }
@@ -2909,7 +2923,7 @@ if (isOriginalPitcherEnteringBattingOrderOnly) {
 }
 else if (isReentrySameOrder) {
   console.log("[REPLACE] REENTRY same-order", { from: r.from.id, to: r.to.id, pos: r.pos, order: r.order });
-  line = `${posJP[r.pos]} ${nameWithHonor(r.from)}に代わりまして、${nameWithHonor(r.to)}がリエントリーで${posJP[r.pos]}`;
+  line = `${posJP[r.pos]} ${nameWithHonor(r.from)}に代わりまして、${nameWithHonor(r.to)}がリエントリーで${reentryToPosLabel}`;
 } else if (isPinchFrom) {
   console.log("[ANN][PINCH:enter]", {
     fromId: r.from.id, toId: r.to.id, pos: r.pos, reasonOfFrom, rOrder: r.order,
@@ -3169,7 +3183,7 @@ handledMixedKeys.add(mixedKey);
     ) {
       lineupLines.push({
         order: r.order,
-        text: `${r.order}番 ${posJP[normalizeAnnouncePos(r.fromPos)] ?? posJP.指} ${nameWithHonor(r.to)}`
+        text: `${r.order}番 ${posJP[normalizeAnnouncePos(r.toPos)] ?? posJP.指} ${nameWithHonor(r.to)}`
       });
     }
 
@@ -3197,7 +3211,7 @@ handledMixedKeys.add(mixedKey);
 if (isReentryBlue(r.to.id)) {
   addReplaceLine(
     `${posJP[r.fromPos]} ${nameWithHonor(r.from)}に代わりまして、` +
-    `${nameWithHonor(r.to)}がリエントリーで${posJP[normalizeAnnouncePos(r.fromPos)] ?? posJP.指}へ`,
+    `${nameWithHonor(r.to)}がリエントリーで${posJP[normalizeAnnouncePos(r.toPos)] ?? posJP.指}へ`,
     i === mixed.length - 1 && shift.length === 0
   );
 
@@ -3207,13 +3221,13 @@ if (isReentryBlue(r.to.id)) {
     !lineupLines.some(
       l =>
         l.order === r.order &&
-        l.text.includes(posJP[normalizeAnnouncePos(r.fromPos)] ?? posJP.指) &&
+        l.text.includes(posJP[normalizeAnnouncePos(r.toPos)] ?? posJP.指) &&
         l.text.includes(nameRuby(r.to))
     )
   ) {
     lineupLines.push({
       order: r.order,
-      text: `${r.order}番 ${posJP[normalizeAnnouncePos(r.fromPos)] ?? posJP.指} ${nameWithHonor(r.to)}`
+      text: `${r.order}番 ${posJP[normalizeAnnouncePos(r.toPos)] ?? posJP.指} ${nameWithHonor(r.to)}`
     });
   }
 
@@ -5126,13 +5140,36 @@ const isForcedNormalSubId = (id: number) => forcedNormalSubIds.has(Number(id));
 const startingOrderRef = useRef<{ id: number; reason?: string }[]>([]);
 
   const [benchPlayers, setBenchPlayers] = useState<Player[]>([]);
+
+  // ✅ 一度でも守備に出た選手を次の回以降も「出場済み」として保持する。
+  // 特に1回表の最初の守備交代で、交代前の先発が履歴から消えるのを防ぐ。
+  const [persistedDefensePlayedIds, setPersistedDefensePlayedIds] =
+    useState<Set<number>>(new Set());
   // 出場済み選手をフィールドへ戻したときに、
   // その位置から外れた選手を「出場済み選手」欄へ残すための補正ID。
   // 代打/代走で入った選手は startingBenchOutIds 側に含まれることがあり、
   // assignments 変更後の benchPlayers 再計算で消えるため、このIDだけ再追加対象にする。
   const [forcedReturnedUsedBenchIds, setForcedReturnedUsedBenchIds] = useState<Set<number>>(new Set());
   const [draggingFrom, setDraggingFrom] = useState<string | null>(null);
+  const [draggingBenchPlayerId, setDraggingBenchPlayerId] = useState<number | null>(null);
   const [hoverPos, setHoverPos] = useState<string | null>(null);
+
+  // ✅ 試合＋チーム別の「守備出場済み」保存キー
+  const getDefensePlayedIdsKey = async () => {
+    const mi = await localForage.getItem<any>("matchInfo");
+    const ctx = await localForage.getItem<any>("onePersonDefenseChangeContext");
+
+    const side =
+      ctx?.targetSide === "first" || ctx?.targetSide === "third"
+        ? ctx.targetSide
+        : ctx?.defenseSide === "first" || ctx?.defenseSide === "third"
+          ? ctx.defenseSide
+          : ctx?.side === "first" || ctx?.side === "third"
+            ? ctx.side
+            : "common";
+
+    return `defensePlayedIds::${getMatchSuffix(mi)}::${side}`;
+  };
 
   const [substitutionLogs, setSubstitutionLogs] = useState<string[]>([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -6380,6 +6417,31 @@ const currentGameState = React.useMemo(() => {
   });
 }, [previewState]);
 
+// ✅ 前の回までの「守備出場済み」履歴を復元
+useEffect(() => {
+  let cancelled = false;
+
+  (async () => {
+    try {
+      const key = await getDefensePlayedIdsKey();
+      const raw = await localForage.getItem<any>(key);
+      const ids = Array.isArray(raw)
+        ? raw.map((v) => Number(v)).filter((v) => Number.isFinite(v))
+        : [];
+
+      if (!cancelled) {
+        setPersistedDefensePlayedIds(new Set(ids));
+      }
+    } catch (error) {
+      console.warn("[DefenseChange] defensePlayedIds load failed", error);
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
+
 // --- ここから：控えを「未出場」と「出場済み」に分けるヘルパー ---
 const onFieldIds = React.useMemo(() => {
   return new Set(currentGameState.onFieldPlayerIds);
@@ -6389,15 +6451,18 @@ const onFieldIds = React.useMemo(() => {
 const playedIds = React.useMemo(() => {
   const s = new Set<number>();
 
-  // ① いまフィールドに居る選手（“出場済み”扱いに含める）
+  // ① 前の回までに一度でも守備に出た選手
+  persistedDefensePlayedIds.forEach((id) => s.add(Number(id)));
+
+  // ② いまフィールドに居る選手（“出場済み”扱いに含める）
   onFieldIds.forEach((id) => s.add(id));
 
-  // ② 打順に載っている選手（先発・代打・代走・途中出場すべて）
+  // ③ 打順に載っている選手（先発・代打・代走・途中出場すべて）
   (battingOrder || []).forEach((e) => {
     if (e?.id != null) s.add(e.id);
   });
 
-  // ③ usedPlayerInfo から “元選手（キー側）” と “subId（途中出場側）” の両方を加える
+  // ④ usedPlayerInfo から “元選手（キー側）” と “subId（途中出場側）” の両方を加える
   const u = (usedPlayerInfo as unknown) as Record<number, { subId?: number }>;
   Object.entries(u || {}).forEach(([origIdStr, info]) => {
     const origId = Number(origIdStr);
@@ -6405,13 +6470,13 @@ const playedIds = React.useMemo(() => {
     if (typeof info?.subId === "number") s.add(info.subId); // ← 途中出場側も出場済み
   });
 
-   // ④ 先発（初期守備）の全員も「出場済み」に含める（投手交代でベンチに下がっても出場済み扱い）
+   // ⑤ 先発（初期守備）の全員も「出場済み」に含める（投手交代でベンチに下がっても出場済み扱い）
   Object.values(initialAssignments || {}).forEach((id) => {
     if (typeof id === "number") s.add(id);
   });
   
   return s;
-}, [onFieldIds, battingOrder, usedPlayerInfo, initialAssignments]);
+}, [persistedDefensePlayedIds, onFieldIds, battingOrder, usedPlayerInfo, initialAssignments]);
 
 const effectiveBattingOrder = React.useMemo(
   () => (battingOrderDraft?.length ? battingOrderDraft : battingOrder) ?? [],
@@ -6924,6 +6989,18 @@ if (replacement) {
 
 // ▼ ここは既存の changes 構築（battingOrder を走査して replace/mixed/shift を埋める）をそのまま維持
 
+// ✅ 画面の青枠判定とアナウンス文のリエントリー判定を統一する。
+// フィールド図では alwaysReentryIds で青枠になるケースがある一方、
+// generateAnnouncementText には従来 reentryPreviewIds / reentryFixedIds しか渡していなかったため、
+// 「青枠なのにアナウンスでは通常交代」という不一致が発生していた。
+const effectiveReentryIds = new Set<number>([
+  ...Array.from(reentryPreviewIds),
+  ...Array.from(reentryFixedIds),
+  ...Array.from(alwaysReentryIds).filter(
+    (id) => !isOhtaniPitcherStillActiveWithDhOnlyHistory(Number(id))
+  ),
+]);
+
 // 既存：通常のアナウンス文
 const baseDisplayText = generateAnnouncementText(
   changes,
@@ -6934,8 +7011,8 @@ const baseDisplayText = generateAnnouncementText(
   initialAssignments,
   usedPlayerInfo,
   ohtaniRule,
-  reentryPreviewIds,
-  reentryFixedIds,
+  effectiveReentryIds,
+  effectiveReentryIds,
   pendingDisableDH,
   dhDisableSnapshot
 );
@@ -6949,8 +7026,8 @@ const baseSpeakText = generateAnnouncementText(
   initialAssignments,
   usedPlayerInfo,
   ohtaniRule,
-  reentryPreviewIds,
-  reentryFixedIds,
+  effectiveReentryIds,
+  effectiveReentryIds,
   pendingDisableDH,
   dhDisableSnapshot
 );
@@ -7405,11 +7482,13 @@ const getDisplayedPlayerIdForPos = (pos: string): number | null => {
     e.dataTransfer.setData("text/plain", playerId.toString()); // ★ Android 用
     e.dataTransfer.effectAllowed = "move";                     // ★ 視覚的にも安定
     setDraggingFrom(BENCH);
+    setDraggingBenchPlayerId(playerId);
     const el = e.currentTarget as HTMLElement;
     const onEnd = () => {
       try { el.removeEventListener("dragend", onEnd); } catch {}
       window.removeEventListener("dragend", onEnd);
       window.removeEventListener("drop", onEnd);
+      setDraggingBenchPlayerId(null);
       unlockScroll();
     };
     el.addEventListener("dragend", onEnd, { once: true });
@@ -8823,6 +8902,38 @@ await localForage.setItem("pitchCounts", {
   total: newTotalPitchCount,
   pitcherId: newPitcherId,
 });
+
+// ✅ 今回の交代前に守っていた選手 + 交代後に守る選手を「出場済み」として保存。
+// 1回表の最初の守備交代でも、外れた先発選手のIDが次の回まで残る。
+try {
+  const playedIdsToSave = new Set<number>(persistedDefensePlayedIds);
+
+  Object.values(initialAssignments || {}).forEach((id) => {
+    if (typeof id === "number" && Number.isFinite(id)) {
+      playedIdsToSave.add(Number(id));
+    }
+  });
+
+  Object.values(finalAssignments || {}).forEach((id) => {
+    if (typeof id === "number" && Number.isFinite(id)) {
+      playedIdsToSave.add(Number(id));
+    }
+  });
+
+  // 代打・代走・途中出場など、現在の判定ですでに出場済みの選手も統合
+  playedIds.forEach((id) => playedIdsToSave.add(Number(id)));
+
+  const key = await getDefensePlayedIdsKey();
+  await localForage.setItem(key, Array.from(playedIdsToSave));
+  setPersistedDefensePlayedIds(new Set(playedIdsToSave));
+
+  console.log("[DefenseChange] defensePlayedIds saved", {
+    key,
+    ids: Array.from(playedIdsToSave),
+  });
+} catch (error) {
+  console.warn("[DefenseChange] defensePlayedIds save failed", error);
+}
 
 await localForage.setItem("lineupAssignments", finalAssignments);
 await localForage.setItem("battingReplacements", {});
@@ -10531,6 +10642,7 @@ const p = typeof id === "number" ? teamPlayers.find((x) => x.id === id) : null;
       lastTouchRef.current = null;
       setTouchDrag(null);
       setDraggingFrom(null);
+      setDraggingBenchPlayerId(null);
     };
 
     const routeTouchDrop = (x: number, y: number) => {
@@ -11130,9 +11242,10 @@ const canDropHere =
                       const t = e.changedTouches?.[0];
                       if (t) lastTouchRef.current = { x: t.clientX, y: t.clientY };
                       setDraggingFrom(BENCH);
+                      setDraggingBenchPlayerId(p.id);
                       setTouchDrag({ playerId: p.id, fromPos: BENCH });
                     }}
-                    className="
+                    className={`
                       px-3 py-1.5 md:px-4 md:py-2
                       text-sm md:text-base lg:text-lg
                       font-semibold md:font-extrabold
@@ -11143,7 +11256,12 @@ const canDropHere =
                       shadow-sm
                       cursor-move select-none
                       transition active:scale-[0.98]
-                    "
+                      ${
+                        draggingBenchPlayerId === p.id || touchDrag?.playerId === p.id
+                          ? "ring-2 ring-inset ring-emerald-400"
+                          : ""
+                      }
+                    `}
                   >
                     {formatPlayerLabel(p)}
                   </div>
@@ -11172,9 +11290,10 @@ const canDropHere =
                       const t = e.changedTouches?.[0];
                       if (t) lastTouchRef.current = { x: t.clientX, y: t.clientY };
                       setDraggingFrom(BENCH);
+                      setDraggingBenchPlayerId(p.id);
                       setTouchDrag({ playerId: p.id, fromPos: BENCH });
                     }}
-                    className="
+                    className={`
                       px-3 py-1.5 md:px-4 md:py-2
                       text-sm md:text-base lg:text-lg
                       font-semibold md:font-extrabold
@@ -11185,7 +11304,12 @@ const canDropHere =
                       shadow-sm
                       cursor-move select-none
                       transition active:scale-[0.98]
-                    "
+                      ${
+                        draggingBenchPlayerId === p.id || touchDrag?.playerId === p.id
+                          ? "ring-2 ring-inset ring-emerald-400"
+                          : ""
+                      }
+                    `}
                     title="一度出場済みの選手"
                   >
                     {formatPlayerLabel(p)}
