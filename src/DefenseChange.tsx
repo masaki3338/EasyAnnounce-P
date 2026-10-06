@@ -8982,13 +8982,41 @@ for (const pos of positions) {
         ? "臨時代走"
         : pos;
 
+    const prevUsedEntry = (usedInfo as any)?.[initialId];
+
     usedInfo[initialId] = {
       fromPos,
       subId: currentId!,
       reason: "守備交代",
       order,
       wasStarter,
+      // ✅ 一度リエントリーした履歴は、その後また交代で退いても消さない。
+      ...(prevUsedEntry?.hasReentered ? { hasReentered: true } : {}),
     } as any;
+  });
+
+  // =========================================================
+  // 8.5) リエントリー成立履歴を確定保存
+  // =========================================================
+  // リエントリーは「試合開始時スタメン本人」が1度だけ可能。
+  // この画面で実際にリエントリー判定が成立して青枠になったIDだけを
+  // hasReentered=true として保存する。
+  const confirmedReentryIds = new Set<number>([
+    ...Array.from(reentryPreviewIds).map((id) => Number(id)),
+    ...Array.from(reentryFixedIds).map((id) => Number(id)),
+  ]);
+
+  confirmedReentryIds.forEach((id) => {
+    if (!starterIdsAtStart.has(Number(id)) &&
+        !startingOrder.some((e) => Number(e.id) === Number(id))) {
+      return;
+    }
+
+    const prev = (usedInfo as any)?.[id] ?? {};
+    (usedInfo as any)[id] = {
+      ...prev,
+      hasReentered: true,
+    };
   });
 
   // =========================================================
@@ -9023,11 +9051,9 @@ for (const pos of positions) {
       refreshedOnFieldIds.has(origId) ||
       (settledId != null && refreshedOnFieldIds.has(settledId))
     ) {
-      (usedInfo as any)[origIdStr] = {
-        ...(usedInfo as any)[origIdStr],
-        hasReentered: true,
-      };
-
+      // ✅ hasReentered は上の「8.5」で、実際にリエントリー成立した
+      // 元スタメン本人だけに付ける。
+      // 代打/代走の選手が守備についただけではリエントリー済みにしない。
       delete (usedInfo as any)[origIdStr].reason;
       delete (usedInfo as any)[origIdStr].fromPos;
       delete (usedInfo as any)[origIdStr].subId;
@@ -9752,26 +9778,48 @@ const checkReentryForBenchToField = ({
   //
   // この画面を開いた時点では山本は initialAssignments にいない場合があるが、
   // 試合開始時スタメンであること自体は変わらない。
+  // ✅ リエントリー資格は「試合開始時のスタメン本人」だけ。
+  // 履歴から元選手を逆引きできても、途中出場選手はリエントリー対象にしない。
   const wasStarterAtGameStart =
     starterIdsAtStart.has(Number(toId)) ||
     startingOrderRef.current.some(
       (e) => Number(e.id) === Number(toId)
     );
 
-  const resolvedOrigId = resolveOriginalStarterId(
-    toId,
-    usedPlayerInfo,
-    initialAssignments
-  );
+  const origIdForTo = wasStarterAtGameStart ? Number(toId) : null;
+  const wasStarter = wasStarterAtGameStart;
 
-  const origIdForTo =
-    wasStarterAtGameStart
-      ? Number(toId)
-      : resolvedOrigId;
+  // ✅ スタメン以外は絶対にリエントリー不可。
+  // 出場済みの途中出場選手を戻そうとした場合は対象外確認へ回す。
+  if (!wasStarterAtGameStart) {
+    setPendingNonReentryDrop({
+      toPos,
+      playerId: Number(toId),
+      replacedId: Number(fromId),
+    });
+    setShowNonReentryConfirm(true);
+    setHoverPos(null);
+    setDraggingFrom(null);
+    return false;
+  }
 
-  const wasStarter =
-    wasStarterAtGameStart ||
-    origIdForTo !== null;
+  // ✅ リエントリーは1選手につき1回だけ。
+  // 一度リエントリー済みなら、再度戻すことはできない。
+  const alreadyReentered =
+    !!((usedPlayerInfo as any)?.[String(toId)]?.hasReentered ??
+       (usedPlayerInfo as any)?.[Number(toId)]?.hasReentered);
+
+  if (alreadyReentered) {
+    setPendingNonReentryDrop({
+      toPos,
+      playerId: Number(toId),
+      replacedId: Number(fromId),
+    });
+    setShowNonReentryConfirm(true);
+    setHoverPos(null);
+    setDraggingFrom(null);
+    return false;
+  }
 
   // ✅ 大谷ルール：
   // DH側に代打/代走が出ただけで投手本人は「投」に残っている場合、
@@ -9836,7 +9884,7 @@ const checkReentryForBenchToField = ({
 
   // ★ 現在の打順：確定前の見た目に合わせて draft を優先
   const currentOrderSource =
-    battingOrderDraft?.length === 9
+    battingOrderDraft?.length > 0
       ? battingOrderDraft
       : battingOrder;
 
@@ -9924,23 +9972,20 @@ const checkReentryForBenchToField = ({
     Number(latestSubIdForOriginal) !== Number(origIdForTo) &&
     Number(fromId) === Number(latestSubIdForOriginal);
 
+  // ✅ リエントリー成立条件を厳格化。
+  // 1) 試合開始時スタメン本人
+  // 2) 現在フィールド外
+  // 3) まだ一度もリエントリーしていない
+  // 4) 自分の試合開始時の打順と、交代される選手(fromId)の現在打順が同じ
+  //
+  // 「同じ系列の代打/代走だから」等のフォールバックでは許可しない。
   const isReentryNow =
-    wasStarter &&
+    wasStarterAtGameStart &&
     isOffField &&
-    (
-      (
-        originalOrderIndex >= 0 &&
-        currentOrderIndexOfFrom >= 0 &&
-        originalOrderIndex === currentOrderIndexOfFrom
-      ) ||
-      // ✅ 出場済みの元スタメンが、自分の元打順に現在入っている選手と交代する場合は
-      // フィールド図配置時もリエントリーとして許可する。
-      sameOriginalOrderByUsedInfo ||
-      // ログ上、originalOrderIndex が -1 でも usedPlayerInfo から
-      // 「戻す元スタメン ↔ 外される最新代打/代走」が特定できるケースがある。
-      // この場合は打順indexに依存せずリエントリーとして許可する。
-      replacingOwnLatestSub
-    );
+    !alreadyReentered &&
+    originalOrderIndex >= 0 &&
+    currentOrderIndexOfFrom >= 0 &&
+    originalOrderIndex === currentOrderIndexOfFrom;
 
   console.log("[REENTRY CHECK same-order][modal/common]", {
     toId,
@@ -9949,6 +9994,7 @@ const checkReentryForBenchToField = ({
     origIdForTo,
     wasStarterAtGameStart,
     wasStarter,
+    alreadyReentered,
     isUsedAlready,
     isOffField,
     originalOrderIndex,
