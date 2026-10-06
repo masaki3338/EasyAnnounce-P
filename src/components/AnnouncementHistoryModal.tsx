@@ -58,7 +58,7 @@ const AnnouncementHistoryModal: React.FC<Props> = ({ open, onClose }) => {
                   {selected.category}　{formatTime(selected.createdAt)}{selected.inningLabel ? `　${selected.inningLabel}` : ""}
                 </div>
                 <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
-                  <div className="text-red-700 font-bold leading-relaxed [&_ruby]:ruby [&_rt]:text-xs" dangerouslySetInnerHTML={{ __html: selected.displayHtml }} />
+                  <div className="text-red-700 font-bold leading-relaxed whitespace-pre-wrap [&_ruby]:ruby [&_rt]:text-xs" dangerouslySetInnerHTML={{ __html: selected.displayHtml }} />
                   <div className="mt-4 grid grid-cols-2 gap-2">
                     <button onClick={() => speak(selected.speechText)} className="w-full h-11 rounded-xl bg-blue-600 text-white font-bold">読み上げ</button>
                     <button onClick={() => stop()} className="w-full h-11 rounded-xl bg-rose-600 text-white font-bold">停止</button>
