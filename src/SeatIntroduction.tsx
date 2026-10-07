@@ -135,9 +135,9 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
   const seatIntroFirstText =
     leagueMode === "boys"
       ? inning === "1回の裏"
-        ? `${inningReading}、守ります、${teamReading}の`
-        : `${inningReading}、まず守ります、${teamReading}の`
-      : `${inningReading}、守ります、${teamReading}のシートをお知らせします。`;
+        ? `${inningReading}、守ります ${teamReading}の`
+        : `${inningReading}、まず守ります ${teamReading}の`
+      : `${inningReading}、守ります ${teamReading}のシートをお知らせします。`;
 
   useEffect(() => {
     const loadData = async () => {
@@ -204,7 +204,8 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
   useEffect(() => {
     if (!teamReading) return;
 
-    const options = { progressive: true, cache: true } as const;
+    const openingOptions = { progressive: false, cache: true } as const;
+    const lineOptions = { progressive: true, cache: true } as const;
 
     const pitcher = positions["投"];
     const fixedKana = (value?: string) =>
@@ -293,9 +294,15 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
           });
 
     void (async () => {
-      for (const part of [seatIntroFirstText, ...seatPrefetchLines]) {
+      if (seatIntroFirstText) {
+        // 開始文は1本の音声として先読みする。
+        // progressive分割すると「1回の表、」の読点で長い無音が入りやすい。
+        await prefetchTTS(seatIntroFirstText, openingOptions);
+      }
+
+      for (const part of seatPrefetchLines) {
         if (!part) continue;
-        await prefetchTTS(part, options);
+        await prefetchTTS(part, lineOptions);
       }
     })().catch((error) => {
       console.warn("[TTS PREFETCH][SeatIntroduction] failed", error);
@@ -347,7 +354,10 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
 
   const speakText = () => {
     const speakOpening = async () => {
-      const options = { progressive: true, cache: true } as const;
+      // 開始文は分割再生しない。
+      // 「1回の表、」「1回の裏、」の読点はMatcha側の自然な短い間として残し、
+      // progressive分割による長い待ち時間を防ぐ。
+      const options = { progressive: false, cache: true } as const;
       await ttsSpeak(seatIntroFirstText, options);
     };
 
