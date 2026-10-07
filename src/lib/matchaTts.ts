@@ -55,6 +55,17 @@ export type MatchaPerformanceProgress =
   | "judging"
   | "complete";
 
+export type MatchaPreparationProgress = {
+  phase: "download" | "cache" | "session";
+  label: "matcha" | "vocos";
+  loadedBytes: number;
+  totalBytes: number;
+  overallLoadedBytes: number;
+  overallTotalBytes: number;
+  fromCache: boolean;
+  percent: number;
+};
+
 export type MatchaPerformanceResult = {
   level: MatchaPerformanceLevel;
   generationMs: number;
@@ -388,11 +399,13 @@ function getSelectedMatchaModelId(): MatchaModelId {
 
 type InferenceWorkerResponse =
   | { type: "ready"; id: number }
+  | { type: "progress"; id: number; phase: "download" | "cache" | "session"; label: "matcha" | "vocos"; loadedBytes: number; totalBytes: number; overallLoadedBytes: number; overallTotalBytes: number; fromCache: boolean }
   | { type: "result"; id: number; sampleRate: number; samplesBuffer: ArrayBuffer }
   | { type: "error"; id: number; message: string };
 
 let inferenceWorker: Worker | null = null;
 let inferenceWorkerSeq = 0;
+let preparationProgressListener: ((progress: MatchaPreparationProgress) => void) | null = null;
 const inferenceWorkerPending = new Map<
   number,
   {
@@ -418,6 +431,22 @@ function getInferenceWorker(): Worker {
 
   worker.onmessage = (event: MessageEvent<InferenceWorkerResponse>) => {
     const message = event.data;
+    if (message.type === "progress") {
+      const total = Number(message.overallTotalBytes) || 0;
+      const loaded = Number(message.overallLoadedBytes) || 0;
+      preparationProgressListener?.({
+        phase: message.phase,
+        label: message.label,
+        loadedBytes: Number(message.loadedBytes) || 0,
+        totalBytes: Number(message.totalBytes) || 0,
+        overallLoadedBytes: loaded,
+        overallTotalBytes: total,
+        fromCache: Boolean(message.fromCache),
+        percent: total > 0 ? Math.max(0, Math.min(100, (loaded / total) * 100)) : 0,
+      });
+      return;
+    }
+
     const pending = inferenceWorkerPending.get(message.id);
     if (!pending) return;
 
@@ -2600,13 +2629,19 @@ export async function prewarmMatcha(): Promise<void> {
 // 自動起動は tts.ts 側で、React初回描画後にバックグラウンド開始する。
 
 export async function benchmarkMatchaPerformance(
-  onProgress?: (progress: MatchaPerformanceProgress) => void
+  onProgress?: (progress: MatchaPerformanceProgress) => void,
+  onPreparationProgress?: (progress: MatchaPreparationProgress) => void
 ): Promise<MatchaPerformanceResult> {
   const modelId = getSelectedMatchaModelId();
 
   onProgress?.("preparing");
   const prepareStartedAt = performance.now();
-  await prewarmMatcha();
+  preparationProgressListener = onPreparationProgress ?? null;
+  try {
+    await prewarmMatcha();
+  } finally {
+    preparationProgressListener = null;
+  }
   const prepareMs = performance.now() - prepareStartedAt;
 
   const generationStartedAt = performance.now();

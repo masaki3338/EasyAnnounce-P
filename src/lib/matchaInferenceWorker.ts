@@ -4,17 +4,6 @@
 
 import * as ort from "onnxruntime-web/wasm";
 
-
-// -----------------------------------------------------------------------------
-// TTSデバッグログ
-// 本番では false。必要なときだけ true にすると console.log が復活する。
-// warn / error は異常検知のため常時残す。
-// -----------------------------------------------------------------------------
-const TTS_DEBUG = false;
-const ttsDebugLog = (...args: any[]) => {
-  if (TTS_DEBUG) ttsDebugLog(...args);
-};
-
 type MatchaModelId = "taniho" | "uguisu";
 
 const MATCHA_MODEL_URLS: Record<MatchaModelId, string> = {
@@ -59,16 +48,11 @@ function configureOrt() {
     typeof self !== "undefined" &&
     self.crossOriginIsolated === true;
 
-  // crossOriginIsolated=true の端末では WASM Threads を使用。
-  // 端末の論理コア数に余裕がある場合だけ最大4スレッドまで使い、
-  // 条件を満たさない端末は安全に1スレッドへフォールバックする。
-  const usableThreads = canUseThreads
-    ? Math.min(4, Math.max(1, cores - 1))
-    : 1;
+  // 復旧優先: Session作成が4スレッド構成で停止する切り分けのため、
+  // 一時的に1スレッド固定。モデル切替・Worker構成・WASMパスは維持する。
+  ort.env.wasm.numThreads = 1;
 
-  ort.env.wasm.numThreads = usableThreads;
-
-  ttsDebugLog("[TTS PERF] ORT config", {
+  console.log("[TTS PERF] ORT config", {
     crossOriginIsolated: canUseThreads,
     hardwareConcurrency: cores,
     numThreads: ort.env.wasm.numThreads,
@@ -81,16 +65,140 @@ function configureOrt() {
   } as any;
 }
 
-async function fetchBytes(url: string): Promise<Uint8Array> {
-  const response = await fetch(url);
+const MODEL_CACHE_NAME = "easy-announce-matcha-models-v1";
+
+type DownloadProgress = {
+  phase: "download" | "cache" | "session";
+  label: "matcha" | "vocos";
+  loadedBytes: number;
+  totalBytes: number;
+  overallLoadedBytes: number;
+  overallTotalBytes: number;
+  fromCache: boolean;
+};
+
+let downloadTotalBytes = 0;
+let completedDownloadBytes = 0;
+
+async function getRemoteSize(url: string): Promise<number> {
+  try {
+    const response = await fetch(url, { method: "HEAD", cache: "no-store" });
+    const size = Number(response.headers.get("content-length") || 0);
+    return Number.isFinite(size) && size > 0 ? size : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function reportDownloadProgress(
+  id: number,
+  progress: Omit<DownloadProgress, "overallLoadedBytes" | "overallTotalBytes">
+) {
+  self.postMessage({
+    type: "progress",
+    id,
+    ...progress,
+    overallLoadedBytes: completedDownloadBytes + progress.loadedBytes,
+    overallTotalBytes: downloadTotalBytes,
+  });
+}
+
+async function fetchBytes(
+  url: string,
+  id: number,
+  label: "matcha" | "vocos",
+  expectedSize: number
+): Promise<Uint8Array> {
+  const cache = typeof caches !== "undefined"
+    ? await caches.open(MODEL_CACHE_NAME)
+    : null;
+
+  if (cache) {
+    const cached = await cache.match(url);
+    if (cached) {
+      const bytes = new Uint8Array(await cached.arrayBuffer());
+      const total = expectedSize || bytes.byteLength;
+      reportDownloadProgress(id, {
+        phase: "cache",
+        label,
+        loadedBytes: total,
+        totalBytes: total,
+        fromCache: true,
+      });
+      completedDownloadBytes += total;
+      return bytes;
+    }
+  }
+
+  const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
     throw new Error(`${url} の取得に失敗しました (HTTP ${response.status})`);
   }
-  return new Uint8Array(await response.arrayBuffer());
+
+  const headerSize = Number(response.headers.get("content-length") || 0);
+  const totalBytes =
+    Number.isFinite(headerSize) && headerSize > 0 ? headerSize : expectedSize;
+
+  if (!response.body) {
+    const buffer = await response.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    const total = totalBytes || bytes.byteLength;
+    reportDownloadProgress(id, {
+      phase: "download",
+      label,
+      loadedBytes: total,
+      totalBytes: total,
+      fromCache: false,
+    });
+    if (cache) {
+      await cache.put(url, new Response(buffer.slice(0), {
+        headers: { "Content-Type": "application/octet-stream" },
+      }));
+    }
+    completedDownloadBytes += total;
+    return bytes;
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let loadedBytes = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    chunks.push(value);
+    loadedBytes += value.byteLength;
+    reportDownloadProgress(id, {
+      phase: "download",
+      label,
+      loadedBytes,
+      totalBytes: totalBytes || loadedBytes,
+      fromCache: false,
+    });
+  }
+
+  const bytes = new Uint8Array(loadedBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  if (cache) {
+    await cache.put(url, new Response(bytes.slice().buffer, {
+      headers: { "Content-Type": "application/octet-stream" },
+    }));
+  }
+
+  completedDownloadBytes += totalBytes || loadedBytes;
+  return bytes;
 }
 
 async function getMatchaSession(
-  modelId: MatchaModelId
+  modelId: MatchaModelId,
+  progressId = 0,
+  expectedSize = 0
 ): Promise<ort.InferenceSession> {
   const existing = matchaSessionPromises.get(modelId);
   if (existing) return existing;
@@ -99,20 +207,20 @@ async function getMatchaSession(
 
   const promise = (async () => {
     const url = MATCHA_MODEL_URLS[modelId];
-    ttsDebugLog("[TTS LOAD] Matcha fetch start", { modelId, url });
+    console.log("[TTS LOAD] Matcha fetch start", { modelId, url });
     const start = performance.now();
-    const bytes = await fetchBytes(url);
+    const bytes = await fetchBytes(url, progressId, "matcha", expectedSize);
     const fetchMs = performance.now() - start;
-    ttsDebugLog("[TTS LOAD] Matcha fetch complete", { modelId, bytes: bytes.byteLength, fetchMs: Math.round(fetchMs * 10) / 10 });
+    console.log("[TTS LOAD] Matcha fetch complete", { modelId, bytes: bytes.byteLength, fetchMs: Math.round(fetchMs * 10) / 10 });
 
-    ttsDebugLog("[TTS LOAD] Matcha session create start", { modelId });
+    console.log("[TTS LOAD] Matcha session create start", { modelId });
     const sessionStart = performance.now();
     const session = await ort.InferenceSession.create(bytes, {
       executionProviders: ["wasm"],
       graphOptimizationLevel: "all",
     });
 
-    ttsDebugLog("[TTS PERF] Matcha model ready", {
+    console.log("[TTS PERF] Matcha model ready", {
       modelId,
       fetchMs: Math.round(fetchMs * 10) / 10,
       sessionMs: Math.round((performance.now() - sessionStart) * 10) / 10,
@@ -128,24 +236,24 @@ async function getMatchaSession(
   return promise;
 }
 
-async function getVocosSession(): Promise<ort.InferenceSession> {
+async function getVocosSession(progressId = 0, expectedSize = 0): Promise<ort.InferenceSession> {
   if (!vocosSessionPromise) {
     configureOrt();
     vocosSessionPromise = (async () => {
-      ttsDebugLog("[TTS LOAD] Vocos fetch start", { url: VOCOS_MODEL_URL });
+      console.log("[TTS LOAD] Vocos fetch start", { url: VOCOS_MODEL_URL });
       const start = performance.now();
-      const bytes = await fetchBytes(VOCOS_MODEL_URL);
+      const bytes = await fetchBytes(VOCOS_MODEL_URL, progressId, "vocos", expectedSize);
       const fetchMs = performance.now() - start;
-      ttsDebugLog("[TTS LOAD] Vocos fetch complete", { bytes: bytes.byteLength, fetchMs: Math.round(fetchMs * 10) / 10 });
+      console.log("[TTS LOAD] Vocos fetch complete", { bytes: bytes.byteLength, fetchMs: Math.round(fetchMs * 10) / 10 });
 
-      ttsDebugLog("[TTS LOAD] Vocos session create start");
+      console.log("[TTS LOAD] Vocos session create start");
       const sessionStart = performance.now();
       const session = await ort.InferenceSession.create(bytes, {
         executionProviders: ["wasm"],
         graphOptimizationLevel: "all",
       });
 
-      ttsDebugLog("[TTS PERF] Vocos model ready", {
+      console.log("[TTS PERF] Vocos model ready", {
         fetchMs: Math.round(fetchMs * 10) / 10,
         sessionMs: Math.round((performance.now() - sessionStart) * 10) / 10,
       });
@@ -340,7 +448,7 @@ async function synthesize(ids: number[], speedScale: number, modelId: MatchaMode
   );
   const istftMs = performance.now() - istftStart;
 
-  ttsDebugLog("[TTS PERF] inference", {
+  console.log("[TTS PERF] inference", {
     modelId,
     ids: ids.length,
     frames,
@@ -364,8 +472,40 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
   try {
     if (message.type === "init") {
       // 初期化は必ず直列。ORTのWASM初期化と巨大モデルSession作成の競合を避ける。
-      await getMatchaSession(message.modelId);
-      await getVocosSession();
+      const matchaUrl = MATCHA_MODEL_URLS[message.modelId];
+      const [matchaSize, vocosSize] = await Promise.all([
+        getRemoteSize(matchaUrl),
+        getRemoteSize(VOCOS_MODEL_URL),
+      ]);
+      downloadTotalBytes = matchaSize + vocosSize;
+      completedDownloadBytes = 0;
+
+      await getMatchaSession(message.modelId, message.id, matchaSize);
+      self.postMessage({
+        type: "progress",
+        id: message.id,
+        phase: "session",
+        label: "matcha",
+        loadedBytes: matchaSize,
+        totalBytes: matchaSize,
+        overallLoadedBytes: completedDownloadBytes,
+        overallTotalBytes: downloadTotalBytes,
+        fromCache: false,
+      });
+
+      await getVocosSession(message.id, vocosSize);
+      self.postMessage({
+        type: "progress",
+        id: message.id,
+        phase: "session",
+        label: "vocos",
+        loadedBytes: vocosSize,
+        totalBytes: vocosSize,
+        overallLoadedBytes: completedDownloadBytes,
+        overallTotalBytes: downloadTotalBytes,
+        fromCache: false,
+      });
+
       self.postMessage({ type: "ready", id: message.id });
       return;
     }
