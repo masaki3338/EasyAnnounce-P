@@ -5,6 +5,7 @@ import {
   notifyMatchaVoiceChanged,
   type MatchaPerformanceProgress,
   type MatchaPerformanceResult,
+  type MatchaPreparationProgress,
 } from "../lib/matchaTts";
 import { useWebSpeechVoices } from "../hooks/useWebSpeechVoices";
 
@@ -106,34 +107,71 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
     useState<MatchaPerformanceProgress | null>(null);
   const [aiPerformanceError, setAiPerformanceError] = useState("");
   const [aiProgressPercent, setAiProgressPercent] = useState(0);
+  const [aiPreparationProgress, setAiPreparationProgress] =
+    useState<MatchaPreparationProgress | null>(null);
+  const [aiPreparationSlow, setAiPreparationSlow] = useState(false);
 
-  // Matcha側からは処理段階だけ通知されるため、段階の間も数字をゆっくり進めて
-  // 「フリーズしていない」ことが分かるようにする。
+  // 進捗表示:
+  // 0～80% = モデル準備。総バイト数が取得できる場合は実ダウンロード量を使用。
+  // 総サイズが取得できない場合やONNX初期化中は、表示だけをゆっくり進めて
+  // 5%などで長時間停止しないようにする（80%は準備完了まで超えない）。
+  // 82～99% = G2P/音声生成/判定、100% = 完了。
   useEffect(() => {
     if (!isCheckingAiPerformance) return;
 
-    const target =
-      aiPerformanceProgress === "preparing" ? 35 :
-      aiPerformanceProgress === "g2p" ? 60 :
-      aiPerformanceProgress === "inference" ? 85 :
-      aiPerformanceProgress === "judging" ? 98 :
-      aiPerformanceProgress === "complete" ? 100 : 5;
+    if (aiPerformanceProgress === "preparing") {
+      const timer = window.setInterval(() => {
+        setAiProgressPercent((current) => {
+          // 実進捗を追い越しすぎないよう、時間による補助表示は最大78%。
+          if (current >= 78) return current;
+          if (current < 20) return current + 2;
+          if (current < 50) return current + 1;
+          return Math.min(78, current + 0.5);
+        });
+      }, 1500);
+      return () => window.clearInterval(timer);
+    }
 
-    setAiProgressPercent((current) => {
-      if (aiPerformanceProgress === "complete") return 100;
-      return Math.max(current, 1);
-    });
-
-    if (aiPerformanceProgress === "complete") return;
-
-    const timer = window.setInterval(() => {
-      setAiProgressPercent((current) =>
-        current < target ? Math.min(current + 1, target) : current
-      );
-    }, 1500);
-
-    return () => window.clearInterval(timer);
+    if (aiPerformanceProgress === "g2p") {
+      setAiProgressPercent((v) => Math.max(v, 82));
+    } else if (aiPerformanceProgress === "inference") {
+      setAiProgressPercent((v) => Math.max(v, 90));
+    } else if (aiPerformanceProgress === "judging") {
+      setAiProgressPercent((v) => Math.max(v, 98));
+    } else if (aiPerformanceProgress === "complete") {
+      setAiProgressPercent(100);
+    }
   }, [isCheckingAiPerformance, aiPerformanceProgress]);
+
+  // 3分経過しても準備中なら通信環境の注意だけ表示する。
+  // 処理自体は止めず、バックグラウンドでそのまま継続する。
+  useEffect(() => {
+    if (!isCheckingAiPerformance || aiPerformanceProgress !== "preparing") {
+      setAiPreparationSlow(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setAiPreparationSlow(true);
+    }, 180_000);
+
+    return () => window.clearTimeout(timer);
+  }, [isCheckingAiPerformance, aiPerformanceProgress]);
+
+  const aiPreparationStatusText = (() => {
+    if (aiPerformanceProgress !== "preparing") return "";
+    if (aiPreparationProgress?.fromCache) {
+      return "保存済みAI音声を読み込んでいます";
+    }
+    if (aiPreparationProgress?.phase === "session") {
+      return "AI音声モデルを初期化しています";
+    }
+    if (aiPreparationProgress?.phase === "download") {
+      return "AI音声モデルをダウンロードしています";
+    }
+    return "AI音声を準備しています";
+  })();
+
 
   const onceRef = useRef(false);
   useEffect(() => {
@@ -171,19 +209,52 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
     setAiPerformance(null);
     setAiPerformanceProgress("preparing");
     setAiPerformanceError("");
+    setAiPreparationProgress(null);
+    setAiPreparationSlow(false);
 
     try {
-      const result = await benchmarkMatchaPerformance((progress) => {
-        setAiPerformanceProgress(progress);
-      });
-      setAiPerformance(result);
+      const result = await benchmarkMatchaPerformance(
+        (progress) => {
+          setAiPerformanceProgress(progress);
+        },
+        (progress) => {
+          setAiPreparationProgress(progress);
+
+          // キャッシュ済みなら大容量ダウンロードは完了済み。
+          // ONNX Session生成中として80%まで進める。
+          if (progress.fromCache) {
+            setAiProgressPercent((current) => Math.max(current, 80));
+            return;
+          }
+
+          // Content-Lengthが取得できる場合は実バイト数を0～80%へ反映。
+          // 時間補助表示より実値が小さくても表示は後退させない。
+          if (progress.overallTotalBytes > 0) {
+            const actualPercent = Math.min(
+              80,
+              Math.max(1, Math.round(progress.percent * 0.8))
+            );
+            setAiProgressPercent((current) => Math.max(current, actualPercent));
+            return;
+          }
+
+          // 総サイズ不明でも受信が始まったことは表示する。
+          if (progress.overallLoadedBytes > 0 || progress.loadedBytes > 0) {
+            setAiProgressPercent((current) => Math.max(current, 8));
+          }
+        }
+      );
       setAiPerformanceProgress("complete");
+      setAiProgressPercent(100);
+      // 100%を画面上で確認できる時間を確保する。
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 1000));
+      setAiPerformance(result);
     } catch (error) {
       console.error("[TTS settings] AI performance check failed:", error);
       setAiPerformance(null);
       setAiPerformanceProgress(null);
       setAiPerformanceError(
-        "AI音声の動作チェックに失敗しました。もう一度お試しください。"
+        "AI音声の準備に失敗しました。通信環境を確認し、Wi-Fiまたは電波状況の良い場所でもう一度お試しください。"
       );
     } finally {
       setIsCheckingAiPerformance(false);
@@ -491,7 +562,7 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
                 <>
                   <div className="mt-3 flex items-end justify-between gap-3">
                     <div className="text-xs font-semibold text-cyan-100">
-                      AI音声を準備しています
+                      {aiPreparationStatusText || "AI音声を準備しています"}
                     </div>
                     <div className="text-2xl font-extrabold text-cyan-200 tabular-nums leading-none">
                       {aiProgressPercent}%
@@ -504,6 +575,26 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
                     />
                   </div>
 
+                  {aiPerformanceProgress === "preparing" && aiPreparationProgress?.overallTotalBytes > 0 && (
+                    <div className="mt-2 text-xs text-cyan-100/80">
+                      {(aiPreparationProgress.overallLoadedBytes / 1024 / 1024).toFixed(1)} MB
+                      {" / "}
+                      {(aiPreparationProgress.overallTotalBytes / 1024 / 1024).toFixed(1)} MB
+                      {aiPreparationProgress.fromCache ? "（端末保存済みデータを使用）" : ""}
+                    </div>
+                  )}
+
+                  {aiPreparationSlow && aiPerformanceProgress === "preparing" && (
+                    <div className="mt-3 rounded-xl border border-amber-300/50 bg-amber-400/15 px-3 py-3 text-sm text-amber-50">
+                      <div className="font-bold">⚠️ AI音声の準備に時間がかかっています</div>
+                      <p className="mt-1 leading-relaxed">
+                        通信環境が不安定な可能性があります。Wi-Fiに接続するか、
+                        電波状況の良い場所でご利用ください。
+                        準備はバックグラウンドでそのまま継続しています。
+                      </p>
+                    </div>
+                  )}
+
                   <div className="mt-4 flex items-center gap-3">
                     <div className="h-5 w-5 rounded-full border-2 border-cyan-200/30 border-t-cyan-200 animate-spin" />
                     <div className="text-sm font-semibold text-cyan-50">
@@ -514,7 +605,7 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
                              <span className="block mt-1 text-xs font-normal text-cyan-100/80 leading-relaxed">
                                初回のみ時間がかかる場合があります。
                                <br />
-                               そのままお待ちください。
+                               この画面を閉じても準備は継続します。
                              </span>
                            </span>
                          )
@@ -638,15 +729,10 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
             <button
               type="button"
               onClick={() => setShowAiVoiceNotice(false)}
-              disabled={isCheckingAiPerformance}
-              className={`mt-5 w-full h-12 rounded-2xl text-white font-bold shadow-lg ${
-                isCheckingAiPerformance
-                  ? "bg-gray-500/60 cursor-not-allowed"
-                  : "bg-gradient-to-r from-sky-600 to-blue-600"
-              }`}
+              className="mt-5 w-full h-12 rounded-2xl text-white font-bold shadow-lg bg-gradient-to-r from-sky-600 to-blue-600"
             >
               {isCheckingAiPerformance
-                ? "チェック完了までお待ちください"
+                ? "閉じる（準備はバックグラウンドで継続）"
                 : "OK"}
             </button>
           </div>
