@@ -827,10 +827,42 @@ setAssignments(next);
       return;
     }
 
-    /**
-     * 打順追加数よりDH選手が多くならないようにする
-     * 10人なら1人、11人なら2人まで
-     */
+    // 10人以上: DH欄が満員でも、既存DHの選手へドロップした場合は交代できる。
+    // ベンチ入り（打順外）の選手だけが対象。元DHは打順から外してベンチ入りへ戻す。
+    const draggedIsInOrder = battingOrder.some((entry) => entry?.id === playerId);
+    const targetElement = (e.target as HTMLElement | null)?.closest?.("[data-dh-player-id]");
+    const targetFromElement = Number(targetElement?.getAttribute("data-dh-player-id") || 0);
+    const targetFromTouch = Number(e.dataTransfer.getData("dhTargetPlayerId") || 0);
+    const targetDhId =
+      (targetFromTouch && dhDisplayPlayers.some((p) => p.id === targetFromTouch) && targetFromTouch) ||
+      (targetFromElement && dhDisplayPlayers.some((p) => p.id === targetFromElement) && targetFromElement) ||
+      (dhDisplayPlayers.length === 1 ? dhDisplayPlayers[0].id : 0);
+
+    if (!draggedIsInOrder && targetDhId && targetDhId !== playerId) {
+      // 交換対象のDHがいた打順を、新しい控え選手がそのまま引き継ぐ。
+      setBattingOrder((prev) => prev.map((entry) =>
+        entry?.id === targetDhId ? { id: playerId, reason: "スタメン" as const } : entry
+      ));
+      setAssignments((prev) => {
+        const next = { ...prev };
+        for (const pos of Object.keys(next)) {
+          if (next[pos] === playerId || next[pos] === targetDhId) next[pos] = null;
+        }
+        // 10人以上のDH表示は extraPositionMap を使用する。
+        return next;
+      });
+      setExtraPositionMap((prev) => {
+        const next = { ...prev };
+        delete next[targetDhId];
+        next[playerId] = DH;
+        return next;
+      });
+      setBenchOutIds((prev) => prev.filter((id) => id !== playerId && id !== targetDhId));
+      setDraggingPlayerId(null);
+      return;
+    }
+
+    /** 既存のDHへ交換せず追加する場合は、DHの人数上限を守る。 */
     if (!canAddExtraDhPlayer) {
       setDraggingPlayerId(null);
       return;
@@ -2013,7 +2045,13 @@ useEffect(() => {
         } else if (kind === "benchOut") {
           handleDropToBenchOut(fake);
         } else if (kind === "dh") {
-          handleDropToDhArea(fake);
+          const card = el.closest('[data-dh-player-id]') as HTMLElement | null;
+          const targetId = card?.getAttribute('data-dh-player-id') ?? '';
+          handleDropToDhArea(makeFakeDragEvent({
+            playerId: String(touchDrag.playerId),
+            'text/plain': String(touchDrag.playerId),
+            dhTargetPlayerId: targetId,
+          }));
         }
       }
 
@@ -2558,17 +2596,18 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
                   : "border-white/10 ring-white/10 opacity-80"
               }`}
             onDragOver={(e) => {
-              if (!canAddExtraDhPlayer) return;
+              // 満員でも既存DHへの控え選手の交換は受け付ける。
               allowDrop(e);
             }}
             onDrop={handleDropToDhArea}
-            onTouchEnd={() => {
+            onTouchEnd={(e) => {
               if (!touchDrag) return;
-
+              const targetCard = (e.target as HTMLElement).closest('[data-dh-player-id]');
               const fake = makeFakeDragEvent({
                 playerId: String(touchDrag.playerId),
                 "text/plain": String(touchDrag.playerId),
                 fromPosition: touchDrag.fromPos ?? "",
+                dhTargetPlayerId: targetCard?.getAttribute('data-dh-player-id') ?? '',
               });
 
               handleDropToDhArea(fake as React.DragEvent<HTMLDivElement>);
@@ -2586,6 +2625,7 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
               dhDisplayPlayers.map((p) => (
                 <div
                   key={p.id}
+                  data-dh-player-id={p.id}
                   draggable={!isTouchDevice()}
                   onDragStart={(e) => handleDragStart(e, p.id, DH)}
                   onTouchStart={() => {
