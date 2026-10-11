@@ -1,6 +1,7 @@
 // PitchLimit.tsx
 import React, { useState, useEffect } from "react";
 import localForage from "localforage";
+import { getLeagueMode } from "../lib/leagueSettings";
 
 type Choice = "85" | "75" | "45" | "custom";
 
@@ -19,6 +20,7 @@ const IconBall = () => (
 
 export default function PitchLimit({ onBack }: { onBack: () => void }) {
   // ── 既存のロジック：そのまま ─────────────────────
+  const isPonyLeague = getLeagueMode() !== "boys";
   const [choice, setChoice] = useState<Choice>("75");
   const [custom, setCustom] = useState<number>(85);
   const [selected, setSelected] = useState<number>(75);
@@ -183,7 +185,7 @@ export default function PitchLimit({ onBack }: { onBack: () => void }) {
                   onChange={choose85}
                 />
                 <span className={radioClass("85")} />
-                <span className="font-medium">85球（コルト大会）</span>
+                <span className="font-medium">85球{isPonyLeague && "（コルト大会）"}</span>
               </label>
 
               {/* 75球 */}
@@ -195,7 +197,7 @@ export default function PitchLimit({ onBack }: { onBack: () => void }) {
                   onChange={choose75}
                 />
                 <span className={radioClass("75")} />
-                <span className="font-medium">75球（ポニー大会）</span>
+                <span className="font-medium">75球{isPonyLeague && "（ポニー大会）"}</span>
               </label>
 
               {/* 45球 */}
@@ -207,7 +209,7 @@ export default function PitchLimit({ onBack }: { onBack: () => void }) {
                   onChange={choose45}
                 />
                 <span className={radioClass("45")} />
-                <span className="font-medium">45球（ブロンコ大会）</span>
+                <span className="font-medium">45球{isPonyLeague && "（ブロンコ大会）"}</span>
               </label>
 
               {/* カスタム */}
@@ -295,9 +297,11 @@ export default function PitchLimit({ onBack }: { onBack: () => void }) {
               </div>
             </div>
 
-            <p className="mt-5 text-left leading-relaxed text-sm sm:text-base text-white/75">
-              ※ この設定は「規定投球数の10球前と到達時のアナウンス」で使用されます。
-            </p>
+            {isPonyLeague && (
+              <p className="mt-5 text-left leading-relaxed text-sm sm:text-base text-white/75">
+                ※ この設定は「規定投球数の10球前と到達時のアナウンス」で使用されます。
+              </p>
+            )}
           </section>
         </main>
       </div>
