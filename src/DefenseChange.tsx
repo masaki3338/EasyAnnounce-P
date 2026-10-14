@@ -5997,6 +5997,8 @@ const startingOrderRef = useRef<{ id: number; reason?: string }[]>([]);
 
   const [substitutionLogs, setSubstitutionLogs] = useState<string[]>([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showNoAnnouncementModal, setShowNoAnnouncementModal] = useState(false);
+  const [showUnchangedDhPinchNote, setShowUnchangedDhPinchNote] = useState(false);
   const [pitcherCountAnnouncement, setPitcherCountAnnouncement] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [dhEnabledAtStart, setDhEnabledAtStart] = useState<boolean>(false);
@@ -8069,12 +8071,81 @@ const correctExtraDhBenchLineup = (announcement: string): string => {
   return corrected;
 };
 
-const normalizedBaseDisplayText = correctExtraDhBenchLineup(
-  removeHeBeforeCommaAfterPosition(baseDisplayText || missingDhAnnouncement || "")
-);
+// DHに入った代打・代走（臨時代走を含む）が、次の守備でもDHを継続する場合、
+// 「先ほど代打（代走）…そのまま指名打者」という不要な本文のみ除外する。
+// 他の交代が同時にある場合も、他の本文とその打順案内をそのまま残す。
+// ルールモードに依存しない。DH解除・他守備へ移ったケースは対象外。
+const omitUnchangedDhPinchAnnouncement = (raw: string): string => {
+  const original = String(raw ?? "");
+  if (!original || pendingDisableDH || dhDisableDirty) return original;
 
+  const fieldPositions = ["投", "捕", "一", "二", "三", "遊", "左", "中", "右"];
+  const dhPinchPlayerIds = Object.entries(usedPlayerInfo ?? {})
+    .filter(([, info]) =>
+      ["指", "DH", "指名打者"].includes(String((info as any)?.fromPos ?? "")) &&
+      ["代打", "代走", "臨時代走"].includes(String((info as any)?.reason ?? ""))
+    )
+    .map(([oldId]) => resolveLatestSubId(Number(oldId), usedPlayerInfo as any))
+    .filter(id => Number.isFinite(id) &&
+      // 守備に就いたなら「そのままDH」ではないため案内を消さない。
+      !fieldPositions.some(pos => Number(assignments?.[pos]) === Number(id)) &&
+      (orderSrc.some(entry => Number(entry?.id) === Number(id)) ||
+       battingOrder.some(entry => Number(entry?.id) === Number(id)) ||
+       Number(assignments?.["指"]) === Number(id))
+    );
+  if (!dhPinchPlayerIds.length) return original;
+
+  const stripRuby = (text: string) => String(text)
+    .replace(/<rt\b[^>]*>[\s\S]*?<\/rt>/gi, "")
+    .replace(/<[^>]+>/g, "");
+  const playersToOmit = dhPinchPlayerIds
+    .map(id => teamPlayers.find(p => Number(p.id) === Number(id)))
+    .filter((p): p is Player => !!p);
+  if (!playersToOmit.length) return original;
+
+  const segments = original.split(/(?:\r?\n|<br\s*\/?>)/i);
+  let removed = false;
+  const kept = segments.filter(segment => {
+    const plain = stripRuby(segment).replace(/[\s　]+/g, "").trim();
+    const isUnchangedDhLine =
+      /^(?:同じく)?先ほど(?:代打|代走|臨時代走)/.test(plain) &&
+      /がそのまま入り指名打者[、。.]?$/.test(plain) &&
+      playersToOmit.some(p =>
+        !!String(p.lastName ?? "").trim() && plain.includes(String(p.lastName ?? "").trim())
+      );
+    if (isUnchangedDhLine) removed = true;
+    return !isUnchangedDhLine;
+  });
+  if (!removed) return original;
+
+  const isControlOrLineup = (line: string) => {
+    const plain = stripRuby(line).trim();
+    return !plain || /お知らせいたします[。.]$/.test(plain) ||
+      /^\d+番\s/.test(plain) || /以上に代わります[。.]$/.test(plain);
+  };
+  // 他の本文がない場合は、見出しやDHの打順だけを単独で案内しない。
+  if (!kept.some(line => !isControlOrLineup(line))) return "";
+
+  // 他の本文があるときも、今回変更されていないDH選手の打順行だけは除外する。
+  // 別の交代の打順・守備位置変更の案内は保持する。
+  return kept.filter(line => {
+    const plain = stripRuby(line).trim();
+    if (!/^\d+番\s+指名打者\s/.test(plain)) return true;
+    return !playersToOmit.some(p =>
+      !!String(p.lastName ?? "").trim() && plain.includes(String(p.lastName ?? "").trim())
+    );
+  }).join("\n");
+};
+
+const normalizedBaseDisplayText = correctExtraDhBenchLineup(
+  removeHeBeforeCommaAfterPosition(
+    omitUnchangedDhPinchAnnouncement(baseDisplayText || missingDhAnnouncement || "")
+  )
+);
 const normalizedBaseSpeakText = correctExtraDhBenchLineup(
-  removeHeBeforeCommaAfterPosition(baseSpeakText || missingDhAnnouncement || "")
+  removeHeBeforeCommaAfterPosition(
+    omitUnchangedDhPinchAnnouncement(baseSpeakText || missingDhAnnouncement || "")
+  )
 );
 
 const displayText = [normalizedBaseDisplayText, pitcherCountAnnouncement]
@@ -10497,6 +10568,38 @@ const prevPitcherCountAnnouncement = didPitcherChange
   // ✅ アナウンス表示ボタンを押した扱いにする
   setHasShownAnnouncement(true);
 
+  // DHの代打・代走がそのままDHに残るなど、表示する交代アナウンスが
+  // 最終生成結果にない場合は、空の交代アナウンス画面を開かない。
+  const displayHtml = String(announcementText?.displayText ?? "");
+  const hasAnnouncement = displayHtml
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;|&#160;|\s|　/g, "")
+    .trim().length > 0;
+
+  if (!hasAnnouncement && !prevPitcherCountAnnouncement.trim()) {
+    // DHに代打・代走（臨時代走含む）が入り、その選手がそのままDHを継続するときのみ注記する。
+    // 単なる交代なし・別の理由でアナウンスが空の場合には注記しない。
+    const currentOrder = battingOrderDraft?.length ? battingOrderDraft : battingOrder;
+    const fieldPositions = ["投", "捕", "一", "二", "三", "遊", "左", "中", "右"];
+    const unchangedDhPinch = !pendingDisableDH && !dhDisableDirty && isDirty &&
+      Object.entries(usedPlayerInfo ?? {}).some(([originalId, info]) => {
+        if (!["指", "DH", "指名打者"].includes(String((info as any)?.fromPos ?? ""))) return false;
+        if (!["代打", "代走", "臨時代走"].includes(String((info as any)?.reason ?? ""))) return false;
+        const pinchId = resolveLatestSubId(Number(originalId), usedPlayerInfo as any);
+        if (!Number.isFinite(pinchId)) return false;
+        if (fieldPositions.some(pos => Number(assignments?.[pos]) === Number(pinchId))) return false;
+        const battingEntry = currentOrder.find(entry => Number(entry.id) === Number(pinchId));
+        return !!battingEntry &&
+          ["代打", "代走", "臨時代走"].includes(String(battingEntry.reason ?? ""));
+      });
+    setShowUnchangedDhPinchNote(unchangedDhPinch);
+    setShowSaveModal(false);
+    setShowNoAnnouncementModal(true);
+    return;
+  }
+
+  setShowUnchangedDhPinchNote(false);
+  setShowNoAnnouncementModal(false);
   setShowSaveModal(true);
 };
 
@@ -13478,6 +13581,26 @@ const canDropHere =
 </div>
 
 
+
+{/* 交代アナウンスがない場合の案内モーダル */}
+{showNoAnnouncementModal && (
+  <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="交代アナウンスなし">
+    <div className="absolute inset-0 bg-black/50" />
+    <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl text-center">
+      <p className="text-lg font-bold text-slate-800">交代アナウンスはありません</p>
+      {showUnchangedDhPinchNote && (
+        <p className="mt-2 text-sm text-slate-500">※代打（代走）がそのままＤＨならアナウンス不要</p>
+      )}
+      <button
+        type="button"
+        onClick={() => setShowNoAnnouncementModal(false)}
+        className="mt-6 w-full min-h-12 rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white active:scale-[0.98]"
+      >
+        OK
+      </button>
+    </div>
+  </div>
+)}
 
 {/* 🎤 アナウンス表示モーダル（常に中央表示） */}
 {showSaveModal && (
