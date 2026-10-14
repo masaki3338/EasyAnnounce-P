@@ -4133,6 +4133,119 @@ else if (historicalPinchReasonForShift) {
   });
 }
 
+// 指名打者がどの守備位置へ移動しても、その案内を本文の先頭にする。
+// 「指名打者の○○くんに代わりまして」は選手交代であって守備移動ではないため対象外。
+// ポニー・ボーイズ共通。打順行・ヘッダー・交代記録には影響させない。
+{
+  const isHeader = (line: string) => /お知らせいたします。$/.test(line.trim());
+  const isLineup = (line: string) => /^\d+番\s/.test(line.trim());
+  const isClosing = (line: string) => /以上に代わります。$/.test(line.trim());
+  const isBody = (line: string) => !!line.trim() &&
+    !isHeader(line) && !isLineup(line) && !isClosing(line);
+  const isDhToFieldMove = (line: string) => {
+    const t = line.trim();
+    return isBody(t) && /^指名打者の/.test(t) &&
+      /が\s*(?:ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト)(?:に入ります)?[、。]?\s*$/.test(t);
+  };
+
+  // 対象行を元の相対順で抜き出し、最初の本文の位置へ挿入する。
+  // 複数人がDHから守備に移る場合も同様に優先する。
+  const dhMoves = result.filter(isDhToFieldMove);
+  if (dhMoves.length) {
+    const rest = result.filter(line => !isDhToFieldMove(line));
+    const firstBodyIndex = rest.findIndex(isBody);
+    if (firstBodyIndex >= 0) {
+      rest.splice(firstBodyIndex, 0, ...dhMoves.map(line =>
+        line.trim().replace(/に入ります。$/, "、").replace(/。$/, "、")
+      ));
+      result.splice(0, result.length, ...rest);
+    }
+  }
+}
+
+// DHから守備に入った結果、元投手が別の打順に入る案内は本文の最後へ送る。
+// 例：DH→ライト、ライト→センター、センター退場→投手が打順入りの場合、
+// 「指名打者→ライト」「ライト→センター」「センター→投手の打順入り」の順。
+// 選手交代・守備配置・打順データは変更せず、全リーグ共通の本文表示順のみ調整する。
+{
+  const isHeader = (line: string) => /お知らせいたします。$/.test(line.trim());
+  const isLineup = (line: string) => /^\d+番\s/.test(line.trim());
+  const isClosing = (line: string) => /以上に代わります。$/.test(line.trim());
+  const isBody = (line: string) => !!line.trim() &&
+    !isHeader(line) && !isLineup(line) && !isClosing(line);
+  const isDhFieldMove = (line: string) =>
+    /^指名打者の/.test(line.trim()) &&
+    /が\s*(?:ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト)(?:に入ります)?[、。]?\s*$/.test(line.trim());
+  const isPitcherBattingJoin = (line: string) =>
+    isBody(line) && /に代わりまして/.test(line) &&
+    /(?:\d+番に\s*)?ピッチャーの/.test(line) &&
+    /が(?:入り|入ります)/.test(line);
+
+  // DHの守備移動を含む同一アナウンスに限って適用する。
+  if (result.some(isDhFieldMove)) {
+    const joins = result.filter(isPitcherBattingJoin);
+    if (joins.length) {
+      const remainder = result.filter(line => !isPitcherBattingJoin(line));
+      const lastBody = remainder.reduce((index, line, i) => isBody(line) ? i : index, -1);
+      if (lastBody >= 0) {
+        // ほかの守備変更をすべて案内したあと、打順案内の直前に挿入する。
+        remainder.splice(lastBody + 1, 0, ...joins);
+        result.splice(0, result.length, ...remainder);
+      }
+    }
+  }
+}
+
+// DHを起点にした守備位置のつながりを、本文の読み上げ順にも反映する。
+// 例：指名打者→ショート の次は「ショートの…」を読み、
+//      その後に無関係な「セカンドの…」を回す。
+// 元の本文・打順・守備配置には触れず、リーグに関係なく文の並びだけを調整する。
+{
+  const isBody = (line: string) => {
+    const t = line.trim();
+    return !!t && !/お知らせいたします。$/.test(t) &&
+      !/^\d+番\s/.test(t) && !/以上に代わります。$/.test(t);
+  };
+  const positions = [
+    "ピッチャー", "キャッチャー", "ファースト", "セカンド", "サード",
+    "ショート", "レフト", "センター", "ライト"
+  ];
+  const endPosition = (line: string): string | null => {
+    const t = line.trim();
+    // 文末の「がショート、」「が入りショートへ。」などの最終移動先。
+    for (const pos of positions) {
+      const escaped = pos;
+      if (new RegExp(`が(?:\\s*入り)?\\s*${escaped}(?:へ|に入ります)?[、。]?\\s*$`).test(t)) {
+        return pos;
+      }
+    }
+    return null;
+  };
+  const fromPosition = (line: string): string | null => {
+    const t = line.trim();
+    return positions.find(pos => t.startsWith(`${pos}の`) || t.startsWith(`${pos} `) || t.startsWith(`${pos}　`)) ?? null;
+  };
+  const bodyIndices = result.map((line, index) => isBody(line) ? index : -1).filter(index => index >= 0);
+  const bodyLines = bodyIndices.map(index => result[index]);
+  const firstDhIndex = bodyLines.findIndex(line => /^指名打者の/.test(line.trim()) && endPosition(line) !== null);
+  if (firstDhIndex >= 0 && bodyLines.length > 1) {
+    const ordered: string[] = [];
+    const remaining = bodyLines.map((line, index) => ({ line, index }));
+    const [first] = remaining.splice(firstDhIndex, 1);
+    ordered.push(first.line);
+    let destination = endPosition(first.line);
+    while (destination) {
+      const nextIndex = remaining.findIndex(entry => fromPosition(entry.line) === destination);
+      if (nextIndex < 0) break;
+      const [next] = remaining.splice(nextIndex, 1);
+      ordered.push(next.line);
+      destination = endPosition(next.line);
+    }
+    ordered.push(...remaining.map(entry => entry.line));
+    bodyIndices.forEach((index, i) => { result[index] = ordered[i]; });
+  }
+}
+
 // 🆕 中間行の終端補正：このあとに“本文行”が続く場合は「…に入ります。」→「、」
 {
   const isBody = (t: string) =>
@@ -5082,6 +5195,62 @@ if (isOhtaniSinglePitcherPlayerChange) {
       result[i] = line.replace(/^(\s*)先ほど代打/, "$1同じく先ほど代打");
     }
     previousWasPinchHit = isPinchHit;
+  }
+}
+
+// DH選手が交代後に守備へ入るケースも、DHの守備移動案内を最初にする。
+// 例：指名打者の斎藤くんに代わりまして、4番に菊池くんが入り セカンドへ。
+//     セカンドの中村くんに代わりまして、1番にピッチャーの山本くんが入り、
+// これを「DH交代の案内 → 投手の打順編入」の順にする。
+// 先ほどのDH守備移動だけを扱う従来処理では「に代わりまして」の文を検出できなかった。
+// 本文の並び・終端だけを変更し、記録・打順・守備配置・リーグモードは変更しない。
+{
+  const isHeader = (text: string) => /お知らせいたします。$/.test(text);
+  const isLineup = (text: string) => /^\d+番\s/.test(text);
+  const isClosing = (text: string) => /以上に代わります。$/.test(text);
+  const isBody = (text: string) => !!text && !isHeader(text) && !isLineup(text) && !isClosing(text);
+  const field = "(?:ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト)";
+  const isDhReplacementToField = (text: string) =>
+    /^指名打者の/.test(text) &&
+    /に代わりまして/.test(text) &&
+    new RegExp(`(?:が\\s*)?入り\\s*${field}(?:へ|に)?[、。]?\\s*$`).test(text);
+  const isPitcherJoin = (text: string) =>
+    /に代わりまして/.test(text) &&
+    /\d+番に\s*ピッチャーの/.test(text) &&
+    /が(?:入り|入ります)/.test(text);
+
+  const originalBodies = result.map((line, index) => ({ line: String(line).trim(), index }))
+    .filter(({ line }) => isBody(line));
+  const dhEntries = originalBodies.filter(({ line }) => isDhReplacementToField(line));
+  const pitcherEntries = originalBodies.filter(({ line }) => isPitcherJoin(line));
+  if (dhEntries.length && pitcherEntries.length) {
+    const firstBody = originalBodies[0]?.index ?? -1;
+    const movedIndices = new Set([...dhEntries, ...pitcherEntries].map(entry => entry.index));
+    const otherBodies = originalBodies.filter(entry => !movedIndices.has(entry.index));
+    const ordered = [...dhEntries, ...otherBodies, ...pitcherEntries].map(({ line }) => line);
+    const bodyCount = originalBodies.length;
+    if (firstBody >= 0) {
+      // 後続の最終整形が済んだ時点なので、この分岐で語尾を確定する。
+      const normalized = ordered.map((line, index) => {
+        const isLast = index === ordered.length - 1;
+        if (isLast) {
+          // 「山本くんが入り、」→「山本くんが入ります。」
+          return line.replace(/が入り[、。]?$/, "が入ります。")
+            .replace(/が入ります[、。]?$/, "が入ります。");
+        }
+        // 「菊池くんが入り セカンドへ。」→「菊池くんが入り セカンド、」
+        return line.replace(new RegExp(`(${field})(?:へ|に)[、。]?$`), "$1、")
+          .replace(/が入ります。$/, "が入り、")
+          .replace(/に入ります。$/, "に入り、")
+          .replace(/へ入ります。$/, "へ入り、")
+          .replace(/。$/, "、");
+      });
+      // 本文だけを入れ替える。ヘッダー・打順・締めの相対位置は固定する。
+      let cursor = 0;
+      for (let i = 0; i < result.length && cursor < bodyCount; i++) {
+        if (isBody(String(result[i]).trim())) result[i] = normalized[cursor++];
+      }
+    }
   }
 }
 
@@ -8731,14 +8900,15 @@ if (isPitcherOnlyChangeWithDh && dhIdBeforePitcherChange != null) {
         setDraggingFrom(null);
         return;
       }
-      // 控え未出場の選手だけこの専用経路を使う。
-      // 出場済み選手は通常のリエントリー判定を必要とするため、
-      // 誤って新規交代として扱わない。
+      // 出場済み選手も、通常守備へのドロップと同じリエントリー判定を行う。
+      // 9人DHにはこの10人以上専用の分岐を適用しない。
       if (!benchNeverPlayed.some(p => Number(p.id) === Number(incoming.id))) {
-        window.alert("出場済み選手は守備番号で交代からリエントリーを確認してください。");
-        setHoverPos(null);
-        setDraggingFrom(null);
-        return;
+        const allowed = checkReentryForBenchToField({
+          toPos: "指",
+          toId: Number(incoming.id),
+          fromId: Number(outgoingId),
+        });
+        if (!allowed) return; // 不成立時は既存の確認モーダルに委ねる
       }
 
       setBattingOrderDraft(prev => {
@@ -10782,13 +10952,20 @@ const checkReentryForBenchToField = ({
   // 4) 自分の試合開始時の打順と、交代される選手(fromId)の現在打順が同じ
   //
   // 「同じ系列の代打/代走だから」等のフォールバックでは許可しない。
+  // 守備表示と打順draftがずれる場合（代打・代走後など）は、
+  // usedPlayerInfoに紐づく打順、または同じ元スタメンの最新代替選手も照合する。
+  // 元スタメン以外・再リエントリー済み・別打順への復帰は許可しない。
+  const sameSlotByCurrentOrder =
+    originalOrderIndex >= 0 && currentOrderIndexOfFrom === originalOrderIndex;
+  const sameSlotByLinkedOrder =
+    originalOrderIndex >= 0 &&
+    fromOrderNumber === originalOrderIndex + 1 &&
+    (replacingOwnLatestSub || sameOriginalOrderByUsedInfo);
   const isReentryNow =
     wasStarterAtGameStart &&
     isOffField &&
     !alreadyReentered &&
-    originalOrderIndex >= 0 &&
-    currentOrderIndexOfFrom >= 0 &&
-    originalOrderIndex === currentOrderIndexOfFrom;
+    (sameSlotByCurrentOrder || sameSlotByLinkedOrder);
 
   console.log("[REENTRY CHECK same-order][modal/common]", {
     toId,
@@ -11999,7 +12176,7 @@ const p = typeof id === "number" ? teamPlayers.find((x) => x.id === id) : null;
    * 移動先を判定して既存handleDrop()へ渡す。
    */
   useEffect(() => {
-    if (!isTouchDevice() || !touchDrag) return;
+    if (!touchDrag) return; // タッチ対応PCでも実際のタッチ操作を処理する
 
     const makeTouchDragEvent = () => {
       const payload: Record<string, string> = {
@@ -14454,7 +14631,13 @@ const canDropHere =
 };
 
 
-const isTouchDevice = () => typeof window !== "undefined" && "ontouchstart" in window;
+// ontouchstart だけではタッチ対応のWindows PCまでタッチ専用と誤判定する。
+// マウス主体の端末ではHTML5ドラッグを維持し、実際のタッチ操作は
+// 上記touchDragイベントで個別に処理する。
+const isTouchDevice = () =>
+  typeof window !== "undefined" &&
+  typeof window.matchMedia === "function" &&
+  window.matchMedia("(pointer: coarse)").matches;
 const DefenseChangeWrapped: React.FC<DefenseChangeProps> = (props) => {
 
     // ─────────────────────────────────────────────
