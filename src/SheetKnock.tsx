@@ -3,6 +3,8 @@ import React, { useEffect, useState, useRef } from "react";
 import localForage from "localforage";
 import { speak as ttsSpeak, stop as ttsStop, prefetchTTS, prewarmTTS } from "./lib/tts";
 import { getLeagueMode } from "./lib/leagueSettings";
+import { getActiveCustomProfileId } from "./lib/customProfiles";
+import { loadPreGameItems, renderPreGameText } from "./lib/customPreGameTemplates";
 
 // これを SheetKnock.tsx の先頭 import 群の直後に追加
 declare global {
@@ -473,7 +475,7 @@ const handleSpeak = async (text: string, key: string) => {
   setReadingKey(key);
 
   try {
-    if (key === "2min" && noticeMinutes > 0) {
+    if (key === "2min" && noticeMinutes > 0 && !customizedKnock?.render("残り", true)) {
       await ttsSpeak(knockNoticePrefix);
       await new Promise<void>((resolve) =>
         window.setTimeout(resolve, KNOCK_NOTICE_PAUSE_MS)
@@ -566,21 +568,51 @@ const activeTeamReading =
     ? activeTeamName
     : teamReading;
 
+// カスタマイズ専用：保存した大会設定からノック用の文言を取得する。
+// 既存リーグとタイマー／読み上げ挙動は変更しない。
+const customizedKnock = (() => {
+  if (getLeagueMode() !== "custom") return null;
+  const target = isHome === "後攻" ? "bottom" : "top";
+  const items = loadPreGameItems(getActiveCustomProfileId());
+  const find = (word: string) => items.find(item => item.enabled && item.kind === "sheetKnock" &&
+    item.target === target && item.title.includes(word))?.segments[0]?.text || "";
+  const values = {
+    "チーム名": activeTeamName,
+    "先攻チーム名": visitorTeamName || (isHome === "先攻" ? activeTeamName : opponentTeamName),
+    "後攻チーム名": homeTeamName || (isHome === "後攻" ? activeTeamName : opponentTeamName),
+    "ノック時間": String(knockMinutes),
+    "残り分数": String(noticeMinutes),
+  };
+  const speechValues = { ...values, "チーム名": activeTeamReading,
+    "先攻チーム名": isHome === "先攻" ? activeTeamReading : values["先攻チーム名"],
+    "後攻チーム名": isHome === "後攻" ? activeTeamReading : values["後攻チーム名"] };
+  const render = (word: string, spoken = false) => {
+    const template = find(word);
+    return template ? renderPreGameText(template, spoken ? speechValues : values) : "";
+  };
+  return { render };
+})();
+
 const prepDisplayMessage =
   isHome === "後攻" ? ` ${activeTeamName}はシートノックの準備に入ってください。` : null;
 
 const prepSpeakMessage =
   isHome === "後攻" ? ` ${activeTeamReading}はシートノックの準備に入ってください。` : null;
 
-const mainDisplayMessage =
+const mainDisplayMessage = customizedKnock?.render("開始") ||
   isHome === "後攻"
     ? ` ${activeTeamName}はシートノックに入ってください。\nノック時間は、${knockMinutes}分以内です。`
     : ` ${activeTeamName}はシートノックに入ってください。\nノック時間は同じく${knockMinutes}分以内です。`;
 
-const mainSpeakMessage =
+const mainSpeakMessage = customizedKnock?.render("開始", true) ||
   isHome === "後攻"
     ? `${activeTeamReading}はシートノックに入ってください。\nノック時間は、${knockMinutes}分以内です。`
     : `${activeTeamReading}はシートノックに入ってください。\nノック時間は同じく${knockMinutes}分以内です。`;
+
+const customizedRemainingDisplay = customizedKnock?.render("残り") || `ノック時間、残り${noticeMinutes}分です`;
+const customizedRemainingSpeak = customizedKnock?.render("残り", true) || `ノック時間、残り${noticeMinutes}分です`;
+const customizedEndDisplay = customizedKnock?.render("終了") || "ノックを終了してください。";
+const customizedEndSpeak = customizedKnock?.render("終了", true) || "ノックを終了してください。";
 
 useEffect(() => {
   if (!dataLoaded) return;
@@ -863,8 +895,8 @@ useEffect(() => {
     accent="blue"
   >
   <MessageBlock
-    displayText={`ノック時間、残り${noticeMinutes}分です`}
-    speakText={`ノック時間、残り${noticeMinutes}分です`}
+    displayText={customizedRemainingDisplay}
+    speakText={customizedRemainingSpeak}
     keyName="2min"
     readingKey={readingKey}
     onSpeak={handleSpeak}
@@ -880,8 +912,8 @@ useEffect(() => {
     accent="blue"
   >
   <MessageBlock
-    displayText={"ノックを終了してください。"}
-    speakText={"ノックを終了してください。"}
+    displayText={customizedEndDisplay}
+    speakText={customizedEndSpeak}
     keyName="end"
     readingKey={readingKey}
     onSpeak={handleSpeak}
@@ -917,14 +949,14 @@ useEffect(() => {
       w-[min(92vw,560px)] sm:w-[560px]
     ">
       <p id="two-min-title" className="text-2xl sm:text-3xl font-extrabold mb-6 leading-relaxed">
-        ノック時間、残り{noticeMinutes}分です
+        {customizedRemainingDisplay}
       </p>
       <div className="grid grid-cols-2 gap-2 mb-3">
         <button
           className={`w-full px-4 py-3 text-white rounded-xl shadow font-semibold active:scale-95 flex items-center justify-center gap-2 ${
             readingKey === "2min" ? "bg-green-600" : "bg-blue-600 hover:bg-blue-700"
           }`}
-          onClick={() => handleSpeak(`ノック時間、残り${noticeMinutes}分です`, "2min")}
+          onClick={() => handleSpeak(customizedRemainingSpeak, "2min")}
         >
           <IconMic />
           <span>読み上げ</span>
@@ -965,14 +997,14 @@ useEffect(() => {
       w-[min(92vw,560px)] sm:w-[560px]
     ">
       <p id="end-title" className="text-2xl sm:text-3xl font-extrabold mb-6 leading-relaxed">
-        ノックを終了してください
+        {customizedEndDisplay}
       </p>
       <div className="grid grid-cols-2 gap-2 mb-3">
         <button
           className={`w-full px-4 py-3 text-white rounded-xl shadow font-semibold active:scale-95 flex items-center justify-center gap-2 ${
             readingKey === "end-modal" ? "bg-green-600" : "bg-blue-600 hover:bg-blue-700"
           }`}
-          onClick={() => handleSpeak("ノックを終了してください。", "end-modal")}
+          onClick={() => handleSpeak(customizedEndSpeak, "end-modal")}
         >
           <IconMic />
           <span>読み上げ</span>

@@ -4,6 +4,8 @@ import localForage from "localforage";
 import { ScreenType } from "./pre-game-announcement";
 import { speak as ttsSpeak, stop as ttsStop, preserveNameReading, prefetchTTS } from "./lib/tts";
 import { getLeagueMode } from "./lib/leagueSettings";
+import { getActiveCustomProfileId } from "./lib/customProfiles";
+import { loadPreGameItems } from "./lib/customPreGameTemplates";
 
 interface Props {
   onNavigate: (screen: ScreenType) => void;
@@ -84,6 +86,9 @@ const resolveBackTarget = async (): Promise<ScreenType> => {
 };
 
 const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
+  const [customSeatTemplate, setCustomSeatTemplate] = useState<string | null>(null);
+  const [customPitcherText, setCustomPitcherText] = useState<string | null>(null);
+  const [customSeatTimingNote, setCustomSeatTimingNote] = useState("");
   const [teamName, setTeamName] = useState("");       // 表示用
   const [teamReading, setTeamReading] = useState(""); // 読み上げ用
   const [positions, setPositions] = useState<{ [key: string]: PositionInfo }>({});
@@ -168,6 +173,27 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
       if (team) {
         setTeamName(team.name || "");
         setTeamReading(team.furigana || team.kana || team.reading || team.name || "");
+      }
+      if (getLeagueMode() === "custom") {
+        const currentSide = (typeof matchInfo?.seatIntroIsHome === "boolean"
+          ? matchInfo.seatIntroIsHome : matchInfo?.isHome) ? "bottom" : "top";
+        const configured = loadPreGameItems(getActiveCustomProfileId()).find((item) => {
+          if (!item.enabled || item.kind !== "seat") return false;
+          const target = item.condition?.team && item.condition.team !== "any"
+            ? item.condition.team : item.target;
+          return !target || target === "any" || target === currentSide;
+        });
+        const activeSegment = configured?.segments.find((seg) => {
+          const side = seg.condition?.team || "any";
+          return side === "any" || side === currentSide;
+        });
+        setCustomSeatTemplate(activeSegment?.text ?? null);
+         setCustomPitcherText(activeSegment?.pitcherSeparate ? (activeSegment.pitcherText || null) : null);
+        setCustomSeatTimingNote(activeSegment?.timing?.note?.trim() ?? configured?.timing?.note?.trim() ?? "");
+      } else {
+        setCustomSeatTemplate(null);
+         setCustomPitcherText(null);
+        setCustomSeatTimingNote("");
       }
       if (matchInfo) {
         setLeagueMode(getLeagueMode());
@@ -414,7 +440,57 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
     );
   }, [umpireReadingText]);
 
+  // カスタマイズ時は、画面に表示する本文と読み上げ本文を同じHTMLから生成する。
+  // 登録済みの姓・名のふりがなは <ruby> に残し、音声では rt を優先する。
+  const customSeatHtml = (() => {
+    if (leagueMode !== "custom" || customSeatTemplate === null) return null;
+    const esc = (text: string) => String(text ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const replace = (text: string, values: Record<string, string>) =>
+      text.split(/【([^】]+)】/g).map((piece, i) => i % 2 === 0 ? esc(piece) : (values[piece] ?? esc(`【${piece}】`))).join("");
+    const base: Record<string, string> = {
+      "チーム名": esc(teamName), "先攻チーム名": esc(isHome ? "" : teamName),
+      "後攻チーム名": esc(isHome ? teamName : ""),
+      "回": "1", "表裏": inning.endsWith("裏") ? "裏" : "表",
+    };
+    const positionRows = positionLabels.filter(([pos]) => !!positions[pos]);
+    const tokens = /【(?:選手名|選手名（苗字）|選手名（フルネーム）|選手敬称|打順|守備位置|背番号)】/;
+    const firstToken = customSeatTemplate.search(tokens);
+    if (firstToken < 0 || positionRows.length === 0) return replace(customSeatTemplate, base).replace(/\n/g, "<br />");
+    const lineStart = customSeatTemplate.lastIndexOf("\n", firstToken) + 1;
+    const header = customSeatTemplate.slice(0, lineStart);
+    const row = customSeatTemplate.slice(lineStart);
+    const rows = positionRows.map(([pos, label], index) => {
+      const player = positions[pos];
+      const surname = `<ruby>${esc(player.lastName)}<rt>${esc(player.lastNameKana)}</rt></ruby>`;
+      const full = `${surname}<ruby>${esc(player.firstName)}<rt>${esc(player.firstNameKana)}</rt></ruby>`;
+      const needsFull = !!player.lastName && dupLastNames.has(player.lastName);
+      return replace(pos === "投" && customPitcherText !== null ? customPitcherText : row, {
+        ...base, "守備位置": esc(label), "選手名": needsFull ? full : surname,
+        "選手名（苗字）": surname, "選手名（フルネーム）": full,
+        "選手敬称": esc(player.honorific), "打順": String(index + 1), "背番号": "",
+      });
+    });
+    return (replace(header, base) + rows.join("\n")).replace(/\n/g, "<br />");
+  })();
+
   const speakText = () => {
+    if (leagueMode === "custom" && customSeatHtml !== null) {
+      const session = ++seatSpeakSessionRef.current;
+      setSpeaking(true);
+      const root = document.createElement("div");
+      root.innerHTML = customSeatHtml.replace(/<br\s*\/?>/gi, "\n");
+      root.querySelectorAll("ruby").forEach((node) => {
+        const reading = node.querySelector("rt")?.textContent || "";
+        const name = Array.from(node.childNodes).filter((child) => child.nodeName !== "RT")
+          .map((child) => child.textContent || "").join("");
+        node.replaceWith(preserveNameReading(reading || name));
+      });
+      const message = root.textContent || "";
+      void ttsSpeak(message).finally(() => {
+        if (session === seatSpeakSessionRef.current) setSpeaking(false);
+      });
+      return;
+    }
     const speakOpening = async () => {
       // 開始文は分割再生しない。
       // 「1回の表、」「1回の裏、」の読点はMatcha側の自然な短い間として残し、
@@ -651,8 +727,8 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
 
       {/* 本体 */}
       <main className="w-full max-w-[720px] mt-6 space-y-5">
-        {/* 注意カード（黄系） */}
-        <section className="rounded-2xl p-4 shadow-lg text-left bg-gradient-to-br from-amber-400/20 via-amber-300/15 to-amber-200/10 border border-amber-300/60 ring-1 ring-inset ring-amber-300/30">
+        {/* カスタマイズ時は設定されたタイミングのメモのみ表示。空欄なら非表示。 */}
+        {(leagueMode !== "custom" || customSeatTimingNote) && <section className="rounded-2xl p-4 shadow-lg text-left bg-gradient-to-br from-amber-400/20 via-amber-300/15 to-amber-200/10 border border-amber-300/60 ring-1 ring-inset ring-amber-300/30">
           <div className="flex items-center gap-3 mb-1">
             <div className="w-11 h-11 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center">
               <IconInfo />
@@ -660,9 +736,9 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
             <h2 className="font-semibold">読み上げタイミング</h2>
           </div>
           <p className="text-amber-50/90 text-sm leading-relaxed">
-            ピッチャーが練習球を1球投げてから
+            {leagueMode === "custom" ? customSeatTimingNote : "ピッチャーが練習球を1球投げてから"}
           </p>
-        </section>
+        </section>}
 
         {/* 🔴 アナウンス文言（赤 強め）＋ 枠内ボタン */}
         <section
@@ -676,7 +752,7 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
 
           <div
             className="text-white whitespace-pre-line leading-relaxed drop-shadow"
-            dangerouslySetInnerHTML={{ __html: formattedAnnouncement }}
+            dangerouslySetInnerHTML={{ __html: customSeatHtml ?? formattedAnnouncement }}
           />
 
           {/* 枠内の操作ボタン */}

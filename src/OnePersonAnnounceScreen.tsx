@@ -1,3 +1,5 @@
+import { getDefaultPitchLimit } from "./lib/pitchLimitDefaults";
+import CustomInGameMemo from "./components/CustomInGameMemo";
 /**
  * OnePersonAnnounceScreen.tsx
  * ------------------------------------------------------------
@@ -19,6 +21,11 @@ import { useNavigate } from "react-router-dom";
 import { speak, speakJoinedTTS, stop, preserveNameReading, prefetchTTS } from "./lib/tts";
 import { addAnnouncementHistory } from "./lib/announcementHistory";
 import { getLeagueMode } from "./lib/leagueSettings";
+import { customTimedItemDue, customPitchPartEnabled, customItemEnabled, loadCustomInGameTexts } from "./lib/customInGameTemplates";
+import { getActiveCustomProfileId } from "./lib/customProfiles";
+import { getCustomOtherText } from "./lib/customOtherRuntime";
+import { customPitchText } from "./lib/customDefenseRuntime";
+import { customBatterHtml, customIntentionalWalkHtml, customStartTimeTiming, customStartTimeMessage, customOffenseText, customPlayerVars, customScoreAnnouncement, customScoreEnabledWhenZero, customAnnouncementMemo } from "./lib/customOffenseRuntime";
 import {
   deriveCurrentGameState,
   type UsedPlayerInfoMap,
@@ -814,6 +821,7 @@ const getOnePersonDefenseSide = (targetIsTop: boolean) =>
     endedInning: number,
     endedIsTop: boolean
   ) =>
+    leagueMode === "custom" ? (customItemEnabled(loadCustomInGameTexts(getActiveCustomProfileId()), "ground") && !endedIsTop && announcementTimingSettings.groundMaintenanceInning !== null && endedInning === announcementTimingSettings.groundMaintenanceInning) :
     leagueMode !== "boys" &&
     !endedIsTop &&
     announcementTimingSettings.groundMaintenanceInning !== null &&
@@ -907,6 +915,10 @@ const getOnePersonDefenseSide = (targetIsTop: boolean) =>
 
   const buildMemberExchangeAnnouncement = async () => {
     const mi = await localForage.getItem<any>("matchInfo");
+    if (leagueMode === "custom") {
+      const template = loadCustomInGameTexts(getActiveCustomProfileId()).nextGame?.main;
+      if (typeof template === "string") return template.replace(/【次の試合番号】/g,String((Number(mi?.matchNumber)||1)+1));
+    }
     const currentGame = Number(mi?.matchNumber) || 1;
     const nextGame = currentGame + 1;
     return (
@@ -917,6 +929,9 @@ const getOnePersonDefenseSide = (targetIsTop: boolean) =>
     );
   };
 
+  // Reactの状態更新が反映される前でも、同一イニングの予約を確実に取得する。
+  const pendingNextGameForTabsRef = useRef(false);
+
   const openCombinedAuxModalIfNeeded = async (
     endedInning: number,
     endedIsTop: boolean
@@ -924,13 +939,14 @@ const getOnePersonDefenseSide = (targetIsTop: boolean) =>
     const tabs: CombinedAuxTab[] = [];
     if (isConfiguredCoolingTime(endedInning, endedIsTop)) tabs.push("cooling");
     if (isConfiguredGroundMaintenance(endedInning, endedIsTop)) tabs.push("ground");
-    if (pendingMemberExchange) tabs.push("member");
+    if (pendingMemberExchange || pendingNextGameForTabsRef.current) tabs.push("member");
 
     if (tabs.length < 2) return false;
 
     if (tabs.includes("member")) {
       setMemberExchangeText(await buildMemberExchangeAnnouncement());
       setPendingMemberExchange(false);
+      pendingNextGameForTabsRef.current = false;
     }
     if (tabs.includes("ground")) {
       setPendingGroundPopup(false);
@@ -1074,7 +1090,7 @@ const buildIntentionalWalkText = async () => {
   const nextBatter = nextEntry ? getPlayer(nextEntry.id) : null;
 
   if (!nextBatter) {
-    return `${batterName}、申告敬遠の為、１塁に進塁いたします。`;
+    return customIntentionalWalkHtml(batter, `${batterName}、申告敬遠の為、１塁に進塁いたします。`);
   }
 
   const nextHonorific = nextBatter?.isFemale ? "さん" : "くん";
@@ -1099,7 +1115,7 @@ const buildIntentionalWalkText = async () => {
       `${nextNumber ? `` : ""}`;
   }
 
-  return (
+  return customIntentionalWalkHtml(batter,
     `${batterName}、申告敬遠の為、１塁に進塁いたします。\n` +
     `バッターは ${nextBatterText}。`
   );
@@ -1146,6 +1162,8 @@ useEffect(() => {
   const [startTime, setStartTime] = useState<string | null>(null);
   // ▼ 3回裏のメンバー交換アナウンス表示用
   const [showMemberExchangeModal, setShowMemberExchangeModal] = useState(false);
+
+
   const [memberExchangeText, setMemberExchangeText] = useState("");
 
   // 真偽の型ブレ対応（true/"true"/1 → true）
@@ -1165,7 +1183,7 @@ useEffect(() => {
   // 🔸 リエントリー用 state
   const [showReEntryModal, setShowReEntryModal] = useState(false);
   const [leagueMode, setLeagueMode] = useState<"pony" | "boys">(getLeagueMode());
-  const [pitchLimitSelected, setPitchLimitSelected] = useState<number>(75);
+  const [pitchLimitSelected, setPitchLimitSelected] = useState<number>(getDefaultPitchLimit(getLeagueMode()).selected);
 
   useEffect(() => {
     const loadPitchLimit = async () => {
@@ -1177,7 +1195,7 @@ useEffect(() => {
           ? savedSelected
           : typeof legacy === "number"
           ? legacy
-          : 75;
+          : getDefaultPitchLimit(getLeagueMode()).selected;
 
       setPitchLimitSelected(next);
     };
@@ -1849,7 +1867,38 @@ const hasPendingDefenseSetup = async () => {
     });
   };
 
+  const [gameStartTime, setGameStartTime] = useState<string | null>(null);
+  const [showStartTimePopup, setShowStartTimePopup] = useState(false);
   const hasShownStartTimePopup = useRef(false);
+  const customStartTiming = customStartTimeTiming();
+  const customStartNotice = (time?:string|null) =>
+    customStartTimeMessage(formatJaTime(time || gameStartTime || startTime));
+  const showCustomStartNotice = async (expected: "afterFirstPitch"|"beforeSecondBatter"|"afterTopFirst"|"afterBottomFirst") => {
+    if (!customModalEnabled("startTime") || customStartTiming !== expected || hasShownStartTimePopup.current) return false;
+    const time = gameStartTime || startTime || await localForage.getItem<string>("startTime");
+    if (!time) return false;
+    if (await localForage.getItem<boolean>("startTimePopupShown")) return false;
+    setGameStartTime(time);
+    hasShownStartTimePopup.current = true;
+    await localForage.setItem("startTimePopupShown", true);
+    setShowStartTimePopup(true);
+    return true;
+  };
+  // 1球投球後：通常モードでは守備画面の投球数保存を監視。
+  // 1人モードでは同画面の球数も参照する。
+  useEffect(() => {
+    if(customStartTiming!=="afterFirstPitch" || !gameStartTime) return;
+    let disposed=false;
+    const poll=async()=>{
+      if(disposed || hasShownStartTimePopup.current) return;
+      const count=await localForage.getItem<{current?:number;total?:number}>("pitchCounts");
+      if(Number(count?.current || 0)>0 || Number(count?.total || 0)>0) void showCustomStartNotice("afterFirstPitch");
+    };
+    void poll();
+    const timer=window.setInterval(()=>void poll(),1000);
+    return ()=>{disposed=true;window.clearInterval(timer);};
+  },[customStartTiming,gameStartTime]);
+
 // 初回アラートを1度だけ出すためのフラグ
 const firstOpenAlertShownRef = useRef(false);
 
@@ -1862,8 +1911,29 @@ const closeSubModal = () => {
   setReEntryOrder1(null);
 };
 
-  const [gameStartTime, setGameStartTime] = useState<string | null>(null);
-  const [showStartTimePopup, setShowStartTimePopup] = useState(false);
+
+  useEffect(()=>{
+    if(customStartTiming==='afterFirstPitch' && currentPitchCount>0 && gameStartTime){
+      void showCustomStartNotice('afterFirstPitch');
+    }
+  },[currentPitchCount,customStartTiming,gameStartTime]);
+
+  // 回の終了後：得点・投球数処理によって表裏が切り替わった時に表示する。
+  // 半回の終了直後に画面が続いている場合だけを対象にする。
+  const previousHalfForCustomStartRef = useRef<string|null>(null);
+  useEffect(()=>{
+    const current=`${inning}:${isTop?'top':'bottom'}`;
+    const prev=previousHalfForCustomStartRef.current;
+    previousHalfForCustomStartRef.current=current;
+    if(!prev || customStartTiming===null || !gameStartTime)return;
+    if(customStartTiming==='afterTopFirst' && prev==='1:top' && current==='1:bottom'){
+      void showCustomStartNotice('afterTopFirst');
+    }
+    if(customStartTiming==='afterBottomFirst' && prev==='1:bottom' && current==='2:top'){
+      void showCustomStartNotice('afterBottomFirst');
+    }
+  },[inning,isTop,customStartTiming,gameStartTime]);
+
 
   // ✅ 開始時刻モーダル：
   // 「〇時〇分です」を1本で生成すると時刻のイントネーションが不自然になりやすいため、
@@ -2204,7 +2274,7 @@ const handleFoulRead = async () => {
       ? "ごらいじょうのみなさまにおねがいをいたします。しあいちゅう、スタンドにはいりますファウルボールはたいへんきけんでございます。だきゅうのゆくえにはじゅうぶんごちゅういください。"
       : "ファウルボールの行方には十分ご注意ください";
 
-  await speak(foulSpeakText);
+  await speak(getCustomOtherText("foul", "main") ?? foulSpeakText);
 };
 const handleFoulStop = () => {
   stop();
@@ -2433,6 +2503,36 @@ setBenchPlayers(bench);
 
 const [showModal, setShowModal] = useState(false);
 const [showScorePopup, setShowScorePopup] = useState(false);
+// カスタマイズモードのみ、保存済みチェック状態を参照する。
+const customModalEnabled = (itemId: string) => getLeagueMode() !== "custom" ||
+  customItemEnabled(loadCustomInGameTexts(getActiveCustomProfileId()), itemId);
+
+  // 無効なアナウンスは表示せず、既存OKボタンの後続進行を実行する。
+  // 得点入力そのもの・記録保存・守備移動は省略しない。
+  useEffect(() => {
+    const items: Array<[boolean,string]> = [
+      [showStartTimePopup && !customModalEnabled("startTime"), "start"],
+      [showGroundPopup && !customModalEnabled("ground"), "ground"],
+      [showMemberExchangeModal && !customModalEnabled("nextGame"), "member"],
+    ];
+    const target = items.find(([isOff]) => isOff);
+    if (!target) return;
+    const timer = window.setTimeout(() => {
+      const box = document.querySelector<HTMLElement>(`[data-custom-skip-modal="${target[1]}"]`);
+      const ok = Array.from(box?.querySelectorAll<HTMLButtonElement>("button") || [])
+        .find((btn) => btn.textContent?.trim() === "OK");
+      ok?.click();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [showStartTimePopup, showGroundPopup, showMemberExchangeModal]);
+
+  // チェックOFF時は画面を表示せず、既存のOK処理を自動実行して試合進行を保つ。
+  useEffect(() => {
+    if (!showScorePopup || customModalEnabled("score")) return;
+    const id = window.setTimeout(() => document.querySelector<HTMLButtonElement>('[data-custom-score-finish="single"]')?.click(), 0);
+    return () => window.clearTimeout(id);
+  }, [showScorePopup]);
+
 const [shouldNavigateAfterPopup, setShouldNavigateAfterPopup] = useState(false);
 const [popupMessage, setPopupMessage] = useState("");             // 表示用
 const [popupSpeakMessage, setPopupSpeakMessage] = useState("");  // 読み上げ用
@@ -2483,8 +2583,19 @@ useEffect(() => {
 ]);
 
 const [showPitchAnnounceModal, setShowPitchAnnounceModal] = useState(false);
-const [pitchAnnounceText, setPitchAnnounceText] = useState("");
 const [pitchAnnounceAction, setPitchAnnounceAction] = useState<"notice" | "inningEnd">("inningEnd");
+  const customEndPitchDisabled = () => {
+    if (getLeagueMode() !== "custom" || pitchAnnounceAction !== "inningEnd") return false;
+    const part = currentPitchCount !== totalPitchCount ? "inningEnd" : "inningEndNoTotal";
+    return !customPitchPartEnabled(loadCustomInGameTexts(getActiveCustomProfileId()), part);
+  };
+  useEffect(() => {
+    if (!showPitchAnnounceModal || !customEndPitchDisabled()) return;
+    const timer = window.setTimeout(() => document.querySelector<HTMLButtonElement>('[data-custom-pitch-finish="single"]')?.click(), 0);
+    return () => window.clearTimeout(timer);
+  }, [showPitchAnnounceModal, pitchAnnounceAction]);
+
+const [pitchAnnounceText, setPitchAnnounceText] = useState("");
 
 useEffect(() => {
   // 履歴に残す投球数は、イニング終了時の「この回の投球数」だけ。
@@ -2710,6 +2821,15 @@ const [showRunnerHelpModal, setShowRunnerHelpModal] = useState(false);
 const [isRunnerConfirmed, setIsRunnerConfirmed] = useState(false);
 const [runnerAnnouncement, setRunnerAnnouncement] = useState<string[]>([]);
 
+// 1人モードの代走文章は内部的に塁を識別し、表示時だけ管理用ラベルを除く。
+// カスタマイズ文章に「○塁ランナー」を勝手に追加しないための区切り記号。
+const RUNNER_CUSTOM_SEPARATOR = "\u2063";
+const visibleRunnerAnnouncement = (value: string): string => {
+  const marker = value.indexOf(RUNNER_CUSTOM_SEPARATOR);
+  return marker < 0 ? value : value.slice(marker + RUNNER_CUSTOM_SEPARATOR.length);
+};
+
+
 // ===== アナウンス履歴：閉じると再表示できない試合中アナウンスだけ保存 =====
 const pinchHistoryHtmlRef = useRef("");
 
@@ -2736,7 +2856,7 @@ useEffect(() => {
 
 useEffect(() => {
   if (!showMemberExchangeModal || !memberExchangeText.trim()) return;
-  void addAnnouncementHistory({ category: "メンバー交換", displayText: memberExchangeText, speechText: memberExchangeText, inningLabel: getEndedHistoryInningLabel() });
+  void addAnnouncementHistory({ category: leagueMode === "custom" ? "次の試合のお知らせ" : "メンバー交換", displayText: memberExchangeText, speechText: memberExchangeText, inningLabel: getEndedHistoryInningLabel() });
 }, [showMemberExchangeModal, memberExchangeText]);
 
 useEffect(() => {
@@ -2752,8 +2872,8 @@ useEffect(() => {
 useEffect(() => {
   if (!showGroundPopup) return;
   const inningLabel = getEndedHistoryInningLabel();
-  const startText = "両チームはグランド整備をお願いします。";
-  const endText = "グランド整備、ありがとうございました。";
+  const startText = (getCustomOtherText("ground", "start") ?? "両チームはグランド整備をお願いします。");
+  const endText = getCustomOtherText("ground", "end") ?? "グランド整備、ありがとうございました。";
 
   // グラウンド整備は開始案内と終了案内を別々の履歴として残す。
   // 履歴は新しい順表示のため、終了案内を先に登録して開始案内を上側にする。
@@ -2777,8 +2897,8 @@ useEffect(() => {
   if (!showCombinedAuxModal) return;
   if (combinedAuxTabs.includes("ground")) {
     const inningLabel = getEndedHistoryInningLabel();
-    const startText = "両チームはグランド整備をお願いします。";
-    const endText = "グランド整備、ありがとうございました。";
+    const startText = (getCustomOtherText("ground", "start") ?? "両チームはグランド整備をお願いします。");
+    const endText = getCustomOtherText("ground", "end") ?? "グランド整備、ありがとうございました。";
 
     void (async () => {
       await addAnnouncementHistory({
@@ -2796,7 +2916,7 @@ useEffect(() => {
     })();
   }
   if (combinedAuxTabs.includes("member") && memberExchangeText.trim()) {
-    void addAnnouncementHistory({ category: "メンバー交換", displayText: memberExchangeText, speechText: memberExchangeText, inningLabel: getEndedHistoryInningLabel() });
+    void addAnnouncementHistory({ category: leagueMode === "custom" ? "次の試合のお知らせ" : "メンバー交換", displayText: memberExchangeText, speechText: memberExchangeText, inningLabel: getEndedHistoryInningLabel() });
   }
   if (combinedAuxTabs.includes("cooling")) {
     const text = combinedCoolingNotice || `ただいまから${combinedCoolingMinutes}分間のクーリングタイムを取ります。`;
@@ -2822,7 +2942,7 @@ const savePinchHistoryOnConfirm = (confirmedHtml?: string) => {
 
 const saveRunnerHistoryOnConfirm = () => {
   if (!runnerAnnouncement?.length) return;
-  const displayHtml = runnerAnnouncement.filter(Boolean).join("<br />");
+  const displayHtml = runnerAnnouncement.filter(Boolean).map(visibleRunnerAnnouncement).join("<br />");
   if (!displayHtml.trim()) return;
   void addAnnouncementHistory({
     category: runnerAnnouncement.some((x) => String(x).includes("臨時代走")) ? "臨時代走" : "代走",
@@ -2906,7 +3026,7 @@ const restoreSnapshot = async (s: OffenseSnapshot) => {
   });
   const isEndOfFirstTop = inning === 1 && isTop === true;
   const shouldShowStartTimeAtEndOfFirstTop =
-    leagueMode === "boys" &&
+    (leagueMode === "boys" || customStartTiming === "afterTopFirst") &&
     isEndOfFirstTop &&
     !!gameStartTime &&
     !hasShownStartTimePopup.current;
@@ -2991,6 +3111,36 @@ const handleRetiredBenchClick = (p: any, actionType: "sub" | "runner" = "sub") =
 };
 
 
+// 代走・臨時代走のテンプレートを1人用画面でも同じ設定から取得する。
+// 塁差込は半角／全角括弧の双方を受け付ける。
+const buildOnePersonRunnerAnnouncement = (
+  base: string, before: any, after: any, isTemp: boolean, fallback: string
+): string => {
+  if (getLeagueMode() !== "custom") return fallback;
+  const index = base.startsWith("1") ? 0 : base.startsWith("2") ? 1 : 2;
+  const baseKana = ["ファースト", "セカンド", "サード"][index];
+  const baseNumber = ["1塁", "2塁", "3塁"][index];
+  const vars: Record<string,string> = {
+    ...customPlayerVars(before, "交代前選手名"),
+    ...customPlayerVars(after, "交代後選手名"),
+    "交代前敬称": before?.isFemale ? "さん" : "くん",
+    "交代後敬称": after?.isFemale ? "さん" : "くん",
+    "交代後背番号": String(after?.number ?? ""),
+    "チーム名": teamName,
+    "塁(ファースト/セカンド/サード)": baseKana,
+    "塁（ファースト/セカンド/サード）": baseKana,
+    "塁(1塁/2塁/3塁)": baseNumber,
+    "塁（1塁/2塁/3塁）": baseNumber,
+    "塁(1/2/3)": String(index+1),
+  };
+  const custom = customOffenseText(isTemp ? "courtesyRunner" : "pinchRunner", "main", vars);
+  if (custom === null) return fallback;
+  const resolved = custom.replace(/【塁[（(]ファースト[\/／]セカンド[\/／]サード[）)]】/g, baseKana)
+    .replace(/【塁[（(]1塁[\/／]2塁[\/／]3塁[）)]】/g, baseNumber)
+    .replace(/\n/g, "<br />");
+  return `${base}ランナー${RUNNER_CUSTOM_SEPARATOR}${resolved}`;
+};
+
 const applyRunnerSelection = (player: any) => {
   if (!selectedBase) return;
 
@@ -3026,12 +3176,15 @@ const applyRunnerSelection = (player: any) => {
 
   const num = (player?.number ?? "").trim();
 
-  const text = isTemp
+  const legacyText = isTemp
     ? ((fromName ? `${prefix} ${fromName}に代わりまして、` : `${prefix}に代わりまして、`) +
         `臨時代走、${toNameLast}、臨時代走は ${toNameLast}。`)
     : ((fromName ? `${prefix} ${fromName}に代わりまして、` : `${prefix}に代わりまして、`) +
         `${toNameFull}、${prefix}は ${toNameLast}` +
         (num ? `、背番号 ${num}。` : "。"));
+
+  
+  const text = buildOnePersonRunnerAnnouncement(base, replaced, player, isTemp, legacyText);
 
   setRunnerAnnouncement(prev => {
     const labels = [
@@ -4639,7 +4792,8 @@ const saveOnePersonPitchCounts = async (
 const getOnePersonPitchLimitMessage = (
   pitcher: any,
   total: number,
-  defensePlayers: any[] = []
+  defensePlayers: any[] = [],
+  defenseTeamName: string = ""
 ): string => {
   // ボーイズリーグは既存の守備画面と同様、規定投球数メッセージを出さない
   if (leagueMode === "boys") return "";
@@ -4666,6 +4820,10 @@ const getOnePersonPitchLimitMessage = (
   const specialHead = pitcher
     ? `ピッチャー${pitcherName}`
     : "ピッチャー";
+
+  if (leagueMode === "custom" && !customPitchPartEnabled(loadCustomInGameTexts(getActiveCustomProfileId()), total === warn2 ? "limit" : "limitAdvance")) return "";
+  const customized = customPitchText(total === warn2 ? "limit" : "limitAdvance", pitcher, 0, total, pitchLimitSelected, inning, isTop, defenseTeamName);
+  if (customized !== null) return customized;
 
   return total === warn2
     ? `${specialHead}、ただいまの投球で${total}球に到達しました。`
@@ -4738,6 +4896,12 @@ const buildOnePersonPitchAnnounceText = async () => {
   const name = pitcher
     ? `${pitcherNameHtml}${honorific}`
     : "未設定";
+
+  if (leagueMode === "custom") {
+    const part = displayCurrent !== displayTotal ? "inningEnd" : "inningEndNoTotal";
+    const customized = customPitchText(part, pitcher, displayCurrent, displayTotal, pitchLimitSelected, inning, isTop, defenseTeam?.name);
+    if (customized !== null) return customized;
+  }
 
   // ✅ ボーイズリーグ専用文言
   // 1回：この回の投球数のみ
@@ -4888,7 +5052,8 @@ const addPitch = async () => {
     const limitMessage = getOnePersonPitchLimitMessage(
       pitcher,
       nextTotal,
-      players
+      players,
+      String(defenseTeam?.name || "")
     );
     if (limitMessage) {
       setPitchAnnounceAction("notice");
@@ -6678,6 +6843,21 @@ const snapshot =
 
 
 
+  // カスタマイズモードでは、終了した半回の情報で得点文を生成する。
+  // 表示文と読み上げ文を分けてチームの登録ふりがなを使用する。
+  const customScoreDisplay = customScoreAnnouncement({ score, inning, isTop, teamName });
+  const customScoreVoice = customScoreAnnouncement({ score, inning, isTop, teamName: teamReading || teamName });
+  if (customScoreDisplay !== null && (score > 0 || customScoreEnabledWhenZero())) {
+    const display = customScoreDisplay;
+    const voice = customScoreVoice ?? customScoreDisplay;
+    setPopupMessage(display);
+    setPopupSpeakMessage(voice);
+    void prefetchScoreAnnouncement(voice);
+    if (isConfiguredGroundMaintenance(inning, isTop)) setPendingGroundPopup(true);
+    setShowScorePopup(true);
+    return;
+  }
+
   if (score > 0) {
     if (leagueMode === "boys") {
       const scoreSpeakText = `この回の得点は、${score}点。`;
@@ -7046,6 +7226,12 @@ const buildRunnerModalSpeakText = (): string =>
   buildRunnerModalSpeakParts().join("");
 
 const speakRunnerModalLikePinch = async () => {
+  if (getLeagueMode() === "custom") {
+    const html = runnerAnnouncement.map(visibleRunnerAnnouncement).filter(Boolean).join("<br />");
+    const text = htmlToTtsText(html);
+    if (text) await speak(text, SUB_MODAL_TTS_OPTIONS);
+    return;
+  }
   const parts = buildRunnerModalSpeakParts();
   if (!parts.length) return;
 
@@ -7109,6 +7295,7 @@ const buildPinchSelectedTail = (sub: any): string => {
 };
 
 const prefetchPinchSelectedPlayer = (sub: any) => {
+  if (getLeagueMode() === 'custom') return; // 選択後の完成したカスタマイズ文をuseEffectで先読み
   const tail = buildPinchSelectedTail(sub);
   if (!tail) return;
 
@@ -7117,7 +7304,35 @@ const prefetchPinchSelectedPlayer = (sub: any) => {
   });
 };
 
+// カスタマイズモード：代打モーダルの表示と音声で同じ文章を使う。
+// 通常モードとリエントリー専用表示は従来どおり。
+const buildCustomPinchModalHtml = (): string | null => {
+  if (getLeagueMode() !== 'custom' || subModalMode === 'reentry') return null;
+  const before = getPlayer(battingOrder[currentBatterIndex]?.id);
+  const after = selectedSubPlayer;
+  const vars: Record<string, string> = {
+    ...customPlayerVars(before, '交代前選手名'),
+    ...customPlayerVars(after, '交代後選手名'),
+    '交代前敬称': before ? (before.isFemale ? 'さん' : 'くん') : '',
+    '交代後敬称': after ? (after.isFemale ? 'さん' : 'くん') : '',
+    '交代後背番号': String(after?.number ?? ''),
+    '打順': String(currentBatterIndex + 1),
+    '回': String(inning),
+    '表裏': isTop ? '表' : '裏',
+    'チーム名': teamName,
+  };
+  const main = customOffenseText('pinchHitter', 'main', vars);
+  if (main === null) return null;
+  const header = isLeadingBatter ? customOffenseText('pinchHitter', 'leadoff', vars) : null;
+  return [header, main].filter(Boolean).join('<br />').replace(/\n/g, '<br />');
+};
+
 const buildPinchModalSpeakParts = (): string[] => {
+  const customHtml = buildCustomPinchModalHtml();
+  if (customHtml !== null) {
+    const text = htmlToTtsText(customHtml);
+    return text ? [text] : [];
+  }
   if (subModalMode === "reentry") {
     if (!reEntryTargetPlayer || reEntryOrder1 == null || !reEntryFromPlayer) return [];
 
@@ -7177,6 +7392,13 @@ useEffect(() => {
           if (cancelled) return;
           await prefetchTTS(part, SUB_MODAL_TTS_OPTIONS);
         }
+        return;
+      }
+
+      const customHtml = buildCustomPinchModalHtml();
+      if (customHtml !== null) {
+        const speech = htmlToTtsText(customHtml);
+        if (speech && !cancelled) await prefetchTTS(speech, SUB_MODAL_TTS_OPTIONS);
         return;
       }
 
@@ -7286,15 +7508,7 @@ const continueAfterPitchAnnouncement = async () => {
   // ✅ 3回裏の表示順：
   // 得点 → 投球数 → 次の試合アナウンス
   if (pendingMemberExchange) {
-    const mi = await localForage.getItem<any>("matchInfo");
-    const currentGame = Number(mi?.matchNumber) || 1;
-    const nextGame = currentGame + 1;
-
-    const txt =
-      `本日の第${nextGame}試合の両チームは、4回終了後、メンバー交換を行います。\n` +
-      `両チームのキャプテンと全てのベンチ入り指導者は、ボール3個とメンバー表とピッチングレコードを持って本部席付近にお集まりください。\n` +
-      `ベンチ入りのスコアラー、審判員、球場責任者、EasyScore担当、公式記録員、アナウンスもお集まりください。\n` +
-      `メンバーチェックと道具チェックはシートノックの間に行います。`;
+    const txt = await buildMemberExchangeAnnouncement();
 
     setMemberExchangeText(txt);
     setPendingMemberExchange(false);
@@ -7368,8 +7582,8 @@ const handleNext = async () => {
 
   // ✅ ポニーリーグのみ：2人目の打者の前に開始時刻を表示
   if (
-    leagueMode === "pony" &&
-    next === 1 &&
+    (leagueMode === "pony" || customStartTiming === "beforeSecondBatter") &&
+    inning === 1 && next === 1 &&
     gameStartTime
   ) {
     const alreadyShown = await localForage.getItem<boolean>("startTimePopupShown");
@@ -7460,6 +7674,21 @@ const updateAnnouncement = () => {
   const rawPosName = positionNames[pos] ?? pos;
   const posNameForAnnounce = (pos === "代打" || pos === "代走") ? "" : rawPosName;
   const posPrefix = posNameForAnnounce ? `${posNameForAnnounce} ` : "";
+  // カスタマイズ：先頭／初回／2回目以降の保存テンプレートを使用。
+  // 既存3リーグはこの分岐に入らず、元の生成処理をそのまま使う。
+  const customBatter = customBatterHtml({
+    player, index: currentBatterIndex, position: posNameForAnnounce,
+    inning, isTop, isLeading: isLeadingBatter,
+    isChecked: checkedIds.includes(player.id), teamName
+  });
+  if (customBatter !== null) {
+    setAnnouncement(<span dangerouslySetInnerHTML={{ __html: customBatter }} />);
+    setAnnouncementOverride(null);
+    setAnnouncementHTMLStr(customBatter);
+    setAnnouncementHTMLOverrideStr("");
+    return;
+  }
+
 
   const displayLines: string[] = [];
   const speakLines: string[] = [];
@@ -8490,11 +8719,11 @@ useEffect(() => {
                 lineHeight: 1.35,
               }}
             >
-              {leagueMode === "boys"
+              {getCustomOtherText("foul", "main") ?? (leagueMode === "boys"
                 ? `ご来場の皆様にお願いをいたします。
             試合中、スタンドに入りますファウルボールは大変危険でございます。
             打球の行方には十分ご注意ください。`
-                : `ファールボールの行方には十分ご注意ください`}
+                : `ファールボールの行方には十分ご注意ください`)}
             </span>
           </div>
 
@@ -8519,10 +8748,13 @@ useEffect(() => {
             </div>
         </div>
 
-        {isLeadingBatter && (
+        {isLeadingBatter && (leagueMode !== "custom" || customAnnouncementMemo('batter', 'leadoff')) && (
           <div className="flex items-center text-blue-600 font-bold mb-0">
-            <div className="bg-yellow-100 text-yellow-800 bord最初er-l-4 border-yellw-500 px-4 py-2 text-sm font-semibold text-left">
-              <span className="mr-2 text-lg">⚠️</span>回の最初のバッター紹介は、キャッチャー2塁送球後 
+            <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 text-sm font-semibold text-left">
+              <span className="mr-2 text-lg">⚠️</span>
+              {leagueMode === "custom"
+                ? customAnnouncementMemo('batter', 'leadoff')
+                : '回の最初のバッター紹介は、キャッチャー2塁送球後'}
             </div>
           </div>
         )}
@@ -8666,12 +8898,16 @@ useEffect(() => {
               const isThirdBottom =
                 Number(inning) === 3 && isTop === false;
 
-              if (leagueMode !== "boys" && isThirdBottom) {
+              // 次の試合のお知らせは設定した回・表裏の終了時のみ予約する。
+              setPendingMemberExchange(false);
+              pendingNextGameForTabsRef.current = false;
+              if (leagueMode === "custom" ? customTimedItemDue(loadCustomInGameTexts(getActiveCustomProfileId()),"nextGame",currentInning,currentHalf) : (leagueMode !== "boys" && isThirdBottom)) {
                 const mi = await localForage.getItem<any>("matchInfo");
                 const noNextGame =
                   mi?.noNextGame === true || mi?.noNextGame === "true";
                 if (!noNextGame) {
                   setPendingMemberExchange(true);
+                  pendingNextGameForTabsRef.current = true;
                 }
               }
 
@@ -9204,7 +9440,7 @@ useEffect(() => {
 
         {/* ✅ 得点入った時のポップアップ（中央モーダル版・機能そのまま） */}
         {showScorePopup && (
-          <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+          <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" style={!customModalEnabled("score") ? {display:"none"} : undefined}>
             {/* 背景オーバーレイ */}
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
@@ -9244,6 +9480,12 @@ useEffect(() => {
                 <div className="px-4 py-4 space-y-4 overflow-y-auto">
                   {/* アナウンス文言エリア（薄い赤） */}
                   <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm shadow-red-800/30">
+                    {getLeagueMode()==='custom'&&(() => {
+                      const isNoScore = /無得点/.test(popupMessage);
+                      const part = isNoScore ? 'noScore' : 'scored';
+                      const note = customAnnouncementMemo('score',part,{ 'チーム名':teamName, '回':String(lastEndedHalfRef.current?.inning??inning), '表裏':(lastEndedHalfRef.current?.isTop??isTop)?'表':'裏'});
+                      return note?<div className="mb-2 rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-xs font-medium text-amber-950">⚠️ {note}</div>:null;
+                    })()}
                     <div className="flex items-center gap-2 mb-2">
 
                     </div>
@@ -9296,7 +9538,8 @@ useEffect(() => {
                 {/* 固定フッター（OKはアナウンス枠の外） */}
                 <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
                   <button
-                    onClick={async () => {
+                    data-custom-score-finish="single"
+                  onClick={async () => {
                       setShowScorePopup(false);
 
                       // ✅ 次の試合アナウンスが予約されていても、
@@ -9723,6 +9966,8 @@ useEffect(() => {
                               `.trim(),
                             }}
                           />
+                        ) : buildCustomPinchModalHtml() !== null ? (
+                          <span dangerouslySetInnerHTML={{ __html: buildCustomPinchModalHtml()! }} />
                         ) : (
                           <>
                             {isLeadingBatter && (
@@ -10103,10 +10348,26 @@ useEffect(() => {
                               `バッターは ${rubyLast(sub2)} ${honorSub}` +
                               `${num ? `、背番号 ${num}` : ""}。`;
 
-                            setAnnouncement(<span dangerouslySetInnerHTML={{ __html: displayHtml }} />);
-                            setAnnouncementOverride(<span dangerouslySetInnerHTML={{ __html: displayHtml }} />);
-                            setAnnouncementHTMLStr(speakHtml);
-                            setAnnouncementHTMLOverrideStr(speakHtml);
+                            const customPinchVars = {
+                              ...customPlayerVars(replaced2,'交代前選手名'),
+                              ...customPlayerVars(sub2,'交代後選手名'),
+                              '交代前敬称':honorBef,'交代後敬称':honorSub,
+                              '交代後背番号':String(sub2.number??''),
+                              '打順':String(currentBatterIndex+1),
+                              '回':String(inning),'表裏':isTop?'表':'裏','チーム名':teamName,
+                            };
+                            const customPinch = customOffenseText('pinchHitter','main',customPinchVars);
+                            const customPinchLead = isLeadingBatter
+                              ? customOffenseText('pinchHitter','leadoff',customPinchVars) : null;
+                            const customizedPinch = customPinch === null ? null :
+                              [customPinchLead,customPinch].filter(Boolean).join('<br />');
+                            const finalPinchHtml = customizedPinch ?? displayHtml;
+                            const finalPinchSpeakHtml = customizedPinch ?? speakHtml;
+
+                            setAnnouncement(<span dangerouslySetInnerHTML={{ __html: finalPinchHtml }} />);
+                            setAnnouncementOverride(<span dangerouslySetInnerHTML={{ __html: finalPinchHtml }} />);
+                            setAnnouncementHTMLStr(finalPinchSpeakHtml);
+                            setAnnouncementHTMLOverrideStr(finalPinchSpeakHtml);
                           }
 
                           savePinchHistoryOnConfirm(confirmedPinchHistoryHtml);
@@ -10489,8 +10750,9 @@ useEffect(() => {
                                     );
 
 
-                                setAnnouncementHTML(text);
-                                return [...updated, text];
+                                const output = buildOnePersonRunnerAnnouncement(base, replaced, sub, checked, text);
+                                setAnnouncementHTML(visibleRunnerAnnouncement(output));
+                                return [...updated, output];
                               });
 
                             }}
@@ -10670,7 +10932,7 @@ useEffect(() => {
                                 return runnerAnnouncement
                                   .filter((msg) => labels.some(label => msg.startsWith(label)))
                                   .map((msg, idx) => (
-                                    <div key={`${base}-${idx}`} dangerouslySetInnerHTML={{ __html: msg }} />
+                                    <div key={`${base}-${idx}`} dangerouslySetInnerHTML={{ __html: visibleRunnerAnnouncement(msg) }} />
                                   ));
                               })}
                             </div>
@@ -10903,7 +11165,7 @@ useEffect(() => {
                   .filter(Boolean) as string[];
 
                 if (orderedMsgs.length > 0) {
-                  setAnnouncementHTML(orderedMsgs.join("<br/>"));
+                  setAnnouncementHTML(orderedMsgs.map(visibleRunnerAnnouncement).join("<br/>"));
                 }
               }
 
@@ -10957,7 +11219,7 @@ useEffect(() => {
                           ? "クーリングタイム"
                           : tab === "ground"
                           ? "グラウンド整備"
-                          : "次の試合";
+                          : leagueMode === "custom" ? "次の試合のお知らせ" : "メンバー交換";
                       return (
                         <button
                           key={tab}
@@ -11134,10 +11396,11 @@ useEffect(() => {
                           <span>{announcementTimingSettings.groundMaintenanceInning ?? 5}回裏終了後🎤</span>
                         </div>
                         <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
-                          <p className="text-red-700 font-bold">両チームはグランド整備をお願いします。</p>
+                          <CustomInGameMemo item="ground" part="start" />
+                          <p className="text-red-700 font-bold whitespace-pre-wrap">{getCustomOtherText("ground", "start") ?? "両チームはグランド整備をお願いします。"}</p>
                           <div className="mt-3 grid grid-cols-2 gap-2">
                             <button
-                              onClick={async () => await speak("両チームはグランド整備をお願いします。")}
+                              onClick={async () => await speak((getCustomOtherText("ground", "start") ?? "両チームはグランド整備をお願いします。"))}
                               className="w-full h-10 rounded-xl bg-blue-600 text-white"
                             >
                               読み上げ
@@ -11154,10 +11417,11 @@ useEffect(() => {
                           <span>整備終了後🎤</span>
                         </div>
                         <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
-                          <p className="text-red-700 font-bold">グランド整備、ありがとうございました。</p>
+                          <CustomInGameMemo item="ground" part="end" />
+                          <p className="text-red-700 font-bold whitespace-pre-wrap">{getCustomOtherText("ground", "end") ?? "グランド整備、ありがとうございました。"}</p>
                           <div className="mt-3 grid grid-cols-2 gap-2">
                             <button
-                              onClick={async () => await speak("グランド整備、ありがとうございました。")}
+                              onClick={async () => await speak(getCustomOtherText("ground", "end") ?? "グランド整備、ありがとうございました。")}
                               className="w-full h-10 rounded-xl bg-blue-600 text-white"
                             >
                               読み上げ
@@ -11173,6 +11437,7 @@ useEffect(() => {
 
                   {activeCombinedAuxTab === "member" && (
                     <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+                      <CustomInGameMemo item="nextGame" part="main" />
                       <p className="whitespace-pre-wrap text-red-700 font-bold">
                         {memberExchangeText}
                       </p>
@@ -11242,7 +11507,7 @@ useEffect(() => {
 
         {/* ✅ グラウンド整備モーダル（スマホ風・薄赤背景・読み上げは青／中央配置） */}
         {showGroundPopup && (
-          <div className="fixed inset-0 z-50">
+          <div data-custom-skip-modal="ground" className="fixed inset-0 z-50" style={!customModalEnabled("ground") ? {display:"none"} : undefined}>
             {/* 背景オーバーレイ */}
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
@@ -11289,15 +11554,16 @@ useEffect(() => {
 
                     {/* アナウンス文言エリア（薄い赤） */}
                     <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+                      <CustomInGameMemo item="ground" part="start" />
                       <div className="flex items-start gap-2">
                         <p className="text-red-700 font-bold">
-                          両チームはグランド整備をお願いします。
+                          {getCustomOtherText("ground", "start") ?? "両チームはグランド整備をお願いします。"}
                         </p>
                       </div>
                       {/* 読み上げ／停止（横いっぱい・等幅、改行なし） */}
                       <div className="mt-3 grid grid-cols-2 gap-2">
                         <button
-                          onClick={() => speakText("両チームはグランド整備をお願いします。")}
+                          onClick={() => speakText((getCustomOtherText("ground", "start") ?? "両チームはグランド整備をお願いします。"))}
                           className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                                     inline-flex items-center justify-center gap-2 shadow-md"
                         >
@@ -11328,15 +11594,16 @@ useEffect(() => {
 
                     {/* アナウンス文言エリア（薄い赤） */}
                     <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+                      <CustomInGameMemo item="ground" part="end" />
                       <div className="flex items-start gap-2">
                         <p className="text-red-700 font-bold">
-                          グランド整備、ありがとうございました。
+                          {getCustomOtherText("ground", "end") ?? "グランド整備、ありがとうございました。"}
                         </p>
                       </div>
                       {/* 読み上げ／停止（横いっぱい・等幅、改行なし） */}
                       <div className="mt-3 grid grid-cols-2 gap-2">
                         <button
-                          onClick={async () => { await speak("グランド整備、ありがとうございました。"); }}
+                          onClick={async () => { await speak(getCustomOtherText("ground", "end") ?? "グランド整備、ありがとうございました。"); }}
                           className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                                     inline-flex items-center justify-center gap-2 shadow-md"
                         >
@@ -11381,7 +11648,7 @@ useEffect(() => {
 
         {/* ✅ 開始時刻モーダル（スマホ風・機能そのまま／中央配置） */}
         {showStartTimePopup && (
-          <div className="fixed inset-0 z-50">
+          <div data-custom-skip-modal="start" className="fixed inset-0 z-50" style={!customModalEnabled("startTime") ? {display:"none"} : undefined}>
             {/* 背景オーバーレイ */}
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
@@ -11432,7 +11699,7 @@ useEffect(() => {
                 {/* 本文 */}
                 <div className="px-4 py-4 space-y-4 overflow-y-auto">
                   {/* 注意チップ（そのまま） */}
-                  {leagueMode !== "boys" && (
+                  {leagueMode !== "boys" && customStartTiming === null && (
                     <div className="flex items-center gap-2">
                       <div className="bg-amber-100 text-amber-900 border border-amber-200 px-3 py-1.5 text-sm font-semibold inline-flex items-center gap-2 rounded-full">
                         <span className="text-xl">⚠️</span>
@@ -11446,9 +11713,9 @@ useEffect(() => {
                     {/* 見出し（マイク画像をここへ移動） */}
 
                     {/* 文言 */}
+                    {customStartTiming&&customAnnouncementMemo('startTime','main')&&<div className="mb-2 rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-xs font-medium text-amber-950">⚠️ {customAnnouncementMemo('startTime','main')}</div>}
                     <p className="text-lg font-bold text-red-700 text-center">
-                      {leagueMode === "boys" ? "なお、この試合の開始時刻は" : "この試合の開始時刻は"}{" "}
-                      {formatJaTime(gameStartTime)} です。
+                      {customStartTiming ? customStartNotice(gameStartTime) : (<> {leagueMode === "boys" ? "なお、この試合の開始時刻は" : "この試合の開始時刻は"} {formatJaTime(gameStartTime)} です。</>)}
                     </p>
 
                     {/* 読み上げ／停止（横いっぱい・等幅、アイコン右に文言で改行なし） */}
@@ -11457,6 +11724,8 @@ useEffect(() => {
                         className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                                   inline-flex items-center justify-center gap-2 shadow-md"
                         onClick={async () => {
+                          const customMessage=customStartTiming ? customStartNotice(gameStartTime) : null;
+                          if(customMessage!==null){await speak(customMessage);return;}
                           const parts = buildStartTimeAnnouncementParts(gameStartTime);
                           if (!parts.length) return;
 
@@ -11573,7 +11842,7 @@ useEffect(() => {
 
         {/* ✅ メンバー交換モーダル */}
         {showMemberExchangeModal && (
-          <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+          <div data-custom-skip-modal="member" className="fixed inset-0 z-50" role="dialog" aria-modal="true" style={!customModalEnabled("nextGame") ? {display:"none"} : undefined}>
             {/* 背景 */}
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
             {/* カード */}
@@ -11584,13 +11853,14 @@ useEffect(() => {
               >
                 {/* ヘッダー */}
                 <div className="sticky top-0 z-10 px-4 py-3 bg-gradient-to-r from-rose-600 to-pink-600 text-white shadow-md">
-                  <h2 className="text-lg font-extrabold text-center">メンバー交換（案内）</h2>
+                  <h2 className="text-lg font-extrabold text-center">{leagueMode === "custom" ? "次の試合のお知らせ" : "メンバー交換（案内）"}</h2>
                 </div>
 
                 {/* 本文 */}
                 <div className="px-4 py-4 space-y-3 overflow-y-auto">
                   <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
 
+                    <CustomInGameMemo item="nextGame" part="main" />
                     <p className="whitespace-pre-wrap text-red-700 font-bold">
                       {memberExchangeText}
                     </p>
@@ -11666,7 +11936,7 @@ useEffect(() => {
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 px-4"
           role="dialog"
           aria-modal="true"
-        >
+         style={customEndPitchDisabled() ? {display:"none"} : undefined}>
           <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="bg-blue-600 px-4 py-3 text-center text-lg font-extrabold text-white">
               投球数アナウンス
@@ -11708,6 +11978,7 @@ useEffect(() => {
 
               <button
                 type="button"
+                data-custom-pitch-finish="single"
                 onClick={async () => {
                   stop();
                   setShowPitchAnnounceModal(false);
@@ -11726,7 +11997,7 @@ useEffect(() => {
                   // ✅ ボーイズリーグ1回表終了時だけ、
                   // 得点 → 投球数 → 開始時刻 の順で表示する。
                   const shouldShowStartTimeAfterPitch =
-                    leagueMode === "boys" &&
+                    (leagueMode === "boys" || customStartTiming === "afterTopFirst") &&
                     endedHalf?.inning === 1 &&
                     endedHalf?.isTop === true &&
                     !!effectiveStartTime &&

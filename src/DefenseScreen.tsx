@@ -1,3 +1,4 @@
+import { getDefaultPitchLimit } from "./lib/pitchLimitDefaults";
 /**
  * DefenseScreen.tsx
  * ------------------------------------------------------------
@@ -13,6 +14,27 @@ import localForage from 'localforage';
 import { speak as ttsSpeak, speakJoinedTTS, stop as ttsStop, prefetchTTS, prewarmTTS, preserveNameReading } from "./lib/tts";
 import { addAnnouncementHistory } from "./lib/announcementHistory";
 import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
+import { customPitchText } from "./lib/customDefenseRuntime";
+import { customPitchPartEnabled, loadCustomInGameTexts, customInGameMemoKey } from "./lib/customInGameTemplates";
+import { getActiveCustomProfileId } from "./lib/customProfiles";
+
+// カスタマイズ文章内のルビのみを安全に描画する。
+// 任意のHTMLは解釈せずテキストとして扱い、タグ文字列の露出・HTML注入を防ぐ。
+const renderPitchLimitRuby = (source: string): React.ReactNode[] => {
+  const result: React.ReactNode[] = [];
+  const rubyPattern = /<ruby>([^<]*)<rt>([^<]*)<\/rt><\/ruby>/g;
+  let pos = 0;
+  let match: RegExpExecArray | null;
+  while ((match = rubyPattern.exec(source)) !== null) {
+    if (match.index > pos) result.push(source.slice(pos, match.index));
+    result.push(
+      <ruby key={match.index}>{match[1]}<rt>{match[2]}</rt></ruby>
+    );
+    pos = rubyPattern.lastIndex;
+  }
+  if (pos < source.length) result.push(source.slice(pos));
+  return result;
+};
 
 const IconMic = () => (
   <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
@@ -125,7 +147,7 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({
 
   const [inning, setInning] = useState(1);
   const [isTop, setIsTop] = useState(true);
-  const [pitchLimitSelected, setPitchLimitSelected] = useState<number>(75);
+  const [pitchLimitSelected, setPitchLimitSelected] = useState<number>(getDefaultPitchLimit(getLeagueMode()).selected);
   const [showTotalPitchModal, setShowTotalPitchModal] = useState(false);
   const [totalPitchInput, setTotalPitchInput] = useState<string>(""); // 入力中の文字列
 
@@ -203,7 +225,7 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({
           ? savedSelected
           : typeof legacy === "number"
           ? legacy
-          : 75;
+          : getDefaultPitchLimit(getLeagueMode()).selected;
 
       setPitchLimitSelected(next);
     };
@@ -281,6 +303,15 @@ useEffect(() => {
   const [announceMessages, setAnnounceMessages] = useState<string[]>([]);
   const [pitchLimitMessages, setPitchLimitMessages] = useState<string[]>([]);
   const [showPitchLimitModal, setShowPitchLimitModal] = useState(false);
+  // カスタマイズ専用: 投球数通知の種類ごとに保存されたメモを表示する（読み上げ対象外）。
+  const [pitchLimitMemoPart, setPitchLimitMemoPart] = useState<'limit' | 'limitAdvance' | null>(null);
+  const getPitchMemo = (part: 'inningEnd' | 'inningEndNoTotal' | 'limit' | 'limitAdvance') => {
+    if (leagueMode !== 'custom') return '';
+    return loadCustomInGameTexts(getActiveCustomProfileId()).pitchCount?.[customInGameMemoKey(part)]?.trim() || '';
+  };
+  const inningEndPitchMemo = getPitchMemo(currentPitchCount !== totalPitchCount ? 'inningEnd' : 'inningEndNoTotal');
+  const pitchLimitMemo = pitchLimitMemoPart ? getPitchMemo(pitchLimitMemoPart) : '';
+
 
   const [showRestoreConfirmModal, setShowRestoreConfirmModal] = useState(false);
   const [showRestoreCompleteModal, setShowRestoreCompleteModal] = useState(false);
@@ -527,6 +558,13 @@ const buildPitchAnnouncementMessages = (
 
   const suffix = pitcher.isFemale ? "さん" : "くん";
   const pitcherRuby = nameRubyHTML(pitcher);
+
+  if (leagueMode === "custom") {
+    const part = current !== total ? "inningEnd" : "inningEndNoTotal";
+    if (!customPitchPartEnabled(loadCustomInGameTexts(getActiveCustomProfileId()), part)) return [];
+    const custom = customPitchText(part, pitcher, current, total, pitchLimitSelected, inning, isTop, myTeamName);
+    if (custom !== null) return [custom];
+  }
 
   // ✅ ボーイズリーグ専用文言
   // 1回：「投球数は〇球です。」
@@ -876,17 +914,21 @@ const addPitch = async () => {
   const warn2 = pitchLimitSelected;
 
 
-  if (!isBoys && (newTotal === warn1 || newTotal === warn2)) {
+  if (!isBoys && (newTotal === warn1 || newTotal === warn2) && (leagueMode !== "custom" || customPitchPartEnabled(loadCustomInGameTexts(getActiveCustomProfileId()),newTotal === warn2 ? "limit" : "limitAdvance"))) {
     const pitcherParts = getAnnounceNameParts(pitcher);
     const pitcherSuffix = pitcher.isFemale ? "さん" : "くん";
     const specialHead = `ピッチャー${pitcherParts.name}${pitcherSuffix}`;
 
-    const specialMsg =
+    const customLimit = leagueMode === "custom"
+      ? customPitchText(newTotal === warn2 ? "limit" : "limitAdvance", pitcher, newCurrent, newTotal, pitchLimitSelected, inning, isTop)
+      : null;
+    const specialMsg = customLimit ?? (
       newTotal === warn2
         ? `${specialHead}、ただいまの投球で${newTotal}球に到達しました。`
-        : `${specialHead}、ただいまの投球で${newTotal}球です。`;
+        : `${specialHead}、ただいまの投球で${newTotal}球です.`);
 
 
+    setPitchLimitMemoPart(newTotal === warn2 ? 'limit' : 'limitAdvance');
     setPitchLimitMessages([specialMsg]);
     setShowPitchLimitModal(true);
 
@@ -2350,74 +2392,56 @@ const handleStop = () => { ttsStop(); };
       relative text-left
     "
   >
-    {/* 🔴 上段：マイクアイコン + 注意書き */}
-    <div className="flex items-start gap-2 md:gap-[clamp(6px,1.1dvh,10px)]">
-      <img
-        src="/mic-red.png"
-        alt="mic"
-        className="
-          w-6 h-6 mt-[-2px] shrink-0
-          md:w-[clamp(24px,3.2dvh,34px)]
-          md:h-[clamp(24px,3.2dvh,34px)]
-        "
-      />
-
+    {/* 🔔 通常モードのみ、既存の読み上げタイミングラベルを表示 */}
+    {leagueMode !== "custom" && (
+    <div className="flex items-center">
       <div
-        className="
-          bg-yellow-100 text-yellow-800
-          border-l-4 border-yellow-500
-          px-2 py-0
-          text-xs
-          md:px-[clamp(8px,1.4dvh,14px)]
-          md:py-[clamp(2px,0.8dvh,6px)]
-          md:text-[clamp(13px,1.9dvh,20px)]
-          font-semibold
-          whitespace-nowrap
-          leading-tight
-        "
+        className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-2 py-1 text-xs md:text-[clamp(13px,1.9dvh,20px)] font-semibold leading-tight"
       >
-        <span className="mr-2 text-2xl md:text-[clamp(22px,3.2dvh,34px)]">⚠️</span>
+        <span className="mr-2 text-lg" aria-hidden="true">⚠️</span>
         守備回終了時に🎤
       </div>
     </div>
+    )}
 
-    {/* 🔽 下段：アナウンスメッセージとボタン */}
-    <div
-      className="
-        flex flex-col
-        text-red-600
-        text-lg
-        md:text-[clamp(20px,3.2dvh,34px)]
-        font-bold
-        space-y-1
-        md:space-y-[clamp(4px,0.8dvh,8px)]
-        mt-2
-        md:mt-[clamp(8px,1.4dvh,14px)]
-        leading-tight
-      "
-    >
-{announceMessages.map((msg, index) => {
-  const isPitchCountMessage =
-    msg.includes("投球数") ||
-    msg.includes("トータル") ||
-    msg.includes("合計投球数") ||
-    msg.includes("球です");
+    {inningEndPitchMemo && (
+      <div className="mt-2 whitespace-pre-wrap rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-950">
+        ⚠️ {inningEndPitchMemo}
+      </div>
+    )}
 
-  return (
-    <p
-      key={index}
-      className={`
-        leading-tight
-        ${
-          isPitchCountMessage
-            ? "text-lg md:!text-[clamp(19px,2.4dvh,26px)]"
-            : ""
-        }
-      `}
-      dangerouslySetInnerHTML={{ __html: msg }}
-    />
-  );
-})}
+    {/* 🎤 投球数アナウンス：アイコンは1行目の左、続く行は同じ字下げ */}
+    <div className="mt-2 md:mt-[clamp(8px,1.4dvh,14px)] flex items-start gap-2 md:gap-[clamp(6px,1.1dvh,10px)]">
+      <img
+        src="/mic-red.png"
+        alt=""
+        aria-hidden="true"
+        className="w-6 h-6 shrink-0 md:w-[clamp(24px,3.2dvh,34px)] md:h-[clamp(24px,3.2dvh,34px)]"
+      />
+      <div className="min-w-0 flex-1 flex flex-col space-y-1 text-red-600 font-bold leading-tight">
+        {announceMessages.map((msg, index) => {
+          const isPitchCountMessage =
+            msg.includes("投球数") ||
+            msg.includes("トータル") ||
+            msg.includes("合計投球数") ||
+            msg.includes("球です");
+
+          return (
+            <p
+              key={index}
+              className={`leading-tight ${
+                isPitchCountMessage
+                  ? "text-lg md:!text-[clamp(19px,2.4dvh,26px)]"
+                  : "text-lg md:text-[clamp(20px,3.2dvh,34px)]"
+              }`}
+              dangerouslySetInnerHTML={{ __html: msg }}
+            />
+          );
+        })}
+      </div>
+    </div>
+
+    <div>
       {/* 読み上げ／停止 */}
       <div className="mt-2 md:mt-[clamp(8px,1.4dvh,14px)] grid grid-cols-2 gap-2">
         <button
@@ -3016,9 +3040,14 @@ if (typeof reEntryTarget?.index === "number") {
               <span className="text-sm font-semibold text-red-700">アナウンス</span>
             </div>
 
+            {pitchLimitMemo && (
+              <div className="mb-3 whitespace-pre-wrap rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-950">
+                ⚠️ {pitchLimitMemo}
+              </div>
+            )}
             <div className="text-red-700 text-base font-bold space-y-2">
               {pitchLimitMessages.map((msg, idx) => (
-                <p key={idx}>{msg}</p>
+                <p key={idx} className="whitespace-pre-wrap">{renderPitchLimitRuby(msg)}</p>
               ))}
             </div>
 

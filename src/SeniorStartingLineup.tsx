@@ -1,0 +1,941 @@
+// SeniorStartingLineup.tsx（全文置き換え）
+import React, { useState, useEffect, useRef } from "react";
+import localForage from "localforage";
+import { ScreenType } from "./App";
+import { speak as ttsSpeak, stop as ttsStop, prefetchTTS, prewarmTTS, preserveNameReading } from "./lib/tts";
+
+/* === ミニSVGアイコン（依存なし） === */
+const IconBack = () => (
+  <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden>
+    <path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+  </svg>
+);
+const IconMegaphone = () => (
+  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+    <path d="M12 14a3 3 0 003-3V6a3 3 0 10-6 0v5a3 3 0 003 3zm-7-3h2a5 5 0 0010 0h2a7 7 0 01-6 6.9V20h3v2H8v-2h3v-2.1A7 7 0 015 11z"/>
+  </svg>
+);
+
+const IconInfo: React.FC = () => (
+  <img
+    src="/warning-icon.png"        // ← public/warning-icon.png
+    alt="注意"
+    className="w-6 h-6 object-contain select-none pointer-events-none"
+    aria-hidden
+    draggable={false}
+    width={24}
+    height={24}
+  />
+);
+
+/* === 既存の型 & 補助 === */
+const positionMapJP: Record<string, string> = {
+  "投": "ピッチャー",
+  "捕": "キャッチャー",
+  "一": "ファースト",
+  "二": "セカンド",
+  "三": "サード",
+  "遊": "ショート",
+  "左": "レフト",
+  "中": "センター",
+  "右": "ライト",
+  "指": "指名打者",
+  "-": "ー",
+};
+type Player = {
+  id: number;
+  lastName: string;
+  firstName: string;
+  lastNameKana: string;
+  firstNameKana: string;
+  number: string;
+  isFemale?: boolean;
+};
+type Umpire = { role: string; name: string; furigana: string };
+type ExtraPositionMap = Record<number, string | null>;
+
+const MIN_STARTERS = 9;
+const MAX_BATTING_ORDER = 15;
+
+/* === 情報カード（注意/補足用） === */
+const InfoCard: React.FC<{ icon: React.ReactNode; title: string; text: string }> = ({ icon, title, text }) => (
+  <section className="rounded-2xl p-4 shadow-lg text-left bg-gradient-to-br from-amber-400/20 via-amber-300/15 to-amber-200/10 border border-amber-300/60 ring-1 ring-inset ring-amber-300/30">
+    <div className="flex items-center gap-3 mb-2">
+      <div className="w-11 h-11 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center text-white">{icon}</div>
+      <h2 className="font-semibold">{title}</h2>
+    </div>
+    <p className="text-amber-50/90 text-sm leading-relaxed">{text}</p>
+  </section>
+);
+
+const SeniorStartingLineup: React.FC<{
+    onNavigate: (screen: ScreenType) => void;
+    leagueMode: "pony" | "boys";
+    embedded?: boolean;
+    onSpeakingChange?: (speaking: boolean) => void;
+  }> = ({ onNavigate, leagueMode, embedded = false, onSpeakingChange }) => {
+  const [teamPlayers, setTeamPlayers] = useState<Player[]>([]);
+  const duplicateSurnames = new Set(teamPlayers.reduce((a: string[], p) => { const n = p.lastName?.trim(); return n && teamPlayers.filter(q => q.lastName?.trim() === n).length > 1 ? [...a,n] : a; }, []));
+  const [assignments, setAssignments] = useState<{ [pos: string]: number | null }>({});
+  const [battingOrder, setBattingOrder] = useState<{ id: number; reason: string }[]>([]);
+  const [extraPositionMap, setExtraPositionMap] = useState<ExtraPositionMap>({});
+  const [homeTeamName, setHomeTeamName] = useState<string>("");
+  const [homeTeamFurigana, setHomeTeamFurigana] = useState<string>("");
+  const [awayTeamName, setAwayTeamName] = useState<string>("");
+  const [firstBaseTeamName, setFirstBaseTeamName] = useState("");
+  const [thirdBaseTeamName, setThirdBaseTeamName] = useState("");
+  const [firstBaseTeamFurigana, setFirstBaseTeamFurigana] = useState("");
+  const [thirdBaseTeamFurigana, setThirdBaseTeamFurigana] = useState("");
+  const [announcementMode, setAnnouncementMode] =
+  useState<"normal" | "single">("normal");
+  const [startingLineupSide, setStartingLineupSide] =
+    useState<"home" | "visitor">("visitor");
+
+  const [opponentTeamFurigana, setOpponentTeamFurigana] = useState<string>("");
+  const [isHomeTeamFirstAttack, setIsHomeTeamFirstAttack] = useState<boolean>(true);
+  const [benchSide, setBenchSide] = useState<"1塁側" | "3塁側">("1塁側");
+  const [umpires, setUmpires] = useState<Umpire[]>([]);
+  const [isTwoUmpires, setIsTwoUmpires] = useState<boolean>(false);
+  const [speaking, setSpeaking] = useState(false);
+  useEffect(() => { onSpeakingChange?.(speaking); }, [speaking, onSpeakingChange]);
+
+  const announceBoxRef = useRef<HTMLDivElement | null>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const isSpeakingRef = useRef(false);
+  const speakSessionRef = useRef(0);
+
+  const startingIds = battingOrder.map((e) => e.id);
+  const [benchOutIds, setBenchOutIds] = useState<number[]>([]);
+  const [ohtaniRule, setOhtaniRule] = useState(false);
+
+  const [tournamentName, setTournamentName] = useState("");
+  const [gameNumber, setGameNumber] = useState("");
+
+　// ✅ DHあり判定：指名打者が割り当てられているか
+  const dhActive = assignments["指"] != null;
+  // ✅ 投手ID（守備の投手）
+  const pitcherId = assignments["投"];
+  // ✅ DHありで、投手が打順に入っていない場合だけ「投手を追加アナウンス」
+  const shouldAnnouncePitcher =
+    dhActive &&
+    typeof pitcherId === "number" &&
+    (!startingIds.includes(pitcherId) || ohtaniRule); // ★大谷ルール時は常に表示
+
+
+
+
+  useEffect(() => {
+    const onHide = () => handleStop();
+    window.addEventListener("visibilitychange", onHide);
+    return () => { window.removeEventListener("visibilitychange", onHide); handleStop(); };
+  }, []);
+  useEffect(() => {
+    return () => { handleStop(); };
+  }, []);
+
+  // 初回だけ VOICEVOX を温める
+  useEffect(() => { void prewarmTTS(); }, []);
+
+  const loadTeamBenchOutIds = async (teamId: any) => {
+    if (!teamId) return [];
+
+    const raw =
+      (await localForage.getItem<number[]>(
+        `startingBenchOutIds_${teamId}`
+      )) ?? [];
+
+    return Array.from(
+      new Set(
+        (Array.isArray(raw) ? raw : [])
+          .map((v) => Number(v))
+          .filter(Number.isFinite)
+      )
+    );
+  };
+
+  /* === データロード === */
+  useEffect(() => {
+    const loadA = async () => {
+      // ✅ まずスタメン設定のキーを読む。なければ従来キーにフォールバック
+      const sb = await localForage.getItem<number[]>("startingBenchOutIds");
+      const fb = await localForage.getItem<number[]>("benchOutIds");
+      const raw = Array.isArray(sb) ? sb : Array.isArray(fb) ? fb : [];
+      // 念のため number 正規化
+      const normalized = raw.map((v) => Number(v)).filter((v) => Number.isFinite(v));
+      setBenchOutIds(normalized);
+    };
+    loadA();
+  }, []);
+  
+  useEffect(() => {
+    const loadB = async () => {
+      const [team, matchInfo, ohtani] = await Promise.all([
+        localForage.getItem<{ name: string; players: Player[] }>("team"),
+        localForage.getItem("matchInfo"),
+        localForage.getItem<boolean>("ohtaniRule"),
+      ]);
+
+      const mi = matchInfo as any;
+
+      if (mi?.announcementMode === "single") {
+        setAnnouncementMode("single");
+        setStartingLineupSide(mi?.startingLineupSide ?? "visitor");
+      }
+
+      setOhtaniRule(!!ohtani);
+
+
+let assignRaw: Record<string, number | null> = {};
+let orderRaw: Array<{ id?: number; playerId?: number; reason?: string }> = [];
+
+if (mi?.announcementMode === "single") {
+  const store =
+    await localForage.getItem<any>("teamRegisterStore");
+    const firstFolder = store?.teams?.find(
+      (t: any) => String(t.id) === String(mi.firstBaseTeamId)
+    );
+
+    const thirdFolder = store?.teams?.find(
+      (t: any) => String(t.id) === String(mi.thirdBaseTeamId)
+    );
+
+const firstName =
+  firstFolder?.team?.name ||
+  firstFolder?.teamName ||
+  firstFolder?.name ||
+  mi.firstBaseTeamName ||
+  firstFolder?.listName ||
+  "";
+
+const thirdName =
+  thirdFolder?.team?.name ||
+  thirdFolder?.teamName ||
+  thirdFolder?.name ||
+  mi.thirdBaseTeamName ||
+  thirdFolder?.listName ||
+  "";
+
+const firstFurigana =
+  firstFolder?.team?.furigana ||
+  firstFolder?.team?.nameKana ||
+  firstFolder?.furigana ||
+  firstFolder?.nameKana ||
+  "";
+
+const thirdFurigana =
+  thirdFolder?.team?.furigana ||
+  thirdFolder?.team?.nameKana ||
+  thirdFolder?.furigana ||
+  thirdFolder?.nameKana ||
+  "";
+
+setFirstBaseTeamName(firstName);
+setThirdBaseTeamName(thirdName);
+
+setFirstBaseTeamFurigana(firstFurigana);
+setThirdBaseTeamFurigana(thirdFurigana);
+
+  const teamId =
+    mi.startingLineupSide === "visitor"
+      ? (
+          mi.battingFirstSide === "third"
+            ? mi.thirdBaseTeamId
+            : mi.firstBaseTeamId
+        )
+      : (
+          mi.battingFirstSide === "third"
+            ? mi.firstBaseTeamId
+            : mi.thirdBaseTeamId
+        );
+
+  assignRaw =
+    (await localForage.getItem(
+      `startingassignments_${teamId}`
+    )) ?? {};
+
+  orderRaw =
+    (await localForage.getItem(
+      `startingBattingOrder_${teamId}`
+    )) ?? [];
+
+  const folder = store?.teams?.find(
+    (t: any) => String(t.id) === String(teamId)
+  );
+
+const selectedTeamName =
+  folder?.team?.name ||
+  folder?.teamName ||
+  folder?.name ||
+  folder?.listName ||
+  "";
+
+const selectedTeamFurigana =
+  folder?.team?.furigana ||
+  folder?.team?.nameKana ||
+  folder?.furigana ||
+  folder?.nameKana ||
+  "";
+
+setTeamPlayers(folder?.team?.players ?? []);
+setHomeTeamName(selectedTeamName);
+setHomeTeamFurigana(selectedTeamFurigana);
+// ✅ スタメン設定画面で設定した「出場しない選手」を読む
+setBenchOutIds(await loadTeamBenchOutIds(teamId));
+
+  // visitorなら先攻、homeなら後攻として表示
+  setIsHomeTeamFirstAttack(mi.startingLineupSide === "visitor");
+
+} else {
+  assignRaw =
+    (await localForage.getItem("startingassignments")) ??
+    (await localForage.getItem("lineupAssignments")) ??
+    {};
+
+  orderRaw =
+    (await localForage.getItem("startingBattingOrder")) ??
+    (await localForage.getItem("battingOrder")) ??
+  [];
+}
+
+if (mi?.announcementMode !== "single") {
+  if (team) {
+    setTeamPlayers((team as any).players || []);
+    setHomeTeamName((team as any).name || "");
+    setHomeTeamFurigana(
+      (team as any).furigana ??
+      (team as any).nameKana ??
+      ""
+    );
+  }
+
+  setAwayTeamName(mi.opponentTeam || "");
+  setIsHomeTeamFirstAttack(!mi.isHome);
+  setOpponentTeamFurigana(mi.opponentTeamFurigana || "");
+  setBenchSide(mi.benchSide || "1塁側");
+}
+
+if (Array.isArray(mi.umpires)) {
+  setUmpires(mi.umpires);
+}
+
+setIsTwoUmpires(Boolean(mi.twoUmpires));
+setTournamentName(mi.tournamentName || "");
+setGameNumber(String(mi.matchNumber || ""));
+
+      const extraPosRaw =
+        (await localForage.getItem<ExtraPositionMap>("startingExtraPositionMap")) ??
+        (await localForage.getItem<ExtraPositionMap>("startingExtraPositionMap_draft")) ??
+        {};
+
+      const normalizedAssign: { [pos: string]: number | null } = {};
+      Object.entries(assignRaw).forEach(([pos, id]) => { normalizedAssign[pos] = id == null ? null : Number(id); });
+      setAssignments(normalizedAssign);
+
+      const normalizedOrder = (orderRaw as any[])
+        .map((e) => {
+          const id = typeof e?.id === "number" ? e.id : e?.playerId;
+          if (typeof id !== "number") return null;
+          return { id: Number(id), reason: e?.reason ?? "スタメン" };
+        })
+        .filter(Boolean)
+        .slice(0, MAX_BATTING_ORDER) as { id: number; reason: string }[];
+      setBattingOrder(normalizedOrder);
+
+      const normalizedExtraPos: ExtraPositionMap = {};
+      Object.entries(extraPosRaw).forEach(([id, pos]) => {
+        const n = Number(id);
+        if (Number.isFinite(n)) normalizedExtraPos[n] = pos ?? null;
+      });
+      setExtraPositionMap(normalizedExtraPos);
+
+
+    };
+    
+    loadB();
+    
+  }, []);
+
+  /* === 表示ヘルパ === */
+  const getPositionName = (pos: string) => positionMapJP[pos] || pos;
+  const getDisplayPos = (playerId: number) => {
+    const posFromAssignments =
+      Object.entries(assignments).find(([_, pid]) => Number(pid) === Number(playerId))?.[0] ?? null;
+
+    if (posFromAssignments) return posFromAssignments;
+
+    const posFromExtra = extraPositionMap[playerId];
+    if (posFromExtra) return posFromExtra;
+
+    // 打順追加で10番打者以降を設定しており、DH制を使用している場合は
+    // 守備位置未設定でも「指名打者」として表示する
+    const battingIndex = battingOrder.findIndex(
+      (entry) => Number(entry.id) === Number(playerId)
+    );
+    if (dhActive && battingIndex >= 9) return "指";
+
+    return "-";
+  };
+  const getHonorific = (p: Player) => (p.isFemale ? "さん" : "くん");
+  const renderFurigana = (kanji: string, kana: string) => (
+    <ruby className="ruby-text">
+      {kanji}
+      <rt className="ruby-reading">{kana}</rt>
+    </ruby>
+  );
+  const renderFullName = (p: Player) => (<>{renderFurigana(p.lastName, p.lastNameKana)}{renderFurigana(p.firstName, p.firstNameKana)}</>);
+  const renderLastName = (p: Player) => renderFurigana(p.lastName, p.lastNameKana);
+  const getSpokenFullName = (p: Player) => {
+    const last = preserveNameReading(
+      (p.lastNameKana || p.lastName || "").trim()
+    );
+    const first = preserveNameReading(
+      (p.firstNameKana || p.firstName || "").trim()
+    );
+    const full = first ? `${last} ${first}` : last;
+    return `${full}${getHonorific(p)}`;
+  };
+  const getSpokenLastName = (p: Player) => {
+    const last = preserveNameReading(
+      (p.lastNameKana || p.lastName || "").trim()
+    );
+    return `${last}${getHonorific(p)}`;
+  };
+
+  const team1stBaseName =
+    announcementMode === "single"
+      ? firstBaseTeamName
+      : benchSide === "1塁側"
+        ? homeTeamName
+        : awayTeamName;
+
+  const team3rdBaseName =
+    announcementMode === "single"
+      ? thirdBaseTeamName
+      : benchSide === "3塁側"
+        ? homeTeamName
+        : awayTeamName;
+
+const team1stBaseFurigana =
+  announcementMode === "single"
+    ? firstBaseTeamFurigana
+    : benchSide === "1塁側"
+      ? homeTeamFurigana
+      : opponentTeamFurigana;
+
+const team3rdBaseFurigana =
+  announcementMode === "single"
+    ? thirdBaseTeamFurigana
+    : benchSide === "3塁側"
+      ? homeTeamFurigana
+      : opponentTeamFurigana;
+
+  const renderTeam1stBase = () =>
+    team1stBaseFurigana
+      ? renderFurigana(team1stBaseName, team1stBaseFurigana)
+      : team1stBaseName;
+
+  const renderTeam3rdBase = () =>
+    team3rdBaseFurigana
+      ? renderFurigana(team3rdBaseName, team3rdBaseFurigana)
+      : team3rdBaseName;
+
+  const isBoys = leagueMode === "boys";
+  const lineupEntries = battingOrder.slice(0, MAX_BATTING_ORDER);
+  const myBenchSide = benchSide || "1塁側";
+
+const assignmentIds = Object.values(assignments || {})
+  .filter((v) => v !== null && v !== undefined)
+  .map((v) => Number(v))
+  .filter((v) => Number.isFinite(v));
+
+const benchOutIdNumbers = (Array.isArray(benchOutIds) ? benchOutIds : [])
+  .map((v) => Number(v))
+  .filter(Number.isFinite);
+
+const battingOrderIds = startingIds
+  .map((v) => Number(v))
+  .filter(Number.isFinite);
+
+const benchPlayers = teamPlayers.filter((p) => {
+  const id = Number(p.id);
+  if (!Number.isFinite(id)) return false;
+
+  const isInBattingOrder = battingOrderIds.includes(id);
+  const isInDefense = assignmentIds.includes(id);
+  const isBenchOut = benchOutIdNumbers.includes(id);
+
+  return !isInBattingOrder && !isInDefense && !isBenchOut;
+});
+
+  /* === 画面に見えている文言をそのまま読む（rubyはrtを採用） === */
+  const getVisibleAnnounceText = (): string => {
+    const root = announceBoxRef.current;
+    if (!root) return "";
+    const clone = root.cloneNode(true) as HTMLElement;
+clone.querySelectorAll("ruby").forEach((rb) => {
+  const rt = rb.querySelector("rt");
+  const kana = (rt?.textContent ?? "").trim();
+  const fallback = (rb.textContent ?? "").trim();
+
+  const next = rb.nextElementSibling;
+  const nextIsRuby = next?.tagName?.toLowerCase() === "ruby";
+
+  // 次も ruby なら「苗字 + 名前」の可能性が高いので、
+  // 読み上げ用にだけ少し区切る
+  const spoken = kana
+    ? preserveNameReading(kana)
+    : fallback;
+
+  const textNode = document.createTextNode(
+    spoken + (nextIsRuby ? " " : "")
+  );
+
+  rb.replaceWith(textNode);
+});
+    const lines: string[] = [];
+    clone.querySelectorAll("p").forEach((p) => {
+      const t = (p.textContent ?? "").replace(/\s+/g, " ").trim();
+      if (t) lines.push(t);
+    });
+    return lines.join("\n");
+  };
+
+  // 画面表示用テキストから、実際にTTSへ渡す文章を1か所で作る。
+  // 重要: 先読みと本番読み上げで完全に同じ文字列を使い、
+  // Matchaのキャッシュキーを一致させる。
+  //
+  // ★ 選手名のふりがなに「ライト」「ショート」等が含まれる場合、
+  //    守備位置用の整形・固定MP3判定に巻き込まれないよう、
+  //    選手名部分を一時的にプレースホルダーへ退避してから整形する。
+  const buildSpeakText = (source: string): string => {
+    let working = String(source ?? "");
+
+    // 選手名 + 敬称を一時退避。
+    // 例:
+    //   「ライト タロウくん」→ private-use文字のプレースホルダー
+    //   「ライトくん」       → private-use文字のプレースホルダー
+    //
+    // 守備位置として表示されている「ライト」は退避しないので、
+    // 従来どおり固定MP3(0018)を使用できる。
+    const protectedNames: Array<{ token: string; value: string }> = [];
+    const nameCandidates: string[] = [];
+
+    teamPlayers.forEach((p) => {
+      const last = preserveNameReading(
+        (p.lastNameKana || p.lastName || "").trim()
+      );
+      const first = preserveNameReading(
+        (p.firstNameKana || p.firstName || "").trim()
+      );
+      const honorific = getHonorific(p);
+
+      if (last && first) {
+        nameCandidates.push(`${last} ${first}${honorific}`);
+      }
+      if (last) {
+        nameCandidates.push(`${last}${honorific}`);
+      }
+    });
+
+    // 「姓名」→「姓」の順で保護し、短い候補が先に食わないようにする。
+    const uniqueNameCandidates = Array.from(new Set(nameCandidates))
+      .filter(Boolean)
+      .sort((a, b) => b.length - a.length);
+
+    uniqueNameCandidates.forEach((value, index) => {
+      if (!working.includes(value)) return;
+
+      // 数字や英字を含むプレースホルダーは使わない。
+      // 以前の `NAME0` は、この後の「単独の0→ゼロ」変換で
+      // `NAMEゼロ` に変わり、選手名へ復元できずTTSが
+      // 「ネームゼロ」と読んでしまうことがあった。
+      //
+      // Private Use Area の1文字だけを使えば、下の文章整形に
+      // 一切巻き込まれず、最後に確実に選手名へ戻せる。
+      const token = String.fromCharCode(0xE100 + index);
+      protectedNames.push({ token, value });
+      working = working.split(value).join(token);
+    });
+
+    working = working
+      // 「先攻/後攻 チーム名」の直後で一度文を閉じる。
+      .replace(
+        /(^|\n)((?:先攻|続きまして、?\s*後攻|対しまして、?\s*後攻)[^\n]*)\n(?=\s*1番)/g,
+        "$1$2。\n"
+      )
+
+      // 「1番ショート」→「1番、ショート」
+      .replace(/([0-9]+)番\s*/g, "$1番、")
+
+      // 守備位置の直後だけ区切る。
+      // 選手名は上で退避済みなので、名前中の「ライト」等には作用しない。
+      .replace(
+        /(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)\s*/g,
+        "$1、"
+      )
+
+      // 「先攻 チーム名」は従来どおり少し区切る。
+      .replace(/(先攻|後攻)\s+/g, "$1、")
+      .replace(/続きまして、\s*後攻、/g, "続きまして、後攻 ")
+
+      // 「苗字くん 背番号1」→「苗字くん、背番号1」
+      .replace(/(さん|くん)\s*背番号/g, "$1、背番号")
+
+      // 背番号の直後に短い間を入れる
+      .replace(/背番号\s*([0-9０-９]+)/g, "背番号、$1")
+
+      // 単独の 0 は「れい」ではなく「ゼロ」
+      .replace(/(^|[^0-9])0(?![0-9])/g, "$1ゼロ")
+
+      // 句読点の重複を軽く整理
+      .replace(/、、+/g, "、");
+
+    // 選手名を元に戻す。
+    // この時点では名前中の「ライト」等に読点が入っていないため、
+    // tts.ts の「選手名範囲保護」が正しく認識できる。
+    protectedNames.forEach(({ token, value }) => {
+      working = working.split(token).join(value);
+    });
+
+    return working.trim();
+  };
+
+  // 画面上の1行（選手1人分）単位に分割する。
+  // 長いヘッダーや審判文だけは句点単位にも分け、1回の生成を短くする。
+  const getSpeakParts = (source: string): string[] =>
+    buildSpeakText(source)
+      .split(/\n+/)
+      .flatMap((line) =>
+        line.length > 80
+          ? (line.match(/[^。！？!?]+[。！？!?]?/g) ?? [line])
+          : [line]
+      )
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+
+
+  // 同じ完成文を何度も先読みしない。
+  const lastPrefetchedSpeakTextRef = useRef("");
+  const prefetchGenerationRef = useRef(0);
+
+  // 最初の2パートだけを読み上げ前に準備する。
+  // 3パート目以降は、再生中に次のパートを順次先読みする。
+  useEffect(() => {
+    if (!teamPlayers.length || !battingOrder.length || !homeTeamName) return;
+
+    const generation = ++prefetchGenerationRef.current;
+
+    const priorityTimer = window.setTimeout(() => {
+      const visibleText = getVisibleAnnounceText();
+      const speakText = buildSpeakText(visibleText);
+      if (!speakText || speakText === lastPrefetchedSpeakTextRef.current) return;
+
+      lastPrefetchedSpeakTextRef.current = speakText;
+      const parts = getSpeakParts(visibleText);
+      if (!parts.length) return;
+
+      void (async () => {
+        await prefetchTTS(parts[0]);
+        if (generation !== prefetchGenerationRef.current) return;
+        if (parts[1]) {
+          await prefetchTTS(parts[1]);
+        }
+      })();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(priorityTimer);
+    };
+  }, [
+    teamPlayers,
+    assignments,
+    battingOrder,
+    extraPositionMap,
+    homeTeamName,
+    homeTeamFurigana,
+    awayTeamName,
+    firstBaseTeamName,
+    thirdBaseTeamName,
+    firstBaseTeamFurigana,
+    thirdBaseTeamFurigana,
+    umpires,
+    gameNumber,
+    tournamentName,
+    isHomeTeamFirstAttack,
+    isTwoUmpires,
+    leagueMode,
+    duplicateSurnames.size,
+  ]);
+
+  /* === 読み上げ操作 === */
+const handleSpeak = () => {
+  if (isSpeakingRef.current) return;
+
+  // 念のため直前に全停止してから、新しい読み上げを開始する。
+  handleStop();
+  const session = ++speakSessionRef.current;
+  isSpeakingRef.current = true;
+
+  const visibleText = getVisibleAnnounceText();
+  const parts = getSpeakParts(visibleText);
+  if (!parts.length) {
+    isSpeakingRef.current = false;
+    return;
+  }
+
+  setSpeaking(true);
+  void (async () => {
+    for (let i = 0; i < parts.length; i += 1) {
+      if (session !== speakSessionRef.current) return;
+
+      // まず現在行の読み上げを開始する。
+      // ttsSpeak() は本番読み上げ開始時に通常のバックグラウンド先読みを
+      // キャンセルするため、先に next 行を prefetch すると無効になることがある。
+      const currentPlay = ttsSpeak(parts[i], {
+        progressive: false,
+        cache: true,
+      });
+
+      // 現在行が推論Workerを先に確保したあと、再生中に次の行を先読みする。
+      // foregroundLookahead=true にすることで、本番読み上げ開始による
+      // バックグラウンド先読みキャンセルの対象外にする。
+      //
+      // 次行を開始する前にはこの先読み完了を待つので、
+      // 「守備位置（固定MP3）」の直後で選手名の生成待ちが発生しにくくなる。
+      const nextReady: Promise<void> = parts[i + 1]
+        ? new Promise<void>((resolve) => {
+            window.setTimeout(() => {
+              if (session !== speakSessionRef.current) {
+                resolve();
+                return;
+              }
+
+              void prefetchTTS(parts[i + 1], {
+                foregroundLookahead: true,
+              })
+                .catch(() => {
+                  // 先読み失敗時でも本番読み上げは継続する。
+                })
+                .finally(resolve);
+            }, 120);
+          })
+        : Promise.resolve();
+
+      // 1人分は途中分割せずに再生し、氏名の途中に生成待ちを入れない。
+      // 本来の打順・守備位置は固定MP3を使用する。
+      // 選手名の中に含まれる「ライト」等だけは、tts.ts側の
+      // 選手名範囲保護により固定MP3へ置き換えない。
+      await currentPlay;
+      if (session !== speakSessionRef.current) return;
+
+      // 次の行は音声生成を済ませてから開始する。
+      // 待ち時間が必要な場合も「現在の選手と次の選手の間」に置き、
+      // 「守備位置と選手名の間」には入れない。
+      await nextReady;
+    }
+  })().finally(() => {
+    if (session !== speakSessionRef.current) return;
+    setSpeaking(false);
+    isSpeakingRef.current = false;
+  });
+};
+
+
+  const handleStop = () => {
+   speakSessionRef.current += 1;
+   ttsStop();                 // ← sessionCounter が進むので連鎖が止まる
+   isSpeakingRef.current = false;
+   setSpeaking(false);
+   utteranceRef.current = null;
+ };
+
+  return (
+      <div
+        className={embedded ? "text-white flex flex-col items-center px-2 sm:px-4" : "min-h-[100dvh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"}
+        style={{
+          paddingTop: "max(16px, env(safe-area-inset-top))",
+          paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+          WebkitTouchCallout: "none", // iOS Safari 長押しメニュー禁止
+          WebkitUserSelect: "none",   // テキスト選択禁止
+          userSelect: "none",         // 全体で禁止
+        }}
+      >
+
+      {/* ヘッダー */}
+      <header className="w-full max-w-md md:max-w-none">
+        <div className="flex items-center justify-between">
+
+          <div className="w-10" />
+        </div>
+
+        {/* 中央大タイトル */}
+        <div className="mt-3 text-center select-none">
+          <h1 className="inline-flex items-center gap-2 text-3xl md:text-4xl font-extrabold tracking-wide leading-tight">
+            <span className="text-2xl md:text-3xl">📣</span>
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-sky-100 to-sky-400 drop-shadow">
+              スタメン発表
+            </span>
+          </h1>
+          <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
+          <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs">
+            <span>{isHomeTeamFirstAttack ? "先攻チーム🎤" : "後攻チーム🎤"}</span>
+          </div>
+        </div>
+      </header>
+
+      {/* 本体 */}
+      <main className="w-full max-w-md md:max-w-none mt-6 space-y-5">
+        {/* 注意/タイミングカード */}
+        {isHomeTeamFirstAttack ? (
+          <InfoCard
+            icon={<IconInfo />}
+            title="読み上げタイミング"
+            text="先攻チームがシートノックを開始したら🎤"
+          />
+        ) : (
+          <InfoCard
+            icon={<IconInfo />}
+            title="読み上げタイミング"
+            text="先攻チームのスタメン発表に続いて読み上げ🎤"
+          />
+        )}
+
+        {/* 🔴 アナウンス文言（赤 強め） */}
+        <section
+          ref={announceBoxRef}
+          className="
+            rounded-2xl p-4 shadow-lg text-left font-semibold
+            border border-rose-600/90
+            bg-gradient-to-br from-rose-600/45 via-rose-500/35 to-rose-400/25
+            ring-1 ring-inset ring-rose-600/50
+          "
+        >
+ 
+
+          {/* リトルシニア（関東連盟基準）：先攻のみ大会・試合・対戦案内 */}
+          {isHomeTeamFirstAttack && (
+            <p className="text-white whitespace-pre-wrap leading-relaxed">
+              {tournamentName.trim() ? `${tournamentName.trim()}、` : ""}本日の第{gameNumber || "〇"}試合、
+              {"\n"}{renderTeam1stBase()} 対 {renderTeam3rdBase()} の
+              {"\n"}スターティングラインアップ、ならびに審判員をお知らせいたします。
+            </p>
+          )}
+          <p className="mt-2 text-white leading-relaxed">
+            {isHomeTeamFirstAttack ? "先攻 " : "続きまして、後攻 "}
+            {homeTeamFurigana ? renderFurigana(homeTeamName, homeTeamFurigana) : homeTeamName}
+          </p>
+
+          {/* 打順 1〜15 */}
+          <div className="mt-1 space-y-1">
+            {lineupEntries.map((entry, idx) => {
+              const p = teamPlayers.find((pl) => pl.id === entry.id);
+              if (!p) return null;
+
+              const pos = getDisplayPos(p.id);
+
+              // 表示用ポジション
+              // ・大谷ルールで投手が打順に入る場合は「指名打者」
+              // ・打順に入っていて守備位置が未設定（"-"）なら、打順に関係なく「指名打者」
+              // ・守備位置が設定済みなら、その守備位置を優先
+              const displayPos =
+                ohtaniRule && assignments["投"] === p.id
+                  ? "指"
+                  : pos === "-"
+                    ? "指"
+                    : pos;
+
+              const posName = getPositionName(displayPos);
+              const honorific = getHonorific(p);
+
+              const num = (p.number ?? "").trim(); // ★追加：背番号（空白なら空）
+
+              return (
+                <p key={entry.id} className="text-white whitespace-pre-wrap leading-relaxed">
+                  {idx + 1}番 {posName} {duplicateSurnames.has(p.lastName?.trim()) ? renderFullName(p) : renderLastName(p)}{honorific}、<br />
+                  {posName} {duplicateSurnames.has(p.lastName?.trim()) ? renderFullName(p) : renderLastName(p)}{honorific}
+                  {num ? ` 背番号${num}。` : "。"}
+                </p>
+              );
+            })}
+          </div>
+          
+          {/* ✅ DHありの場合：9番の後に投手を追加 */}
+          {shouldAnnouncePitcher && (() => {
+            const p = teamPlayers.find((pl) => pl.id === pitcherId);
+            if (!p) return null;
+
+            const honorific = getHonorific(p);
+            const num = (p.number ?? "").trim();
+
+            return (
+              <p className="text-white whitespace-pre-wrap leading-relaxed">
+                ピッチャーは {duplicateSurnames.has(p.lastName?.trim()) ? renderFullName(p) : renderLastName(p)}{honorific}、<br />
+                ピッチャー {renderLastName(p)}{honorific}
+                {num ? ` 背番号${num}。` : "。"}
+              </p>
+            );
+          })()}
+
+          {/* 審判：後攻チーム発表後のみ */}
+          {!isHomeTeamFirstAttack && (
+            <p className="mt-4 text-white whitespace-pre-wrap leading-relaxed">
+              なお、この試合の審判員は、
+              <br />
+              球審：{umpires[0] ? renderFurigana(umpires[0].name, umpires[0].furigana) : "（未設定）"}、
+              {isTwoUmpires ? (
+                <>
+                  塁審：{umpires[1] ? renderFurigana(umpires[1].name, umpires[1].furigana) : "（未設定）"}。
+                  <br />以上、二氏でございます。
+                </>
+              ) : (
+                <>
+                  <br />塁審は、一塁：{umpires[1] ? renderFurigana(umpires[1].name, umpires[1].furigana) : "（未設定）"}、
+                  二塁：{umpires[2] ? renderFurigana(umpires[2].name, umpires[2].furigana) : "（未設定）"}、
+                  三塁：{umpires[3] ? renderFurigana(umpires[3].name, umpires[3].furigana) : "（未設定）"}。
+                  <br />以上、四氏でございます。
+                </>
+              )}
+            </p>
+          )}
+
+          {/* 操作ボタン */}
+          <div className="grid grid-cols-2 gap-3 pt-1">
+            <button
+              onClick={handleSpeak}
+              disabled={isSpeakingRef.current || speaking}
+              className="w-full px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-base font-semibold shadow-md disabled:opacity-60"
+            >
+              <span className="inline-flex items-center gap-2"><IconMegaphone /> 読み上げ</span>
+            </button>
+            <button
+              onPointerDown={handleStop}             // ★押した瞬間に停止
+              onClick={handleStop}                   // （保険で残してOK／二重でも問題なし）
+              className="w-full px-4 py-2 rounded-xl bg-gray-600 hover:bg-gray-700 active:scale-95 text-white text-base font-semibold shadow-md"
+            >
+              停止
+            </button>
+
+          </div>
+
+        </section>
+
+
+
+        {/* 戻るボタン（操作ボタンの下に横幅いっぱいで配置） */}
+        {!embedded && <div className="pt-2">
+          <button
+            onClick={() => onNavigate(isBoys ? "boysPreGameAnnouncement" : "announcement")}
+            className="w-full px-6 py-4 rounded-2xl bg-white/90 hover:bg-white text-gray-900 text-lg font-semibold shadow-lg active:scale-95"
+          >
+            ← 戻る
+          </button>
+        </div>}
+
+
+      </main>
+    </div>
+  );
+};
+
+export default SeniorStartingLineup;

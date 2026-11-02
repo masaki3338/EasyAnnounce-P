@@ -1,3 +1,5 @@
+import {getLeagueMode} from "./lib/leagueSettings";
+import CustomPreGameRun from "./CustomPreGameRun";
 import React, { useEffect, useState } from "react";
 import localForage from "localforage";
 
@@ -185,6 +187,11 @@ const disabledCard =
 
 
 const PreGameAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
+  if (getLeagueMode() === "custom") return <CustomPreGameRun onNavigate={onNavigate as (s: import("./App").ScreenType)=>void} onBack={onBack}/>;
+  return <LegacyPreGameAnnouncement onNavigate={onNavigate} onBack={onBack}/>;
+};
+
+const LegacyPreGameAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
   // 先攻/後攻を文字で統一
   const [attackLabel, setAttackLabel] = useState<"先攻" | "後攻">("先攻");
   const [showHelp, setShowHelp] = useState(false);

@@ -44,6 +44,26 @@ const EMPTY_TEAM: Team = {
   players: [],
 };
 
+// 登録・読み上げ練習用の架空選手です。実在チームの名簿ではありません。
+const TOKYO_DODGERS_SAMPLE: Team = {
+  name: "東京ドジャース",
+  furigana: "とうきょうどじゃーす",
+  players: [
+    { id: 1, lastName: "山田", firstName: "太郎", lastNameKana: "やまだ", firstNameKana: "たろう", number: "1", isFemale: false },
+    { id: 2, lastName: "佐藤", firstName: "翔", lastNameKana: "さとう", firstNameKana: "しょう", number: "2", isFemale: false },
+    { id: 3, lastName: "鈴木", firstName: "大輝", lastNameKana: "すずき", firstNameKana: "だいき", number: "3", isFemale: false },
+    { id: 4, lastName: "高橋", firstName: "悠斗", lastNameKana: "たかはし", firstNameKana: "ゆうと", number: "4", isFemale: false },
+    { id: 5, lastName: "田中", firstName: "蓮", lastNameKana: "たなか", firstNameKana: "れん", number: "5", isFemale: false },
+    { id: 6, lastName: "伊藤", firstName: "陽太", lastNameKana: "いとう", firstNameKana: "ようた", number: "6", isFemale: false },
+    { id: 7, lastName: "渡辺", firstName: "陸", lastNameKana: "わたなべ", firstNameKana: "りく", number: "7", isFemale: false },
+    { id: 8, lastName: "小林", firstName: "蒼", lastNameKana: "こばやし", firstNameKana: "あおい", number: "8", isFemale: false },
+    { id: 9, lastName: "加藤", firstName: "颯真", lastNameKana: "かとう", firstNameKana: "そうま", number: "9", isFemale: false },
+    { id: 10, lastName: "吉田", firstName: "健太", lastNameKana: "よしだ", firstNameKana: "けんた", number: "10", isFemale: false },
+    { id: 11, lastName: "中村", firstName: "優", lastNameKana: "なかむら", firstNameKana: "ゆう", number: "11", isFemale: false },
+    { id: 12, lastName: "松本", firstName: "大和", lastNameKana: "まつもと", firstNameKana: "やまと", number: "12", isFemale: false }
+  ],
+};
+
 type QrLineupData = {
   assignments: Record<string, number | null>;
   battingOrder: Array<{ id: number; reason: "スタメン" }>;
@@ -153,6 +173,7 @@ const TeamRegister = () => {
   const [showTeamMenu, setShowTeamMenu] = useState(false);
 
   const [showDeleteTeamConfirm, setShowDeleteTeamConfirm] = useState(false);
+  const [showSampleConfirm, setShowSampleConfirm] = useState(false);
   const [showSwitchTeamConfirm, setShowSwitchTeamConfirm] = useState(false);
   const [showSwitchTeamComplete, setShowSwitchTeamComplete] = useState(false);
   const [pendingSwitchTargetId, setPendingSwitchTargetId] = useState<string | null>(null);
@@ -258,6 +279,55 @@ const clearContinuationGameCache = async () => {
 
   await Promise.all(keys.map((key) => localForage.removeItem(key)));
 };
+
+  // 既存の登録を上書きせず、毎回新しいサンプル登録として追加します。
+  const loadTokyoDodgersSample = async () => {
+    try {
+      const now = Date.now();
+      const existingNames = teamStore.teams.map((folder) => folder.listName.trim());
+      const baseName = "東京ドジャース（サンプル）";
+      let listName = baseName;
+      let suffix = 2;
+      while (existingNames.includes(listName)) {
+        listName = `${baseName} (${suffix++})`;
+      }
+      const sampleTeam: Team = {
+        ...TOKYO_DODGERS_SAMPLE,
+        players: TOKYO_DODGERS_SAMPLE.players.map((player, index) => ({
+          ...player,
+          id: now + index + 1,
+        })),
+      };
+      const newFolder: TeamFolder = {
+        id: `team_${now}`,
+        listName,
+        team: sampleTeam,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const nextStore: TeamRegisterStore = {
+        selectedTeamId: newFolder.id,
+        teams: [...teamStore.teams, newFolder],
+      };
+      await clearContinuationGameCache();
+      await localForage.setItem(TEAM_STORE_KEY, nextStore);
+      await localForage.setItem("team", sampleTeam);
+      setTeamStore(nextStore);
+      setTeam(sampleTeam);
+      setTeamListName(listName);
+      setEditingPlayer({});
+      snapshotRef.current = makeSnapshot(sampleTeam, {}, listName);
+      setIsDirty(false);
+      setShowTeamMenu(false);
+      setShowSampleConfirm(false);
+      setRestoreMessage(`✅ 「${listName}」を読み込みました（架空の選手12名）。`);
+    } catch (error) {
+      console.error("sample import error", error);
+      setShowSampleConfirm(false);
+      setFormError("サンプルの読み込みに失敗しました。もう一度お試しください。");
+      setShowFormErrorModal(true);
+    }
+  };
 
   const createNewFolder = async () => {
     await clearContinuationGameCache();
@@ -1757,7 +1827,15 @@ const saveTeam = async () => {
       </label>
     </div>
 
- {restoreMessage && (
+     <button
+      type="button"
+      onClick={() => setShowSampleConfirm(true)}
+      className="mb-3 w-full rounded-xl bg-amber-600 px-4 py-3 text-sm font-bold text-white shadow hover:bg-amber-700 active:scale-95"
+    >
+      🧢 サンプル読み込み（東京ドジャース）
+    </button>
+
+{restoreMessage && (
    <div className="text-sm text-center mb-4">
      <span className="inline-block px-3 py-2 rounded-xl bg-white/10 border border-white/10">
        {restoreMessage}
@@ -2218,6 +2296,11 @@ const saveTeam = async () => {
                   </div>
 
                   <div>
+                    <div className="font-bold text-slate-900">【サンプル読み込み】</div>
+                    <p className="mt-1">東京ドジャース（サンプル）と架空の選手12名を新しい登録として追加します。既存の登録は上書きされません。</p>
+                  </div>
+
+                  <div>
                     <div className="font-bold text-slate-900">【バックアップ】</div>
                     <p className="mt-1">
                       今開いている登録だけをバックアップして保存できます。
@@ -2392,6 +2475,24 @@ const saveTeam = async () => {
             YES
           </button>
         </div>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* サンプル読み込み確認 */}
+{showSampleConfirm && (
+  <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 px-4" role="dialog" aria-modal="true">
+    <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white text-gray-900 shadow-2xl">
+      <div className="bg-amber-600 px-4 py-3 text-center text-lg font-bold text-white">サンプル読み込み</div>
+      <div className="px-5 py-5 text-center text-sm leading-7">
+        <p className="font-bold">「東京ドジャース（サンプル）」を登録しますか？</p>
+        <p>架空の選手12名（ふりがな・背番号付き）が登録されます。</p>
+        <p className="mt-2 text-xs text-gray-600">既存の登録は上書きしません。現在の未保存の編集内容は保存されません。進行中の試合情報・スタメンは初期化されます。</p>
+      </div>
+      <div className="grid grid-cols-2 gap-3 px-5 pb-5">
+        <button type="button" onClick={() => setShowSampleConfirm(false)} className="rounded-xl bg-gray-400 py-3 font-bold text-white">キャンセル</button>
+        <button type="button" onClick={loadTokyoDodgersSample} className="rounded-xl bg-amber-600 py-3 font-bold text-white">読み込む</button>
       </div>
     </div>
   </div>

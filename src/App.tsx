@@ -1,8 +1,11 @@
+import CustomWeatherAnnounce from './screens/CustomWeatherAnnounce';
+import CustomInGameMemo from "./components/CustomInGameMemo";
 import React, { useState, useEffect, useRef } from "react";
 import localForage from "localforage";
 import Gather from "./Gather";
 import StartGreeting from "./StartGreeting";  // 追加
 import SeatIntroduction from "./SeatIntroduction";
+import CustomPreGameRun from "./CustomPreGameRun";
 
 import { DndProvider } from 'react-dnd';
 import { TouchBackend } from 'react-dnd-touch-backend';
@@ -14,6 +17,7 @@ import { speak, speakJoinedTTS, stop, prefetchTTS, prewarmTTS } from "./lib/tts"
 import AnnouncementHistoryModal from "./components/AnnouncementHistoryModal";
 import { addAnnouncementHistory } from "./lib/announcementHistory";
 
+import { getCustomManualPdf } from "./lib/customManualPdf";
 import ManualViewer from "./ManualViewer"; // ← 追加
 const manualPdfURL = "/manual.pdf#zoom=page-fit"; // ページ全体にフィット
 const boysmanualPdfURL = "/Boysmanual.pdf#view=FitH"; // ページ全体にフィット
@@ -29,8 +33,11 @@ import Warmup from "./Warmup";
 import SheetKnock from "./SheetKnock";
 import AnnounceStartingLineup from "./AnnounceStartingLineup";
 import OffenseScreen from "./OffenseScreen";
+import SeniorOffenseScreen from "./SeniorOffenseScreen";
 import DefenseScreen from "./DefenseScreen";
+import SeniorDefenseScreen from "./SeniorDefenseScreen";
 import OnePersonAnnounceScreen from "./OnePersonAnnounceScreen";
+import SeniorOnePersonAnnounceScreen from "./SeniorOnePersonAnnounceScreen";
 import DefenseChange from "./DefenseChange";
 import OperationSettings from "./screens/OperationSettings";
 import PitchLimit from "./screens/PitchLimit";
@@ -42,12 +49,25 @@ import Tutorial from "./screens/Tutorial";
 import VersionInfo from "./screens/VersionInfo";
 import AnnounceMindset from "./AnnounceMindset";
 import LeagueSettings from "./screens/LeagueSettings";
+import CustomInGameSettings from "./screens/CustomInGameSettings";
+import CustomPreGameSettings from "./screens/CustomPreGameSettings";
+import { getActiveCustomProfileId,getCustomProfiles } from "./lib/customProfiles";
 import BoysPreGameAnnouncement from "./boys-pre-game-announcement";
 import BoysSheetKnock from "./BoysSheetKnock";
+import SeniorPreGameAnnouncement from "./SeniorPreGameAnnouncement";
+import SeniorWarmup from "./SeniorWarmup";
+import SeniorSheetKnock from "./SeniorSheetKnock";
+import SeniorStartingLineup from "./SeniorStartingLineup";
+import SeniorKnockLineup from "./SeniorKnockLineup";
+import SeniorSeatIntroduction from "./SeniorSeatIntroduction";
+import SeniorSimpleAnnouncements from "./SeniorSimpleAnnouncements";
 import StartTimeAnnouncement from "./StartTimeAnnouncement";
 import AnnouncementModeScreen from "./screens/AnnouncementMode";
 import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 import { getAnnouncementMode } from "./lib/announcementMode";
+import { renderSeniorEndTemplate } from "./SeniorEndGameTemplates";
+import { getCustomOtherText } from "./lib/customOtherRuntime";
+import { customItemEnabled, loadCustomInGameTexts } from "./lib/customInGameTemplates";
 
 // バージョン番号を定数で管理
 type AnnouncementTimingSettings = {
@@ -68,7 +88,7 @@ const DEFAULT_ANNOUNCEMENT_TIMING_SETTINGS: AnnouncementTimingSettings = {
   groundMaintenanceInning: 5,
 };
 
-const APP_VERSION = "1.06"
+const APP_VERSION = "1.07"
 
 // iOS 判定を共通で使えるようにグローバル定数として定義
 const isIOS = (() => {
@@ -109,11 +129,24 @@ export type ScreenType =
   | "seatIntroduction"
   | "boysPreGameAnnouncement"
   | "boysSheetKnock"
+  | "seniorPreGameAnnouncement"
+  | "seniorWarmup"
+  | "seniorStartTime"
+  | "seniorMemberExchange"
+  | "seniorSheetKnock"
+  | "seniorStartingLineup"
+  | "seniorKnockLineup"
+  | "seniorGroundMaintenance"
+  | "seniorStartGreeting"
+  | "seniorSeatIntroduction"
+  | "seniorPending"
   | "startTimeAnnouncement"
   | "operationSettings"
   | "pitchLimit"
   | "tiebreakRule"
   | "league-settings"
+  | "custom-in-game-settings"
+  | "custom-pre-game-settings"
   | "contact"
   | "announcement-mode"
   | "tts-settings"
@@ -312,6 +345,12 @@ const App = () => {
   const [showIOSCloseGuide, setShowIOSCloseGuide] = useState(false);
   const [leagueMode, setLeagueMode] = useState<LeagueMode>("pony");
   const isBoys = leagueMode === "boys";
+  // リトルシニア専用の試合中画面。ポニー・ボーイズは既存の画面をそのまま使う。
+  // custom は専用試合画面が完成するまで従来の通常画面を利用する。
+  // 現段階では試合中の文章編集内容を試合画面へ反映しない。
+  const ActiveOffenseScreen = leagueMode === "senior" ? SeniorOffenseScreen : OffenseScreen;
+  const ActiveOnePersonAnnounceScreen = leagueMode === "senior" ? SeniorOnePersonAnnounceScreen : OnePersonAnnounceScreen;
+  const [seniorPendingTitle, setSeniorPendingTitle] = useState("");
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showOffenseHelpModal, setShowOffenseHelpModal] = useState(false);
   const fromGameRef = useRef(false);
@@ -320,7 +359,90 @@ const App = () => {
   const [showMenuHelpModal, setShowMenuHelpModal] = useState(false);
 
   const [endGameAnnouncement, setEndGameAnnouncement] = useState("");       // 表示用
-  const [endGameAnnouncementSpeak, setEndGameAnnouncementSpeak] = useState(""); // 読み上げ用
+  const [endGameAnnouncementSpeak, setEndGameAnnouncementSpeak] = useState("");
+  const [customGameEndPart, setCustomGameEndPart] = useState<"main" | "draw">("main"); // 読み上げ用
+  // カスタマイズのその他アナウンス。試合終了画面はApp内で共通管理。
+  const getCustomGameEndAnnouncement = async (endedAt: Date): Promise<string | null> => {
+    if (getLeagueMode() !== 'custom') return null;
+    const [match, scoreBoard, team] = await Promise.all([
+      localForage.getItem<any>('matchInfo'),
+      localForage.getItem<Record<string,{top?:number;bottom?:number}>>('scores'),
+      localForage.getItem<any>('team'),
+    ]);
+    const rows = Object.values(scoreBoard || {});
+    const top = rows.reduce((n,r)=>n+(Number(r?.top)||0),0);
+    const bottom = rows.reduce((n,r)=>n+(Number(r?.bottom)||0),0);
+    const own = String(team?.name || match?.teamName || '自チーム');
+    const opponent = String(match?.opponentTeam || '対戦チーム');
+    const home = Boolean(match?.isHome);
+    let topName = home ? opponent : own;
+    let bottomName = home ? own : opponent;
+    if(match?.announcementMode === 'single') {
+      const {firstTeam,thirdTeam} = await getOnePersonTeamsFromMatchInfo();
+      const firstIsTop = match?.battingFirstSide === 'first';
+      topName = String((firstIsTop ? firstTeam : thirdTeam)?.name || topName);
+      bottomName = String((firstIsTop ? thirdTeam : firstTeam)?.name || bottomName);
+    }
+    const time = `${endedAt.getHours()}時${String(endedAt.getMinutes()).padStart(2,'0')}分`;
+    const endSettings = loadCustomInGameTexts(getActiveCustomProfileId()).gameEnd;
+    setCustomGameEndPart(top === bottom ? "draw" : "main");
+    const higherFirst = endSettings?.higherScoreFirst === 'true' && top !== bottom;
+    const scoreTop = higherFirst ? Math.max(top,bottom) : top;
+    const scoreBottom = higherFirst ? Math.min(top,bottom) : bottom;
+    return getCustomOtherText('gameEnd', top === bottom ? 'draw' : 'main', {
+      '先攻チーム名':topName,'後攻チーム名':bottomName,'先攻得点':String(scoreTop),
+      '後攻得点':String(scoreBottom),'勝利チーム名':top===bottom?'':top>bottom?topName:bottomName,
+      '終了時刻':time,
+    });
+  };
+  const getCustomTiebreakAnnouncement = async (): Promise<string | null> => {
+    if (getLeagueMode() !== 'custom') return null;
+    const [match,cfg,team,order,lastIndex] = await Promise.all([
+      localForage.getItem<any>('matchInfo'),localForage.getItem<{outs?:string;bases?:string}>('tiebreakConfig'),
+      localForage.getItem<any>('team'),localForage.getItem<any[]>('battingOrder'),localForage.getItem<number>('lastBatterIndex')
+    ]);
+    const now=Math.max(1,Number(match?.inning)||1);
+    const bases=String(cfg?.bases||'2,3塁').replace(/[，、]/g,',');
+    const active=bases==='満塁'?[1,2,3]:bases.replace(/塁/g,'').split(',').map(Number);
+    // 現在攻撃中のチーム名を、表裏と先攻・後攻の登録情報から取得する。
+    const ownName = String(team?.name || match?.teamName || '自チーム');
+    const opponentName = String(match?.opponentTeam || '対戦チーム');
+    const isHome = Boolean(match?.isHome);
+    let topTeamName = isHome ? opponentName : ownName;
+    let bottomTeamName = isHome ? ownName : opponentName;
+    if (match?.announcementMode === 'single') {
+      const {firstTeam, thirdTeam} = await getOnePersonTeamsFromMatchInfo();
+      const firstIsTop = match?.battingFirstSide === 'first';
+      topTeamName = String((firstIsTop ? firstTeam : thirdTeam)?.name || topTeamName);
+      bottomTeamName = String((firstIsTop ? thirdTeam : firstTeam)?.name || bottomTeamName);
+    }
+    const battingTeamName = match?.isTop === false ? bottomTeamName : topTeamName;
+    const safe=(v:unknown)=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const vars:Record<string,string>={'回（現在）':String(now),'回（前の回）':String(Math.max(0,now-1)),
+      '回':String(now),'アウト数':String(cfg?.outs||'ワンナウト'),'走者情報':String(cfg?.bases||'2,3塁'),
+      'チーム名':safe(battingTeamName)};
+    const lineup=Array.isArray(order)?order:[];
+    const players=Array.isArray(team?.players)?team.players:[];
+    const idx=Number.isInteger(lastIndex)?Number(lastIndex):0;
+    for(const [n,label] of [[1,'一人前'],[2,'二人前'],[3,'三人前']] as const){
+      const entry=lineup.length?lineup[((idx-n)%lineup.length+lineup.length)%lineup.length]:null;
+      const id=typeof entry==='number'?entry:entry?.id;
+      const player=players.find((p:any)=>String(p?.id)===String(id));
+      vars[`打者の${label}の選手`]=player?`<ruby>${safe(player.lastName)}<rt>${safe(player.lastNameKana||'')}</rt></ruby>`:'（選手未登録）';
+      vars[`打者の${label}の選手敬称`]=player?.isFemale?'さん':'くん';
+      vars[`打者の${label}の選手背番号`]=String(player?.number??'');
+    }
+    const {substituteTokens}=await import('./lib/customInGameTemplates');
+    let source=loadCustomInGameTexts(getActiveCustomProfileId()).tieBreak?.main;
+    if(typeof source!=='string')return null;
+    // 該当塁がない場合、ランナー紹介の句全体を削除する。
+    for(const [base,label] of [[3,'三人前'],[2,'二人前'],[1,'一人前']] as const){
+      if(active.includes(base))continue;
+      const re=new RegExp(`(?:[123３２１一二三]塁ランナー)[^、\\n。]*?【打者の${label}の選手】[^、\\n。]*(?:[、，]\\s*|(?=[。\\n]|$))`,'g');
+      source=source.replace(re,'');
+    }
+    return substituteTokens(source,vars);
+  };
 
   // ✅ 試合終了時刻：
   // 「〇時〇分です」を1本で生成するとイントネーションが不自然になりやすいため、
@@ -361,18 +483,236 @@ const App = () => {
       await prefetchTTS(part);
     }
   };
+  // リトルシニアの試合終了は、通常・守備・1人モード共通でカスタマイズ文を使う。
+  const openSeniorEndGame = async () => {
+    const [match, savedScores, registeredTeam] = await Promise.all([
+      localForage.getItem<any>("matchInfo"),
+      localForage.getItem<Record<string, { top?: number; bottom?: number }>>("scores"),
+      localForage.getItem<any>("team"),
+    ]);
+    const scoreRows = Object.values(savedScores || {});
+    const topScore = scoreRows.reduce((sum, row) => sum + (Number(row?.top) || 0), 0);
+    const bottomScore = scoreRows.reduce((sum, row) => sum + (Number(row?.bottom) || 0), 0);
+    let topTeamName = "先攻チーム";
+    let bottomTeamName = "後攻チーム";
+    let topTeamReading = topTeamName;
+    let bottomTeamReading = bottomTeamName;
+
+    if (match?.announcementMode === "single") {
+      const { firstTeam, thirdTeam } = await getOnePersonTeamsFromMatchInfo();
+      const topTeam = match?.battingFirstSide === "first" ? firstTeam : thirdTeam;
+      const bottomTeam = match?.battingFirstSide === "first" ? thirdTeam : firstTeam;
+      topTeamName = topTeam?.name || topTeamName;
+      bottomTeamName = bottomTeam?.name || bottomTeamName;
+      topTeamReading = topTeam?.furigana || topTeamName;
+      bottomTeamReading = bottomTeam?.furigana || bottomTeamName;
+    } else {
+      const ownName = String(registeredTeam?.name || match?.teamName || "自チーム");
+      const ownReading = String(registeredTeam?.furigana || registeredTeam?.nameKana || registeredTeam?.kana || registeredTeam?.reading || ownName);
+      const opponentName = String(match?.opponentTeam || match?.opponentTeamName || "対戦チーム");
+      const opponentReading = String(match?.opponentTeamFurigana || opponentName);
+      const home = match?.isHome === true;
+      topTeamName = home ? opponentName : ownName;
+      bottomTeamName = home ? ownName : opponentName;
+      topTeamReading = home ? opponentReading : ownReading;
+      bottomTeamReading = home ? ownReading : opponentReading;
+    }
+    const draw = topScore === bottomScore;
+    const winningTeam = topScore > bottomScore ? topTeamName : bottomTeamName;
+    const winningTeamReading = topScore > bottomScore ? topTeamReading : bottomTeamReading;
+    const values = { topScore, bottomScore, winningTeam, winningTeamReading };
+    const kind = draw ? "draw" : "win";
+    const display = renderSeniorEndTemplate(kind, values);
+    const speech = renderSeniorEndTemplate(kind, values, true);
+    setEndGameAnnouncement(display);
+    setEndGameAnnouncementSpeak(speech);
+    setShowEndGamePopup(true);
+  };
+
   const [showEndGameSimpleModal, setShowEndGameSimpleModal] = useState(false);
+  // カスタマイズモードは試合結果に関係なく登録した試合終了文を使用できる。
+  const openCustomEndGameIfAvailable = async (): Promise<boolean> => {
+    const custom = await getCustomGameEndAnnouncement(new Date());
+    if(custom===null)return false;
+    setEndGameAnnouncement(custom);
+    setEndGameAnnouncementSpeak(custom);
+    void prefetchEndGameAnnouncement(custom);
+    setShowEndGamePopup(true);
+    return true;
+  };
+
   const [showHeatPopup, setShowHeatPopup] = useState(false);
   // 🔒 熱中症アナウンス 連打ロック
   const [heatSpeaking, setHeatSpeaking] = useState(false);
   const heatSpeakingRef = useRef(false);
-  const [heatMessage] = useState("本日は気温が高く、熱中症が心配されますので、水分をこまめにとり、体調に気を付けてください。");
+  const heatMessage = getCustomOtherText("heat", "notice") ?? "本日は気温が高く、熱中症が心配されますので、水分をこまめにとり、体調に気を付けてください。";
   const [otherOption, setOtherOption] = useState(""); // その他選択状態
+  const [customWeatherVars,setCustomWeatherVars]=useState<Record<string,string>|null>(null);
+  const [customExtraNotice,setCustomExtraNotice]=useState<{id:string;label:string;message:string;memo:string}|null>(null);
+  const customExtraItems=()=>Object.entries(loadCustomInGameTexts(getActiveCustomProfileId())).filter(([id,v])=>id.startsWith('userOther_')&&v?.label&&v.enabled!=='false');
+  const getCustomWeatherVars=async()=>{
+    const [match,team]=await Promise.all([localForage.getItem<any>('matchInfo'),localForage.getItem<any>('team')]);
+    const own=String(team?.name||match?.teamName||'');
+    const opponent=String(match?.opponentTeam||'');
+    let top=match?.isHome?opponent:own;
+    let bottom=match?.isHome?own:opponent;
+    if(match?.announcementMode==='single'){
+      const {firstTeam,thirdTeam}=await getOnePersonTeamsFromMatchInfo();
+      const firstTop=match?.battingFirstSide==='first';
+      top=String((firstTop?firstTeam:thirdTeam)?.name||top);
+      bottom=String((firstTop?thirdTeam:firstTeam)?.name||bottom);
+    }
+    return {'先攻チーム名':top,'後攻チーム名':bottom,'大会名':String(match?.tournamentName||''),'試合番号':String(match?.matchNumber??'')};
+  };
+  const openCustomOther=async(value:string)=>{
+    if(getLeagueMode()!=='custom')return false;
+    if(value==='customRain'){
+      setCustomWeatherVars(await getCustomWeatherVars());return true;
+    }
+    if(value.startsWith('userOther_')){
+      const data=loadCustomInGameTexts(getActiveCustomProfileId())[value];
+      if(!data||data.enabled==='false'||!data.label)return false;
+      const vars=await getCustomWeatherVars();
+      const {substituteTokens}=await import('./lib/customInGameTemplates');
+      setCustomExtraNotice({id:value,label:data.label,message:substituteTokens(data.main||'',vars),memo:substituteTokens(data['memo:main']||'',vars)});
+      return true;
+    }
+    return false;
+  };
+
+  const customOtherVisible = (id: string) => getLeagueMode() !== "custom" || customItemEnabled(loadCustomInGameTexts(getActiveCustomProfileId()), id);
 
   const [intentionalWalkTrigger, setIntentionalWalkTrigger] = useState(0);
+  // リトルシニア専用「その他」アナウンス
+  const [seniorOtherNotice, setSeniorOtherNotice] = useState<{
+    title: string; message: string; kind?: "resume"; html?: string; speech?: string;
+  } | null>(null);
+  const [seniorTreatmentMinutes, setSeniorTreatmentMinutes] = useState("0");
+  const SENIOR_TREATMENT_START_KEY = "senior:treatment:startedAt";
+
+  // カスタマイズ：試合中断・再開を一画面で管理。閉じても経過時間を保持する。
+  const CUSTOM_PAUSE_KEY = 'easyannounce:custom:injuryTimer:v1';
+  type CustomPauseState = { elapsedMs:number; startedAt:number|null };
+  const readCustomPause = ():CustomPauseState => {
+    try { const v=JSON.parse(localStorage.getItem(CUSTOM_PAUSE_KEY)||'null');
+      return {elapsedMs:Math.max(0,Number(v?.elapsedMs)||0),startedAt:typeof v?.startedAt==='number'?v.startedAt:null};
+    } catch { return {elapsedMs:0,startedAt:null}; }
+  };
+  const [showCustomPauseModal,setShowCustomPauseModal]=useState(false);
+  const [customPauseState,setCustomPauseState]=useState<CustomPauseState>(readCustomPause);
+  const [customPauseNow,setCustomPauseNow]=useState(Date.now());
+  const [customPausePart,setCustomPausePart]=useState<'pause'|'resume'>('pause');
+  const customPauseElapsed=Math.max(0,customPauseState.elapsedMs+(customPauseState.startedAt===null?0:customPauseNow-customPauseState.startedAt));
+  const customPauseMinutes=Math.floor((customPauseElapsed+30000)/60000);
+  const customPauseClock=`${String(Math.floor(customPauseElapsed/3600000)).padStart(2,'0')}:${String(Math.floor(customPauseElapsed/60000)%60).padStart(2,'0')}:${String(Math.floor(customPauseElapsed/1000)%60).padStart(2,'0')}`;
+  const updateCustomPause=(next:CustomPauseState)=>{setCustomPauseState(next);localStorage.setItem(CUSTOM_PAUSE_KEY,JSON.stringify(next));};
+  useEffect(()=>{
+    if(!showCustomPauseModal || customPauseState.startedAt===null)return;
+    const id=window.setInterval(()=>setCustomPauseNow(Date.now()),250);
+    return ()=>window.clearInterval(id);
+  },[showCustomPauseModal,customPauseState.startedAt]);
+  const openCustomPause=()=>{setCustomPauseState(readCustomPause());setCustomPauseNow(Date.now());setCustomPausePart('pause');setShowCustomPauseModal(true);};
+  const customPauseStart=()=>{if(customPauseState.startedAt!==null)return;const now=Date.now();setCustomPauseNow(now);updateCustomPause({...customPauseState,startedAt:now});};
+  const customPauseStop=()=>{if(customPauseState.startedAt===null)return;const now=Date.now();updateCustomPause({elapsedMs:customPauseState.elapsedMs+Math.max(0,now-customPauseState.startedAt),startedAt:null});setCustomPauseNow(now);setCustomPausePart('resume');};
+  const customPauseClear=()=>{updateCustomPause({elapsedMs:0,startedAt:null});setCustomPauseNow(Date.now());setCustomPausePart('pause');};
+  const customPauseText=()=>{
+    // 【中断時間】はタイマーの30秒四捨五入後の分数を参照する（単位「分」はテンプレート側に記載）。
+    const template=getCustomOtherText('injuryPause',customPausePart,{'中断時間':String(customPauseMinutes)});
+    return template ?? (customPausePart==='pause'?'選手の治療のため、試合を一時中断いたします。':`大変お待たせいたしました。\nただいまより試合を再開いたします。\nなお、中断時間は${customPauseMinutes}分です。`);
+  };
+
+
+  const openSeniorTreatmentPause = async () => {
+    await localForage.setItem(SENIOR_TREATMENT_START_KEY, Date.now());
+    const message = getCustomOtherText("injuryPause", "pause") ?? "選手負傷による治療のため、しばらくお待ち下さい。";
+    setSeniorOtherNotice({ title: "試合の中断（治療）", message });
+    void prefetchTTS(message);
+  };
+  const openSeniorTreatmentResume = async () => {
+    const raw = await localForage.getItem<number>(SENIOR_TREATMENT_START_KEY);
+    const minutes = typeof raw === "number" && Number.isFinite(raw)
+      ? Math.max(0, Math.round((Date.now() - raw) / 60000)) : 0;
+    setSeniorTreatmentMinutes(String(minutes));
+    const message = getCustomOtherText("injuryPause", "resume") ?? `大変お待たせいたしました。\nただ今より試合を再開いたします。\nなお、中断時間は${minutes}分です。`;
+    setSeniorOtherNotice({ title: "試合再開（治療）", message, kind: "resume" });
+    void prefetchTTS(message);
+  };
+  const handleSeniorTreatmentMinutes = (value: string) => {
+    setSeniorTreatmentMinutes(value);
+    const minutes = Math.max(0, Math.min(9999, Number(value) || 0));
+    setSeniorOtherNotice(prev => prev?.kind === "resume" ? {
+      ...prev,
+      message: getCustomOtherText("injuryPause", "resume") ?? `大変お待たせいたしました。\nただ今より試合を再開いたします。\nなお、中断時間は${minutes}分です。`,
+    } : prev);
+  };
+  const openSeniorIntentionalWalk = async () => {
+    const [team, order, lastIndex] = await Promise.all([
+      localForage.getItem<any>("team"),
+      localForage.getItem<Array<{id:number}>>("battingOrder"),
+      localForage.getItem<number>("lastBatterIndex"),
+    ]);
+    const lineup = Array.isArray(order) ? order : [];
+    const ix = Number.isInteger(lastIndex) ? Number(lastIndex) : 0;
+    const entry = lineup[ix];
+    const player = Array.isArray(team?.players)
+      ? team.players.find((p: any) => Number(p?.id) === Number(entry?.id)) : null;
+    if (!player) {
+      setSeniorOtherNotice({title:"申告敬遠",message:"現在の打者を取得できません。打者を選択してからお試しください。"});
+      return;
+    }
+    const lastName = String(player?.lastName ?? "");
+    const kana = String(player?.lastNameKana ?? "").trim();
+    const honor = player?.isFemale ? "さん" : "くん";
+    // HTMLルビと読み上げ用テキストは別々に保持する。
+    const safe = (v: string) => v.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    const ruby = `<ruby>${safe(lastName)}<rt>${safe(kana)}</rt></ruby>`;
+    const suffix = `${honor}は、申告敬遠により一塁へ進みます。`;
+    const message = `バッター${lastName}${suffix}`;
+    const spoken = `バッター${kana || lastName}${suffix}`;
+    setSeniorOtherNotice({title:"申告敬遠",message, html:`バッター${ruby}${suffix}`, speech:spoken});
+    void prefetchTTS(spoken);
+  };
+  const openSeniorTiebreak = async () => {
+    const [cfg, match, savedScores] = await Promise.all([
+      localForage.getItem<{ outs?: string; bases?: string }>("tiebreakConfig"),
+      localForage.getItem<any>("matchInfo"),
+      localForage.getItem<Record<string, { top?: number; bottom?: number }>>("scores"),
+    ]);
+    const scores = savedScores || {};
+    const currentInning = Math.max(1, Number(match?.inning) || 1);
+    const endedInning = Math.max(1, currentInning - 1);
+    const totalTop = Object.values(scores).reduce((sum, score) => sum + (Number(score?.top) || 0), 0);
+    const totalBottom = Object.values(scores).reduce((sum, score) => sum + (Number(score?.bottom) || 0), 0);
+    const outs = cfg?.outs === "ノーアウト" ? "0アウト" : cfg?.outs === "ツーアウト" ? "2アウト" : "1アウト";
+    const bases = cfg?.bases || "2,3塁";
+    const msg = `スタンドの皆様、両チームの皆様にお知らせ致します。\n${endedInning}回を終了し、${totalTop}対${totalBottom}の同点ですので大会規定により、\n${currentInning}回からの攻撃は、${outs}${bases}から行いますのでご了承ください。`;
+    setTiebreakMessage((await getCustomTiebreakAnnouncement()) ?? msg);
+    setShowTiebreakPopup(true);
+  };
+
   const [isContinueGame, setIsContinueGame] = useState(false);
 
   const [showManualPopup, setShowManualPopup] = useState(false);
+  // 開く瞬間に保存済みリーグを確認し、PDFを確定する（画面stateの更新遅れを回避）。
+  const [manualFileUrl, setManualFileUrl] = useState("/manual.pdf");
+  const customManualUrlRef = useRef<string|null>(null);
+  const [manualNotice,setManualNotice] = useState('');
+  const openLeagueManual = async () => {
+    const activeLeague = getLeagueMode();
+    if(activeLeague === 'custom'){
+      try {
+        const pdf=await getCustomManualPdf(getActiveCustomProfileId());
+        if(!pdf){setManualNotice('アナウンスマニュアルが登録されていません。試合中アナウンス設定の「その他」からPDFを登録してください。');return;}
+        if(customManualUrlRef.current)URL.revokeObjectURL(customManualUrlRef.current);
+        customManualUrlRef.current=URL.createObjectURL(pdf.blob);
+        setManualFileUrl(customManualUrlRef.current);
+        setShowManualPopup(true);
+      }catch{setManualNotice('登録済みPDFを開けませんでした。保存領域をご確認ください。');}
+      return;
+    }
+    setManualFileUrl(activeLeague === "senior" ? "/Senior-manual.pdf" : "/manual.pdf");
+    setShowManualPopup(true);
+  };
   const [showContinuationModal, setShowContinuationModal] = useState(false);
   const [showNoContinueModal, setShowNoContinueModal] = useState(false);
 
@@ -633,7 +973,7 @@ useEffect(() => {
 
 const handleSeatIntroductionBack = async () => {
   if (!fromGameRef.current) {
-    setScreen(isBoys ? "boysPreGameAnnouncement" : "announcement");
+    setScreen(leagueMode === "senior" ? "seniorPreGameAnnouncement" : isBoys ? "boysPreGameAnnouncement" : "announcement");
     return;
   }
 
@@ -863,7 +1203,7 @@ useEffect(() => {
   // タイブレークは設定内容で文言が変わるため、表示された瞬間に現在文を先読み。
   useEffect(() => {
     if (!showTiebreakPopup || !tiebreakMessage.trim()) return;
-    prefetchTextFast(tiebreakMessage.replace(/入ります。/g, "はいります。"));
+    prefetchTextFast(tiebreakMessage.replace(/<ruby>(.*?)<rt>(.*?)<\/rt><\/ruby>/g, (_m,_name,kana)=>kana).replace(/<[^>]*>/g, "").replace(/入ります。/g, "はいります。"));
   }, [showTiebreakPopup, tiebreakMessage]);
 
   // 熱中症は固定文だが、モーダル表示時にも最優先でキャッシュ確認する。
@@ -907,7 +1247,7 @@ const formatWaterBreakTime = (sec: number) => {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 };
 
-const waterBreakMessage = `ただいまから${waterBreakMinutes}分間のクーリングタイムを取ります。`;
+const waterBreakMessage = getCustomOtherText("water", "start", { "給水時間": String(waterBreakMinutes) }) ?? `ただいまから${waterBreakMinutes}分間のクーリングタイムを取ります。`;
 
 useEffect(() => {
   if (!showWaterBreakPopup) return;
@@ -1016,7 +1356,7 @@ useEffect(() => {
         window.clearInterval(timer);
         setWaterBreakRunning(false);
 
-        const msg = "クーリングタイム終了です。";
+        const msg = getCustomOtherText("water", "end") ?? "クーリングタイム終了です。";
         setWaterBreakNotice(msg);
         showCoolingNoticePopup(msg);
         speak(msg);
@@ -1120,7 +1460,7 @@ useEffect(() => {
         localStorage.getItem("tts:matcha:voice") ||
         localStorage.getItem("tts:matchaVoice") ||
         "taniho";
-      const speed = localStorage.getItem("tts:speedScale") || "1";
+      const speed = localStorage.getItem("tts:speedScale") || "1.1";
 
       const key = `full-v2::${voice}::${speed}::${fullStartGreeting}`;
       if (startGreetingPrefetchKeyRef.current === key) {
@@ -1375,7 +1715,7 @@ const handleBoysOnlyMenu = async (value: string) => {
     return true;
   }
   if (value === "boysmanual") {
-    setShowBoysManualPopup(true);
+    if (getLeagueMode() === "custom") void openLeagueManual(); else setShowBoysManualPopup(true);
   }
   return false;
 };
@@ -1762,7 +2102,14 @@ return (
             ← 試合開始画面に戻る
           </button>
 
-          {leagueMode === "boys" ? (
+          {leagueMode === "senior" ? (
+            <SeniorPreGameAnnouncement
+              onNavigate={(next) => {
+                setScreen(next);
+              }}
+              onBack={() => setScreen("startGame")}
+            />
+          ) : leagueMode === "boys" ? (
             <BoysPreGameAnnouncement
               onNavigate={async (next) => {
                 if (next === "seatIntroduction") {
@@ -1787,6 +2134,26 @@ return (
             />
           )}
         </>
+      )}
+
+      {screen === "seniorWarmup" && (
+        <SeniorWarmup onBack={() => setScreen("announcement")} />
+      )}
+
+      {(["seniorStartTime","seniorMemberExchange","seniorGroundMaintenance","seniorStartGreeting"] as const).map((page) => (
+        screen === page ? <SeniorSimpleAnnouncements key={page} page={page} onBack={() => setScreen("announcement")} /> : null
+      ))}
+      {screen === "seniorSheetKnock" && (
+        <SeniorSheetKnock onBack={() => setScreen("announcement")} />
+      )}
+      {screen === "seniorKnockLineup" && (
+        <SeniorKnockLineup onBack={() => setScreen("announcement")} />
+      )}
+      {screen === "seniorStartingLineup" && (
+        <SeniorStartingLineup leagueMode="pony" onNavigate={() => setScreen("announcement")} />
+      )}
+      {screen === "seniorSeatIntroduction" && (
+        <SeniorSeatIntroduction onNavigate={() => setScreen("announcement")} onBack={() => setScreen("announcement")} />
       )}
 
       {screen === "boysPreGameAnnouncement" && (
@@ -1876,7 +2243,7 @@ return (
           </button>
           <AnnounceStartingLineup
             onNavigate={setScreen}
-            leagueMode={leagueMode}
+            leagueMode={leagueMode === "senior" ? "pony" : leagueMode}
           />
         </>
       )}
@@ -1904,12 +2271,33 @@ return (
           <StartGreeting
             onBack={() => setScreen(isBoys ? "boysPreGameAnnouncement" : "announcement")}
             onNavigate={setScreen}
-            leagueMode={leagueMode}
+            leagueMode={leagueMode === "senior" ? "pony" : leagueMode}
           />
         </>
       )}
 
-      {screen === "seatIntroduction" && (
+      {screen === "seatIntroduction" && leagueMode === "custom" && fromGameRef.current && (
+        <CustomPreGameRun seatTopModal onNavigate={handleSeatIntroductionNavigate} onBack={async()=>{
+          const returnState=await localForage.getItem<any>("seatIntroReturnState");
+          if(returnState?.mode==="onePersonNextHalf") {
+            const mi=(await localForage.getItem<any>("matchInfo"))||{};
+            await localForage.setItem("matchInfo",{...mi,inning:Number(returnState.inning??1),isTop:Boolean(returnState.isTop??false),isDefense:true,announcementMode:"single"});
+            await localForage.removeItem("seatIntroReturnState");
+            setScreen("onePersonAnnounce");
+          } else {
+            // カスタマイズモード：先攻チームの1回表終了後のシート紹介は、
+            // モーダルを閉じたら攻撃画面へ戻らず、1回裏の守備画面へ進む。
+            const mi=(await localForage.getItem<any>("matchInfo"))||{};
+            await localForage.setItem("matchInfo",{...mi,inning:1,isTop:false,isDefense:true});
+            if (await isSingleAnnouncementMode()) {
+              setScreen("onePersonAnnounce");
+            } else {
+              openDefenseScreenWithSnapshot();
+            }
+          }
+        }}/>
+      )}
+      {screen === "seatIntroduction" && !(leagueMode === "custom" && fromGameRef.current) && (
         <>
           <button
             className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
@@ -1921,7 +2309,7 @@ return (
           <SeatIntroduction
             onNavigate={handleSeatIntroductionNavigate}
             onBack={handleSeatIntroductionBack}
-            leagueMode={leagueMode}
+            leagueMode={leagueMode === "senior" ? "pony" : leagueMode}
           />
         </>
       )}
@@ -1954,6 +2342,8 @@ return (
               value={otherOption}
               onChange={async (e) => {
                 const value = e.target.value;
+                if (await openCustomOther(value)) {setOtherOption("");return;}
+
 
                 if (value === "history") {
                   setShowAnnouncementHistory(true);
@@ -1962,6 +2352,11 @@ return (
                 }
 
                 if (value === "end") {
+                   if (leagueMode === "senior") {
+                     await openSeniorEndGame();
+                     setOtherOption("");
+                     return;
+                   }
                   console.group("[END] その他→試合終了");
 
                   const now = new Date();
@@ -2049,8 +2444,8 @@ return (
                       }
                     }
 
-                    setEndGameAnnouncement(displayAnnouncement);
-                    setEndGameAnnouncementSpeak(speakAnnouncement);
+                    setEndGameAnnouncement((await getCustomGameEndAnnouncement(new Date())) ?? displayAnnouncement);
+                    setEndGameAnnouncementSpeak((await getCustomGameEndAnnouncement(new Date())) ?? speakAnnouncement);
                      void prefetchEndGameAnnouncement(speakAnnouncement);
                     setShowEndGamePopup(true);
                   } else if (winnerName) {
@@ -2098,16 +2493,21 @@ return (
                       }
                     }
 
-                    setEndGameAnnouncement(displayAnnouncement);
-                    setEndGameAnnouncementSpeak(speakAnnouncement);
+                    setEndGameAnnouncement((await getCustomGameEndAnnouncement(new Date())) ?? displayAnnouncement);
+                    setEndGameAnnouncementSpeak((await getCustomGameEndAnnouncement(new Date())) ?? speakAnnouncement);
                      void prefetchEndGameAnnouncement(speakAnnouncement);
                     setShowEndGamePopup(true);
                   } else {
-                    setShowEndGameSimpleModal(true);
+                    if (!(await openCustomEndGameIfAvailable())) setShowEndGameSimpleModal(true);
                   }
 
                   console.groupEnd();
-                } else if (value === "tiebreak") {
+                 } else if (value === "tiebreak") {
+                   if (leagueMode === "senior") {
+                     await openSeniorTiebreak();
+                     setOtherOption("");
+                     return;
+                   }
                   const cfg = (await localForage.getItem("tiebreakConfig")) as
                     | { outs?: string; bases?: string }
                     | null;
@@ -2141,14 +2541,20 @@ return (
                       ? `ただいまより大会規定により、タイブレークをおこないます。\nタイブレークは${outs}、${bases}の状態からおこないます。`
                       : `この試合は、${prevInning}回終了して同点のため、大会規定により${outs}、${bases}からのタイブレークに入ります。`;
 
-                  setTiebreakMessage(msg);
+                  setTiebreakMessage((await getCustomTiebreakAnnouncement()) ?? msg);
                   setShowTiebreakPopup(true);
-                } else if (value === "continue") {
+                 } else if (leagueMode === "custom" && value === "customPause") {
+                   openCustomPause();
+                 } else if (leagueMode === "senior" && value === "treatmentPause") {
+                   await openSeniorTreatmentPause();
+                 } else if (leagueMode === "senior" && value === "treatmentResume") {
+                   await openSeniorTreatmentResume();
+                 } else if (value === "continue") {
                   setShowContinuationModal(true);
-                } else if (value === "heat") {
+          } else if (value === "heat") {
                   setShowHeatPopup(true);
                 } else if (value === "manual") {
-                  setShowManualPopup(true);
+                  openLeagueManual();
                 } else if (value === "pitchlist") {
                   const { matchInfo: onePersonMatch, firstTeam, thirdTeam } =
                     await getOnePersonTeamsFromMatchInfo();
@@ -2213,7 +2619,12 @@ return (
                   setShowPitchListPopup(true);
 
                 } else if (value === "intentionalWalk") {
-                  setIntentionalWalkTrigger((n) => n + 1);
+
+
+                  if (leagueMode === "senior") await openSeniorIntentionalWalk();
+
+
+                  else setIntentionalWalkTrigger((n) => n + 1);
 
                 } else if (value === "waterBreak") {
                   setWaterBreakRunning(false);
@@ -2227,7 +2638,7 @@ return (
                   setShowSuspendedGamePopup(true);
 
                 } else if (value === "boysmanual") {
-                  setShowBoysManualPopup(true);
+                  if (getLeagueMode() === "custom") void openLeagueManual(); else setShowBoysManualPopup(true);
                 }
 
                 setOtherOption("");
@@ -2236,24 +2647,38 @@ return (
               <option value="" disabled hidden>
                 その他
               </option>
+              {leagueMode === "custom" && customOtherVisible("intentionalWalk") && <option value="intentionalWalk">申告敬遠</option>}
+              {leagueMode === "custom" && customOtherVisible("rainDelay") && <option value="customRain">雨天中断</option>}
+              {leagueMode === "custom" && customExtraItems().map(([id,v])=><option key={id} value={id}>{v.label}</option>)}
               <option value="history">アナウンス履歴</option>
+              {leagueMode === "senior" && (
+                <>
+                  <option value="intentionalWalk">申告敬遠</option>
+                  <option value="treatmentPause">試合の中断（治療）</option>
+                  <option value="treatmentResume">試合再開（治療）</option>
+                </>
+              )}
               {isBoys ? (
                 <>
-                  <option value="waterBreak">給水タイム</option>
+                  {customOtherVisible("water") && <option value="waterBreak">給水タイム</option>}
                   <option value="intentionalWalk">申告敬遠</option>
-                  <option value="tiebreak">タイブレーク</option>
-                  <option value="end">試合終了</option>
+                  {customOtherVisible("tieBreak") && <option value="tiebreak">タイブレーク</option>}
+                  {customOtherVisible("gameEnd") && <option value="end">試合終了</option>}
                   <option value="suspend">中断</option>
-                  <option value="suspendedGame">サスペンデッド</option>
+                  {customOtherVisible("suspendedGame") && <option value="suspendedGame">サスペンデッド</option>}
                   <option value="boysmanual">連盟🎤マニュアル</option>
                 </>
               ) : (
                 <>
-                  <option value="end">試合終了</option>
-                  <option value="tiebreak">タイブレーク</option>
-                  <option value="continue">継続試合</option>
-                  <option value="heat">熱中症</option>
-                  <option value="waterBreak">給水タイム</option>
+                  {customOtherVisible("gameEnd") && <option value="end">試合終了</option>}
+                  {customOtherVisible("tieBreak") && <option value="tiebreak">タイブレーク</option>}
+                  {customOtherVisible("suspendedGame") && <option value="continue">継続試合</option>}
+                  {customOtherVisible("heat") && <option value="heat">熱中症</option>}
+                  {leagueMode === "custom" && <>
+                    {customOtherVisible("injuryPause") && <option value="customPause">試合中の中断・再開</option>}
+                  </>}
+
+                  {customOtherVisible("water") && <option value="waterBreak">給水タイム</option>}
                   <option value="manual">連盟🎤マニュアル</option>
                   <option value="pitchlist">投球数⚾</option>
                 </>
@@ -2261,7 +2686,7 @@ return (
             </select>
           </div>
 
-          <OnePersonAnnounceScreen
+          <ActiveOnePersonAnnounceScreen
             onGoToSeatIntroduction={() => {
               fromGameRef.current = true;
               lastOffenseRef.current = true;
@@ -2319,6 +2744,8 @@ return (
         value={otherOption}
         onChange={async (e) => {
         const value = e.target.value;
+                if (await openCustomOther(value)) {setOtherOption("");return;}
+
 
         if (value === "history") {
           setShowAnnouncementHistory(true);
@@ -2327,6 +2754,11 @@ return (
         }
 
         if (value === "end") {
+                   if (leagueMode === "senior") {
+                     await openSeniorEndGame();
+                     setOtherOption("");
+                     return;
+                   }
           console.group("[END] その他→試合終了");
           const now = new Date();
           const formatted = `${now.getHours()}時${now.getMinutes()}分`;
@@ -2423,8 +2855,8 @@ return (
               }
             }
 
-            setEndGameAnnouncement(displayAnnouncement);
-            setEndGameAnnouncementSpeak(speakAnnouncement);
+            setEndGameAnnouncement((await getCustomGameEndAnnouncement(new Date())) ?? displayAnnouncement);
+            setEndGameAnnouncementSpeak((await getCustomGameEndAnnouncement(new Date())) ?? speakAnnouncement);
                      void prefetchEndGameAnnouncement(speakAnnouncement);
             setShowEndGamePopup(true);
           } else if (totalMyScore > totalOpponentScore) {
@@ -2480,17 +2912,22 @@ return (
               }
             }
 
-            setEndGameAnnouncement(displayAnnouncement);
-            setEndGameAnnouncementSpeak(speakAnnouncement);
+            setEndGameAnnouncement((await getCustomGameEndAnnouncement(new Date())) ?? displayAnnouncement);
+            setEndGameAnnouncementSpeak((await getCustomGameEndAnnouncement(new Date())) ?? speakAnnouncement);
                      void prefetchEndGameAnnouncement(speakAnnouncement);
             setShowEndGamePopup(true);
           } else {
-            setShowEndGameSimpleModal(true);
+            if (!(await openCustomEndGameIfAvailable())) setShowEndGameSimpleModal(true);
           }
 
           console.groupEnd();
 
-        } else if (value === "tiebreak") {
+         } else if (value === "tiebreak") {
+                   if (leagueMode === "senior") {
+                     await openSeniorTiebreak();
+                     setOtherOption("");
+                     return;
+                   }
           const cfg = (await localForage.getItem("tiebreakConfig")) as
             | { outs?: string; bases?: string }
             | null;
@@ -2516,17 +2953,22 @@ return (
               ? `ただいまより大会規定により、タイブレークをおこないます。\nタイブレークは${outs}、${bases}の状態からおこないます。`
               : `この試合は、${prevInning}回終了して同点のため、大会規定により${outs}、${bases}からのタイブレークに入ります。`;
 
-          setTiebreakMessage(msg);
+          setTiebreakMessage((await getCustomTiebreakAnnouncement()) ?? msg);
           setShowTiebreakPopup(true);
 
-        } else if (value === "continue") {
+         } else if (leagueMode === "custom" && value === "customPause") {
+                   openCustomPause();
+                 } else if (leagueMode === "senior" && value === "treatmentPause") {
+                   await openSeniorTreatmentPause();
+                 } else if (leagueMode === "senior" && value === "treatmentResume") {
+                   await openSeniorTreatmentResume();
+                 } else if (value === "continue") {
           setShowContinuationModal(true);
-
-        } else if (value === "heat") {
+          } else if (value === "heat") {
           setShowHeatPopup(true);
 
         } else if (value === "manual") {
-          setShowManualPopup(true);
+          openLeagueManual();
 
         } else if (value === "pitchlist") {
           const team = (await localForage.getItem("team")) as
@@ -2568,7 +3010,12 @@ return (
           setShowPitchListPopup(true);
 
         } else if (value === "intentionalWalk") {
-          setIntentionalWalkTrigger((n) => n + 1);
+
+
+          if (leagueMode === "senior") await openSeniorIntentionalWalk();
+
+
+          else setIntentionalWalkTrigger((n) => n + 1);
 
         } else if (value === "waterBreak") {
           setWaterBreakRunning(false);
@@ -2585,7 +3032,7 @@ return (
           setShowSuspendedGamePopup(true);
 
         } else if (value === "boysmanual") {
-          setShowBoysManualPopup(true);
+          if (getLeagueMode() === "custom") void openLeagueManual(); else setShowBoysManualPopup(true);
         }
 
         setOtherOption("");
@@ -2594,32 +3041,46 @@ return (
       <option value="" disabled hidden>
         その他
       </option>
-      <option value="history">アナウンス履歴</option>
+      {leagueMode === "custom" && customOtherVisible("intentionalWalk") && <option value="intentionalWalk">申告敬遠</option>}
+              {leagueMode === "custom" && customOtherVisible("rainDelay") && <option value="customRain">雨天中断</option>}
+              {leagueMode === "custom" && customExtraItems().map(([id,v])=><option key={id} value={id}>{v.label}</option>)}
+              <option value="history">アナウンス履歴</option>
+              {leagueMode === "senior" && (
+                <>
+                  <option value="intentionalWalk">申告敬遠</option>
+                  <option value="treatmentPause">試合の中断（治療）</option>
+                  <option value="treatmentResume">試合再開（治療）</option>
+                </>
+              )}
 
       {isBoys ? (
         <>
           <option value="intentionalWalk">申告敬遠</option>
-          <option value="waterBreak">給水タイム</option>
-          <option value="tiebreak">タイブレーク</option>
-          <option value="end">試合終了</option>
+          {customOtherVisible("water") && <option value="waterBreak">給水タイム</option>}
+          {customOtherVisible("tieBreak") && <option value="tiebreak">タイブレーク</option>}
+          {customOtherVisible("gameEnd") && <option value="end">試合終了</option>}
           <option value="suspend">試合中断</option>
-          <option value="suspendedGame">サスペンデッド</option>
+          {customOtherVisible("suspendedGame") && <option value="suspendedGame">サスペンデッド</option>}
           <option value="boysmanual">連盟🎤マニュアル</option>
         </>
       ) : (
         <>
-          <option value="end">試合終了</option>
-          <option value="tiebreak">タイブレーク</option>
-          <option value="continue">継続試合</option>
-          <option value="heat">熱中症</option>
-          <option value="waterBreak">給水タイム</option>
+          {customOtherVisible("gameEnd") && <option value="end">試合終了</option>}
+          {customOtherVisible("tieBreak") && <option value="tiebreak">タイブレーク</option>}
+          {customOtherVisible("suspendedGame") && <option value="continue">継続試合</option>}
+          {customOtherVisible("heat") && <option value="heat">熱中症</option>}
+                  {leagueMode === "custom" && <>
+                    {customOtherVisible("injuryPause") && <option value="customPause">試合中の中断・再開</option>}
+                  </>}
+
+          {customOtherVisible("water") && <option value="waterBreak">給水タイム</option>}
           <option value="manual">連盟🎤マニュアル</option>
           <option value="pitchlist">投球数⚾</option>
         </>
       )}
     </select>
         </div>
-        <OffenseScreen
+        <ActiveOffenseScreen
           onSwitchToDefense={async () => {
             const match =
               (await localForage.getItem("matchInfo")) as
@@ -2737,6 +3198,8 @@ return (
         value={otherOption}
         onChange={async (e) => {
           const value = e.target.value;
+                if (await openCustomOther(value)) {setOtherOption("");return;}
+
 
           if (value === "history") {
             setShowAnnouncementHistory(true);
@@ -2745,6 +3208,11 @@ return (
           }
 
           if (value === "end") {
+                   if (leagueMode === "senior") {
+                     await openSeniorEndGame();
+                     setOtherOption("");
+                     return;
+                   }
             console.group("[END] その他→試合終了");
             const now = new Date();
             const formatted = `${now.getHours()}時${now.getMinutes()}分`;
@@ -2841,8 +3309,8 @@ return (
                 }
               }
 
-              setEndGameAnnouncement(displayAnnouncement);
-              setEndGameAnnouncementSpeak(speakAnnouncement);
+              setEndGameAnnouncement((await getCustomGameEndAnnouncement(new Date())) ?? displayAnnouncement);
+              setEndGameAnnouncementSpeak((await getCustomGameEndAnnouncement(new Date())) ?? speakAnnouncement);
                      void prefetchEndGameAnnouncement(speakAnnouncement);
               setShowEndGamePopup(true);
             } else if (totalMyScore > totalOpponentScore) {
@@ -2898,23 +3366,30 @@ return (
                 }
               }
 
-              setEndGameAnnouncement(displayAnnouncement);
-              setEndGameAnnouncementSpeak(speakAnnouncement);
+              setEndGameAnnouncement((await getCustomGameEndAnnouncement(new Date())) ?? displayAnnouncement);
+              setEndGameAnnouncementSpeak((await getCustomGameEndAnnouncement(new Date())) ?? speakAnnouncement);
                      void prefetchEndGameAnnouncement(speakAnnouncement);
               setShowEndGamePopup(true);
             } else {
-              setShowEndGameSimpleModal(true);
+              if (!(await openCustomEndGameIfAvailable())) setShowEndGameSimpleModal(true);
             }
 
             console.groupEnd();
-          } else if (value === "continue") {
+            } else if (value === "tiebreak" && leagueMode === "senior") {
+                   await openSeniorTiebreak();
+                 } else if (leagueMode === "custom" && value === "customPause") {
+                   openCustomPause();
+                 } else if (leagueMode === "senior" && value === "treatmentPause") {
+                   await openSeniorTreatmentPause();
+                 } else if (leagueMode === "senior" && value === "treatmentResume") {
+                   await openSeniorTreatmentResume();
+                 } else if (value === "continue") {
             setShowContinuationModal(true);
-
           } else if (value === "heat") {
             setShowHeatPopup(true);
 
           } else if (value === "manual") {
-            setShowManualPopup(true);
+            openLeagueManual();
 
           } else if (value === "pitchlist") {
             type PitchRow = { playerId: number; name: string; total: number };
@@ -2985,6 +3460,9 @@ return (
             setPitchList(rows);
             setShowPitchListPopup(true);
 
+          } else if (value === "intentionalWalk") {
+            setIntentionalWalkTrigger((n) => n + 1);
+
           } else if (value === "waterBreak") {
             setWaterBreakRunning(false);
             setWaterBreakRemaining(waterBreakMinutes * 60);
@@ -3000,7 +3478,7 @@ return (
             setShowSuspendedGamePopup(true);
 
           } else if (value === "boysmanual") {
-            setShowBoysManualPopup(true);
+            if (getLeagueMode() === "custom") void openLeagueManual(); else setShowBoysManualPopup(true);
           }
 
           setOtherOption("");
@@ -3010,21 +3488,36 @@ return (
           その他
         </option>
 
-        <option value="history">アナウンス履歴</option>
+        {leagueMode === "custom" && customOtherVisible("intentionalWalk") && <option value="intentionalWalk">申告敬遠</option>}
+              {leagueMode === "custom" && customOtherVisible("rainDelay") && <option value="customRain">雨天中断</option>}
+              {leagueMode === "custom" && customExtraItems().map(([id,v])=><option key={id} value={id}>{v.label}</option>)}
+              <option value="history">アナウンス履歴</option>
+              {leagueMode === "senior" && (
+                <>
+                  <option value="treatmentPause">試合の中断（治療）</option>
+                  <option value="treatmentResume">試合再開（治療）</option>
+                </>
+              )}
         {isBoys ? (
           <>
-            <option value="waterBreak">給水タイム</option>
-            <option value="end">試合終了</option>
+            {customOtherVisible("water") && <option value="waterBreak">給水タイム</option>}
+            {customOtherVisible("gameEnd") && <option value="end">試合終了</option>}
             <option value="suspend">中断</option>
-            <option value="suspendedGame">サスペンデッド</option>
+            {customOtherVisible("suspendedGame") && <option value="suspendedGame">サスペンデッド</option>}
             <option value="boysmanual">連盟🎤マニュアル</option> 
           </>
         ) : (
           <>
-            <option value="end">試合終了</option>
-            <option value="continue">継続試合</option>
-            <option value="heat">熱中症</option>
-            <option value="waterBreak">給水タイム</option>
+            {customOtherVisible("gameEnd") && <option value="end">試合終了</option>}
+            {leagueMode === "senior" && customOtherVisible("tieBreak") && <option value="tiebreak">タイブレーク</option>}
+             {customOtherVisible("suspendedGame") && <option value="continue">継続試合</option>}
+            {customOtherVisible("heat") && <option value="heat">熱中症</option>}
+                  {leagueMode === "custom" && <>
+                    {customOtherVisible("injuryPause") && <option value="customPause">試合中の中断・再開</option>}
+
+                  </>}
+
+            {customOtherVisible("water") && <option value="waterBreak">給水タイム</option>}
             <option value="manual">連盟🎤マニュアル</option> 
             <option value="pitchlist">投球数⚾</option>
           </>
@@ -3033,12 +3526,21 @@ return (
     </div>
 
 
-    <DefenseScreen
-      key="defense"
-      onChangeDefense={() => setScreen("defenseChange")}
-      onSwitchToOffense={() => setScreen("offense")}
-      saveInningStartTrigger={defenseInningStartTrigger}
-    />
+    {leagueMode === "senior" ? (
+      <SeniorDefenseScreen
+        key="senior-defense"
+        onChangeDefense={() => setScreen("defenseChange")}
+        onSwitchToOffense={() => setScreen("offense")}
+        saveInningStartTrigger={defenseInningStartTrigger}
+      />
+    ) : (
+      <DefenseScreen
+        key="defense"
+        onChangeDefense={() => setScreen("defenseChange")}
+        onSwitchToOffense={() => setScreen("offense")}
+        saveInningStartTrigger={defenseInningStartTrigger}
+      />
+    )}
   </>
 )}
 
@@ -3235,7 +3737,7 @@ return (
     </button>
     <OperationSettings
       onNavigate={setScreen}
-      onOpenManual={() => setShowManualPopup(true)} // ← 追加：ManualViewerを開く
+      onOpenManual={() => { if (getLeagueMode() === "boys") if (getLeagueMode() === "custom") void openLeagueManual(); else setShowBoysManualPopup(true); else void openLeagueManual(); }} // リーグ別マニュアル
     />
         </>
 )}
@@ -3262,6 +3764,22 @@ return (
   />
 )}
 
+{screen === "custom-pre-game-settings" && (
+  <div className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800">
+    <CustomPreGameSettings onBack={() => setScreen("league-settings")} />
+  </div>
+)}
+
+{screen === "custom-in-game-settings" && (
+  <div className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800">
+    <CustomInGameSettings
+      profileId={getActiveCustomProfileId()}
+      profileName={getCustomProfiles().find(p=>p.id===getActiveCustomProfileId())?.name||"大会設定"}
+      onBack={() => setScreen("league-settings")}
+    />
+  </div>
+)}
+
 {screen === "announcement-mode" && (
   <AnnouncementModeScreen
     onBack={() => setScreen("operationSettings")}
@@ -3282,6 +3800,75 @@ return (
 
 {screen === "versionInfo" && (
   <VersionInfo version={APP_VERSION} onBack={() => setScreen("operationSettings")} />
+)}
+
+{leagueMode === 'custom' && customWeatherVars && <CustomWeatherAnnounce vars={customWeatherVars} onClose={()=>setCustomWeatherVars(null)} />}
+{leagueMode === 'custom' && customExtraNotice && <div className="fixed inset-0 z-[2200] bg-black/60 flex items-center justify-center p-3" role="dialog" aria-modal="true"><div className="w-full max-w-lg rounded-2xl bg-white overflow-hidden"><div className="bg-emerald-600 text-white font-bold p-4">🎤 {customExtraNotice.label}</div><div className="p-4 space-y-3">{customExtraNotice.memo&&<div className="rounded-xl bg-amber-50 p-3 text-amber-900">⚠️ {customExtraNotice.memo}</div>}<div className="whitespace-pre-wrap font-bold leading-7 text-red-700 rounded-xl bg-red-100 p-3">{customExtraNotice.message}</div><div className="grid grid-cols-2 gap-2"><button className="rounded-xl bg-blue-600 p-3 text-white font-bold" onClick={()=>void speak(customExtraNotice.message,{progressive:true,cache:true})}>🎙 読み上げ</button><button className="rounded-xl bg-rose-600 p-3 text-white font-bold" onClick={()=>stop()}>停止</button></div><button className="w-full rounded-xl bg-emerald-600 p-3 text-white font-bold" onClick={()=>{stop();setCustomExtraNotice(null);}}>閉じる</button></div></div></div>}
+{/* カスタマイズ：中断・再開アナウンスと経過時間計測を一つのモーダルへ */}
+{leagueMode === 'custom' && showCustomPauseModal && (
+  <div className="fixed inset-0 z-[2001] bg-black/60 flex items-center justify-center p-3" role="dialog" aria-modal="true" aria-label="試合中の中断・再開">
+    <div className="w-full max-w-lg bg-white rounded-2xl overflow-hidden shadow-2xl max-h-[92svh] flex flex-col">
+      <div className="bg-gradient-to-r from-rose-600 to-pink-600 text-white font-extrabold p-4 flex items-center gap-2"><IconMic />試合中の中断・再開</div>
+      <div className="p-4 overflow-y-auto space-y-4">
+        <div className="bg-slate-50 border rounded-xl p-3 text-center">
+          <div className="text-sm font-semibold text-gray-700">中断時間タイマー</div>
+          <div className="text-4xl font-mono font-bold tabular-nums text-gray-900 my-2">{customPauseClock}</div>
+          <div className="font-bold text-blue-800">中断時間：{customPauseMinutes}分</div>
+          <div className="text-xs text-gray-600 mt-1">30秒未満は切り捨て・30秒以上は切り上げ</div>
+          <div className="grid grid-cols-3 gap-2 mt-3">
+            <button className="bg-emerald-600 text-white font-bold h-12 rounded-xl disabled:opacity-40" disabled={customPauseState.startedAt!==null} onClick={customPauseStart}>START</button>
+            <button className="bg-rose-600 text-white font-bold h-12 rounded-xl disabled:opacity-40" disabled={customPauseState.startedAt===null} onClick={customPauseStop}>STOP</button>
+            <button className="bg-gray-600 text-white font-bold h-12 rounded-xl" onClick={customPauseClear}>CLEAR</button>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <button onClick={()=>setCustomPausePart('pause')} className={`h-11 rounded-xl font-bold border ${customPausePart==='pause'?'bg-blue-600 text-white':'bg-white text-gray-700'}`}>中断の案内</button>
+          <button onClick={()=>setCustomPausePart('resume')} className={`h-11 rounded-xl font-bold border ${customPausePart==='resume'?'bg-blue-600 text-white':'bg-white text-gray-700'}`}>再開の案内</button>
+        </div>
+        <div className="rounded-2xl border border-red-500 bg-red-100 p-4">
+          <CustomInGameMemo item="injuryPause" part={customPausePart} vars={{'中断時間':String(customPauseMinutes)}} />
+          <div className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">{customPauseText()}</div>
+          <div className="grid grid-cols-2 gap-2 mt-4">
+            <button className="h-11 rounded-xl bg-blue-600 text-white font-bold flex justify-center items-center gap-2" onClick={()=>void speak(customPauseText(),{progressive:true,cache:true})}><IconMic />読み上げ</button>
+            <button className="h-11 rounded-xl bg-rose-600 text-white font-bold" onClick={()=>stop()}>停止</button>
+          </div>
+        </div>
+      </div>
+      <div className="p-3 border-t"><button className="w-full h-11 rounded-xl bg-emerald-600 text-white font-bold" onClick={()=>{stop();setShowCustomPauseModal(false);}}>閉じる</button></div>
+    </div>
+  </div>
+)}
+
+{/* リトルシニア専用：その他アナウンス（読み上げと停止を共通デザイン） */}
+{(leagueMode === "senior" || leagueMode === "custom") && seniorOtherNotice && (
+  <div className="fixed inset-0 z-[2000] bg-black/55 flex items-center justify-center p-3" role="dialog" aria-modal="true" aria-label={seniorOtherNotice.title}>
+    <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden max-h-[90svh] flex flex-col">
+      <div className="bg-gradient-to-r from-rose-600 to-pink-600 text-white px-4 py-4 font-extrabold flex items-center gap-2">
+        <IconMic />{seniorOtherNotice.title}
+      </div>
+      <div className="p-4 overflow-y-auto">
+        {seniorOtherNotice.kind === "resume" && (
+          <label className="flex items-center gap-3 mb-3 text-gray-800 font-bold">
+            中断時間（分）
+            <input aria-label="中断時間（分）" type="number" min={0} max={9999} inputMode="numeric"
+              value={seniorTreatmentMinutes} onChange={e=>handleSeniorTreatmentMinutes(e.target.value)}
+              className="w-28 min-h-11 border-2 border-gray-300 rounded-xl px-3 text-lg" />
+          </label>
+        )}
+        <div className="rounded-2xl border border-red-500 bg-red-200 p-4">
+          <CustomInGameMemo item={seniorOtherNotice.title.includes('治療') ? 'injuryPause' : seniorOtherNotice.title.includes('継続') ? 'suspendedGame' : seniorOtherNotice.title.includes('熱中症') ? 'heat' : 'injuryPause'} part={seniorOtherNotice.title.includes('熱中症') ? (seniorOtherNotice.kind === 'resume' ? 'resume' : 'pause') : seniorOtherNotice.kind === 'resume' || seniorOtherNotice.title.includes('再開') ? 'resume' : 'pause'} />
+          {seniorOtherNotice.html ?
+            <div className="font-bold text-red-700 whitespace-pre-wrap leading-relaxed" dangerouslySetInnerHTML={{__html:seniorOtherNotice.html}} /> :
+            <p className="font-bold text-red-700 whitespace-pre-wrap leading-relaxed">{seniorOtherNotice.message}</p>}
+          <div className="grid grid-cols-2 gap-2 mt-4">
+            <button className="h-11 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center gap-2" onClick={()=>void speak(seniorOtherNotice.speech || seniorOtherNotice.message, {progressive:true,cache:true})}><IconMic />読み上げ</button>
+            <button className="h-11 rounded-xl bg-rose-600 text-white font-bold" onClick={()=>stop()}>停止</button>
+          </div>
+        </div>
+      </div>
+      <div className="p-3 border-t"><button className="w-full h-11 rounded-xl bg-emerald-600 text-white font-bold" onClick={()=>{stop();setSeniorOtherNotice(null);}}>OK</button></div>
+    </div>
+  </div>
 )}
 
 {/* 試合終了画面（スマホ風） */}
@@ -3320,11 +3907,11 @@ return (
 
         {/* 本文（スクロール領域） */}
         <div className="px-4 py-4 space-y-3 overflow-y-auto">
-          {/* 注意表示 */}
-          <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 text-sm font-semibold flex items-center gap-2">
+          {/* 固定の注意文はカスタマイズ時は非表示 */}
+          {leagueMode !== "custom" && <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 text-sm font-semibold flex items-center gap-2">
             <span className="text-2xl">⚠️</span>
             試合終了挨拶後、勝利チームがアナウンス
-          </div>
+          </div>}
 
           {/* 🔴 アナウンス文言エリア（ここに読み上げ／停止ボタンを内包） */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
@@ -3332,6 +3919,7 @@ return (
             </div>
 
             {/* 文言（改行保持） */}
+            <CustomInGameMemo item="gameEnd" part={customGameEndPart} />
             <div className="text-left text-red-700 font-bold whitespace-pre-wrap leading-relaxed max-h-[40vh] overflow-y-auto pr-2">
               {endGameAnnouncement}
             </div>
@@ -3490,6 +4078,7 @@ return (
             </div>
 
             {/* 文言 */}
+            <CustomInGameMemo item="heat" part="notice" />
             <p className="text-red-700 font-bold whitespace-pre-wrap">
               {heatMessage}
             </p>
@@ -3578,8 +4167,9 @@ return (
             </div>
 
             {/* 文言（改行保持） */}
+            <CustomInGameMemo item="tieBreak" part="main" />
             <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
-              {tiebreakMessage}
+              <span dangerouslySetInnerHTML={{__html: tiebreakMessage}} />
             </p>
 
             {/* 読み上げ／停止（横いっぱい・等幅、改行なしテキスト） */}
@@ -3587,7 +4177,7 @@ return (
               <button
                 onClick={async () => {
                   await speak(
-                    tiebreakMessage.replace(/入ります。/g, "はいります。"),
+                    tiebreakMessage.replace(/<ruby>(.*?)<rt>(.*?)<\/rt><\/ruby>/g, (_m,_name,kana)=>kana).replace(/<[^>]*>/g, "").replace(/入ります。/g, "はいります。"),
                     { progressive: true, cache: true }
                   );
                 }}
@@ -3738,10 +4328,9 @@ return (
             </div>
 
             {/* 文言 */}
+            <CustomInGameMemo item="suspendedGame" part="pause" />
             <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
-              この試合は、ただ今で打ち切り、継続試合となります。{'\n'}
-              明日以降に中断した時点から再開いたします。{'\n'}
-              あしからずご了承くださいませ。
+              {getCustomOtherText('suspendedGame','pause') ?? `この試合は、ただ今で打ち切り、継続試合となります。\n明日以降に中断した時点から再開いたします。\nあしからずご了承くださいませ。`}
             </p>
 
             {/* 読み上げ／停止（横いっぱい・等幅、改行なしテキスト） */}
@@ -3752,7 +4341,7 @@ return (
                     "この試合は、ただ今で打ち切り、継続試合となります。\n" +
                     "明日以降に中断した時点から再開いたします。\n" +
                     "あしからずご了承くださいませ。";
-                  await speak(txt, { progressive: true, cache: true });
+                  await speak(getCustomOtherText("suspendedGame", "pause") ?? txt, { progressive: true, cache: true });
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                            inline-flex items-center justify-center gap-2"
@@ -4322,16 +4911,15 @@ return (
         <div className="px-4 py-4 space-y-4 overflow-y-auto">
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
             <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
-              ご覧のような天候状態の為、{'\n'}試合続行が不可能となりましたので{'\n'}
-              この試合は大会規定により、{'\n'}サスペンデッドゲームといたします。
+              {getCustomOtherText('suspendedGame','pause') ?? `ご覧のような天候状態の為、\n試合続行が不可能となりましたので\nこの試合は大会規定により、\nサスペンデッドゲームといたします。`}
             </p>
 
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button
                 onClick={async () => {
                   await speak(
-                    "ご覧のような天候状態の為、試合続行が不可能となりましたので\n" +
-                    "この試合は大会規定により、サスペンデッドゲームといたします。",
+                    getCustomOtherText('suspendedGame','pause') ?? ("ご覧のような天候状態の為、試合続行が不可能となりましたので\n" +
+                    "この試合は大会規定により、サスペンデッドゲームといたします。"),
                     { progressive: true, cache: true }
                   );
                 }}
@@ -4368,6 +4956,7 @@ return (
   </div>
 )}
 
+{manualNotice && <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/70 p-4"><div role="alertdialog" aria-modal="true" className="w-full max-w-sm rounded-2xl bg-white p-5 text-slate-900 shadow-xl"><h2 className="text-lg font-bold">アナウンスマニュアル</h2><p className="mt-3 whitespace-pre-wrap text-sm">{manualNotice}</p><button type="button" className="mt-5 w-full rounded-xl bg-blue-600 px-4 py-3 font-bold text-white" onClick={()=>setManualNotice('')}>OK</button></div></div>}
 {/* ✅ マニュアル（ボーイズリーグ）表示画面モーダル */}
 {showBoysManualPopup && (
   <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
@@ -4400,7 +4989,7 @@ return (
         連盟🎤マニュアル
       </div>
       <div className="flex-1 overflow-hidden">
-        <ManualViewer />
+        <ManualViewer key={manualFileUrl} fileUrl={manualFileUrl} />
       </div>
       <button
         className="bg-green-600 text-white py-2 text-lg"
@@ -4888,6 +5477,7 @@ return (
           </div>
 
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+            <CustomInGameMemo item="water" part={waterBreakNotice ? "end" : "start"} vars={{"給水時間":String(waterBreakMinutes)}} />
             <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
               {waterBreakNotice || waterBreakMessage}
             </p>
@@ -5073,12 +5663,20 @@ useEffect(() => {
             style={{
               color: "white",
               WebkitTextStroke:
-                leagueMode === "boys" ? "0.5px #3B82F6" : "0.5px red", // Boysは青
+                leagueMode === "boys"
+                  ? "0.5px #3B82F6" // ボーイズ：青
+                  : leagueMode === "senior"
+                    ? "0.5px #22C55E" // リトルシニア：緑
+                    : "0.5px red", // ポニー：従来の赤
             }}
           >
-            {leagueMode === "boys"
+            {leagueMode === "custom"
+              ? `～ ${getCustomProfiles().find(p => p.id === getActiveCustomProfileId())?.name || "Custom"} Version ～`
+              : leagueMode === "boys"
               ? "～ Boys League Version ～"
-              : "～ Pony League Version ～"}
+              : leagueMode === "senior"
+                ? "～ Little Senior Version ～"
+                : "～ Pony League Version ～"}
           </p>
         </div>
 

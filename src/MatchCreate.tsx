@@ -752,7 +752,7 @@ return (
         </div>
 
         {/* 1人でアナウンス：第1試合ならメンバー交換を表示 */}
-        {!isBoys && matchNumber === 1 && (
+        {leagueMode === "pony" && matchNumber === 1 && (
           <div className="pt-1">
             <button
               type="button"
@@ -832,7 +832,7 @@ return (
     </div>
 
     {/* メンバー交換ボタン（条件一致時のみ） */}
-    {!isBoys && matchNumber === 1 && benchSide === "1塁側" && (
+    {leagueMode === "pony" && matchNumber === 1 && benchSide === "1塁側" && (
       <div className="mt-2">
         <button
           onClick={() => setShowExchangeModal(true)}
@@ -1296,12 +1296,12 @@ return (
                       先攻／後攻と、1塁側／3塁側を選びます。
                     </p>
                     <p className="mt-1 text-[13px] leading-5 text-slate-700">
-                      第1試合で1塁側を選んだ場合のみ、
+                      ポニーリーグの第1試合で1塁側を選んだ場合のみ、
                       <span className="font-bold text-sky-700">【メンバー交換】</span>
                       ボタンが表示されます。
                     </p>
                     <p className="mt-1 text-[12.5px] leading-5 text-slate-600">
-                      ※ ボーイズリーグモードでは表示されません。
+                      ※ ボーイズリーグ・リトルシニアモードでは表示されません。
                     </p>
                   </div>
                 </div>

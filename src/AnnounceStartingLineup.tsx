@@ -1,6 +1,7 @@
 // AnnounceStartingLineup.tsx（全文置き換え）
 import React, { useState, useEffect, useRef } from "react";
 import localForage from "localforage";
+import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 import { ScreenType } from "./App";
 import { speak as ttsSpeak, stop as ttsStop, prefetchTTS, prewarmTTS, preserveNameReading } from "./lib/tts";
 
@@ -70,7 +71,7 @@ const InfoCard: React.FC<{ icon: React.ReactNode; title: string; text: string }>
 
 const AnnounceStartingLineup: React.FC<{
     onNavigate: (screen: ScreenType) => void;
-    leagueMode: "pony" | "boys";
+    leagueMode: LeagueMode;
   }> = ({ onNavigate, leagueMode }) => {
   const [teamPlayers, setTeamPlayers] = useState<Player[]>([]);
   const [assignments, setAssignments] = useState<{ [pos: string]: number | null }>({});
@@ -435,6 +436,17 @@ const team3rdBaseFurigana =
       ? renderFurigana(team3rdBaseName, team3rdBaseFurigana)
       : team3rdBaseName;
 
+  // この画面への伝達値と、リーグ設定画面で選んだ保存値を照合する。
+  // 旧Appで senior が pony として渡されてもリトルシニアの表記を有効にする。
+  const savedLeagueMode = getLeagueMode();
+  const isLittleSenior = savedLeagueMode === "senior" || leagueMode === "senior";
+  // 同姓判定は今回のチーム内（スタメン＋控え）で行う。
+  const isDuplicateLastName = (player: Player) => {
+    const lastName = String(player.lastName ?? "").trim();
+    return !!lastName && teamPlayers.some((other) =>
+      Number(other.id) !== Number(player.id) && String(other.lastName ?? "").trim() === lastName
+    );
+  };
   const isBoys = leagueMode === "boys";
   const lineupEntries = battingOrder.slice(0, MAX_BATTING_ORDER);
   const myBenchSide = benchSide || "1塁側";
@@ -883,7 +895,7 @@ const handleSpeak = () => {
 
             return (
               <p className="text-white whitespace-pre-wrap leading-relaxed">
-                ピッチャーは {renderFullName(p)}{honorific}、<br />
+                ピッチャーは {isLittleSenior ? (isDuplicateLastName(p) ? renderFullName(p) : renderLastName(p)) : renderFullName(p)}{honorific}、<br />
                 ピッチャー {renderLastName(p)}{honorific}
                 {num ? ` 背番号${num}。` : "。"}
               </p>
