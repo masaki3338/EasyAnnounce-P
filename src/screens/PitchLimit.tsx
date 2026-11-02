@@ -2,8 +2,9 @@
 import React, { useState, useEffect } from "react";
 import localForage from "localforage";
 import { getLeagueMode } from "../lib/leagueSettings";
+import { getDefaultPitchLimit, type PitchLimitChoice } from "../lib/pitchLimitDefaults";
 
-type Choice = "85" | "75" | "45" | "custom";
+type Choice = PitchLimitChoice;
 
 // ---- 見た目用の小さなSVG（ロジック非依存） ----
 const IconBack = () => (
@@ -20,10 +21,11 @@ const IconBall = () => (
 
 export default function PitchLimit({ onBack }: { onBack: () => void }) {
   // ── 既存のロジック：そのまま ─────────────────────
-  const isPonyLeague = getLeagueMode() !== "boys";
-  const [choice, setChoice] = useState<Choice>("75");
-  const [custom, setCustom] = useState<number>(85);
-  const [selected, setSelected] = useState<number>(75);
+  const isPonyLeague = getLeagueMode() === "pony";
+  const defaults = getDefaultPitchLimit(getLeagueMode());
+  const [choice, setChoice] = useState<Choice>(defaults.choice);
+  const [custom, setCustom] = useState<number>(defaults.custom);
+  const [selected, setSelected] = useState<number>(defaults.selected);
 
   useEffect(() => {
     (async () => {
@@ -38,6 +40,7 @@ export default function PitchLimit({ onBack }: { onBack: () => void }) {
       );
       const legacy = await localForage.getItem<number>("rule.pitchLimit");
 
+      const leagueDefaults = getDefaultPitchLimit(getLeagueMode());
       const nextChoice: Choice =
         savedChoice ??
         (legacy === 45
@@ -46,14 +49,16 @@ export default function PitchLimit({ onBack }: { onBack: () => void }) {
           ? "75"
           : legacy === 85
           ? "85"
-          : "custom");
+          : typeof legacy === "number"
+          ? "custom"
+          : leagueDefaults.choice);
 
       const nextCustom =
         typeof savedCustom === "number"
           ? savedCustom
           : legacy && legacy !== 45 && legacy !== 75 && legacy !== 85
           ? legacy
-          : 85;
+          : leagueDefaults.custom;
 
       const nextSelected =
         typeof savedSelected === "number"
@@ -79,6 +84,7 @@ export default function PitchLimit({ onBack }: { onBack: () => void }) {
     await localForage.setItem("rule.pitchLimit.choice", c);
     await localForage.setItem("rule.pitchLimit.custom", cust);
     await localForage.setItem("rule.pitchLimit.selected", sel);
+    await localForage.setItem("rule.pitchLimit", sel);
   };
 
   const choose85 = () => persist("85", custom, 85);

@@ -110,7 +110,7 @@ const getSpeaker = () => {
 // 0.5〜2.0
 const getSpeed = () => {
   const v = Number(localStorage.getItem("tts:speedScale"));
-  return Number.isFinite(v) && v > 0 ? v : 1.0;
+  return Number.isFinite(v) && v > 0 ? v : 1.1;
 };
 
 // =========== 再生制御 ===========

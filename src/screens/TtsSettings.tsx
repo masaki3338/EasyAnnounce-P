@@ -63,22 +63,25 @@ function saveMatchaVoice(voice: "taniho" | "uguisu") {
 export default function TtsSettings({ onNavigate, onBack }: Props) {
   const { voices, ready } = useWebSpeechVoices("ja");
 
-  const DEFAULT_RATE = 1.3;
+  const DEFAULT_RATE = 1.1;
   const DEFAULT_PITCH = 1.0;
-  const DEFAULT_VOLUME = 0.8;
+  const DEFAULT_VOLUME = 1.0;
 
   const [speed, setSpeed] = useState<number>(() => {
-    const v = Number(localStorage.getItem("tts:speedScale"));
+    const saved = localStorage.getItem("tts:speedScale");
+    const v = saved === null ? NaN : Number(saved);
     return Number.isFinite(v) ? Math.min(2, Math.max(0.5, v)) : DEFAULT_RATE;
   });
 
   const [pitch, setPitch] = useState<number>(() => {
-    const v = Number(localStorage.getItem("tts:pitch"));
+    const saved = localStorage.getItem("tts:pitch");
+    const v = saved === null ? NaN : Number(saved);
     return Number.isFinite(v) ? Math.min(2, Math.max(0, v)) : DEFAULT_PITCH;
   });
 
   const [volume, setVolume] = useState<number>(() => {
-    const v = Number(localStorage.getItem("tts:volume"));
+    const saved = localStorage.getItem("tts:volume");
+    const v = saved === null ? NaN : Number(saved);
     return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : DEFAULT_VOLUME;
   });
 
