@@ -93,7 +93,11 @@ const historyData: HistoryItem[] = [
        ・カスタマイズ機能追加`,
     ],
   },
-
+  {
+    date: "2026.11.25",
+    version: "Version 1.08",
+    details: ["「申告敬遠」から「申告故意四球」に変更"],
+  },
 
 ];
 
