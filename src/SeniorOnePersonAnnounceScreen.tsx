@@ -1068,7 +1068,7 @@ const buildIntentionalWalkText = async () => {
   const batter = currentEntry ? getPlayer(currentEntry.id) : null;
 
   if (!batter) {
-    return "申告敬遠です。";
+    return "申告故意四球です。";
   }
 
   const honorific = batter?.isFemale ? "さん" : "くん";
@@ -1079,7 +1079,7 @@ const buildIntentionalWalkText = async () => {
   const nextBatter = nextEntry ? getPlayer(nextEntry.id) : null;
 
   if (!nextBatter) {
-    return `${batterName}、申告敬遠の為、１塁に進塁いたします。`;
+    return `${batterName}、申告故意四球の為、１塁に進塁いたします。`;
   }
 
   const nextHonorific = nextBatter?.isFemale ? "さん" : "くん";
@@ -1105,7 +1105,7 @@ const buildIntentionalWalkText = async () => {
   }
 
   return (
-    `${batterName}、申告敬遠の為、１塁に進塁いたします。\n` +
+    `${batterName}、申告故意四球の為、１塁に進塁いたします。\n` +
     `バッターは ${nextBatterText}。`
   );
 };
@@ -2749,7 +2749,7 @@ useEffect(() => {
 useEffect(() => {
   if (!showIntentionalWalkPopup || !intentionalWalkText.trim()) return;
   void addAnnouncementHistory({
-    category: "申告敬遠",
+    category: "申告故意四球",
     displayText: intentionalWalkText,
     speechText: intentionalWalkText.replaceAll("進塁", "しんるい"),
     inningLabel: getCurrentHistoryInningLabel(),
@@ -11772,7 +11772,7 @@ useEffect(() => {
           </div>
         )}
 
-        {/* ✅ 申告敬遠モーダル */}
+        {/* ✅ 申告故意四球モーダル */}
         {showIntentionalWalkPopup && (
           <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
             <div
@@ -11786,7 +11786,7 @@ useEffect(() => {
                 <div className="bg-red-600 text-white px-4 py-3 flex justify-between items-center">
                   <div className="flex items-center gap-2">
                     <IconMic />
-                    <span className="font-bold">申告敬遠</span>
+                    <span className="font-bold">申告故意四球</span>
                   </div>
 
                   <button

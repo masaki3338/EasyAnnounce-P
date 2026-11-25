@@ -657,7 +657,7 @@ const App = () => {
     const player = Array.isArray(team?.players)
       ? team.players.find((p: any) => Number(p?.id) === Number(entry?.id)) : null;
     if (!player) {
-      setSeniorOtherNotice({title:"申告敬遠",message:"現在の打者を取得できません。打者を選択してからお試しください。"});
+      setSeniorOtherNotice({title:"申告故意四球",message:"現在の打者を取得できません。打者を選択してからお試しください。"});
       return;
     }
     const lastName = String(player?.lastName ?? "");
@@ -666,10 +666,10 @@ const App = () => {
     // HTMLルビと読み上げ用テキストは別々に保持する。
     const safe = (v: string) => v.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     const ruby = `<ruby>${safe(lastName)}<rt>${safe(kana)}</rt></ruby>`;
-    const suffix = `${honor}は、申告敬遠により一塁へ進みます。`;
+    const suffix = `${honor}は、申告故意四球により一塁へ進みます。`;
     const message = `バッター${lastName}${suffix}`;
     const spoken = `バッター${kana || lastName}${suffix}`;
-    setSeniorOtherNotice({title:"申告敬遠",message, html:`バッター${ruby}${suffix}`, speech:spoken});
+    setSeniorOtherNotice({title:"申告故意四球",message, html:`バッター${ruby}${suffix}`, speech:spoken});
     void prefetchTTS(spoken);
   };
   const openSeniorTiebreak = async () => {
@@ -1168,7 +1168,7 @@ const ponyOtherOptions: OtherOptionItem[] = [
 ];
 
 const boysOtherOptions: OtherOptionItem[] = [
-  { value: "intentionalWalk", label: "申告敬遠" },
+  { value: "intentionalWalk", label: "申告故意四球" },
   { value: "tiebreak", label: "タイブレーク" },
   { value: "end", label: "試合終了" },
   { value: "suspend", label: "中断" },
@@ -1703,7 +1703,7 @@ const handleHeatStop = () => {
 
 const handleBoysOnlyMenu = async (value: string) => {
   if (value === "intentionalWalk") {
-    alert("申告敬遠はこれから実装します");
+    alert("申告故意四球はこれから実装します");
     return true;
   }
   if (value === "suspend") {
@@ -2647,13 +2647,13 @@ return (
               <option value="" disabled hidden>
                 その他
               </option>
-              {leagueMode === "custom" && customOtherVisible("intentionalWalk") && <option value="intentionalWalk">申告敬遠</option>}
+              {leagueMode === "custom" && customOtherVisible("intentionalWalk") && <option value="intentionalWalk">申告故意四球</option>}
               {leagueMode === "custom" && customOtherVisible("rainDelay") && <option value="customRain">雨天中断</option>}
               {leagueMode === "custom" && customExtraItems().map(([id,v])=><option key={id} value={id}>{v.label}</option>)}
               <option value="history">アナウンス履歴</option>
               {leagueMode === "senior" && (
                 <>
-                  <option value="intentionalWalk">申告敬遠</option>
+                  <option value="intentionalWalk">申告故意四球</option>
                   <option value="treatmentPause">試合の中断（治療）</option>
                   <option value="treatmentResume">試合再開（治療）</option>
                 </>
@@ -2661,7 +2661,7 @@ return (
               {isBoys ? (
                 <>
                   {customOtherVisible("water") && <option value="waterBreak">給水タイム</option>}
-                  <option value="intentionalWalk">申告敬遠</option>
+                  <option value="intentionalWalk">申告故意四球</option>
                   {customOtherVisible("tieBreak") && <option value="tiebreak">タイブレーク</option>}
                   {customOtherVisible("gameEnd") && <option value="end">試合終了</option>}
                   <option value="suspend">中断</option>
@@ -3041,13 +3041,13 @@ return (
       <option value="" disabled hidden>
         その他
       </option>
-      {leagueMode === "custom" && customOtherVisible("intentionalWalk") && <option value="intentionalWalk">申告敬遠</option>}
+      {leagueMode === "custom" && customOtherVisible("intentionalWalk") && <option value="intentionalWalk">申告故意四球</option>}
               {leagueMode === "custom" && customOtherVisible("rainDelay") && <option value="customRain">雨天中断</option>}
               {leagueMode === "custom" && customExtraItems().map(([id,v])=><option key={id} value={id}>{v.label}</option>)}
               <option value="history">アナウンス履歴</option>
               {leagueMode === "senior" && (
                 <>
-                  <option value="intentionalWalk">申告敬遠</option>
+                  <option value="intentionalWalk">申告故意四球</option>
                   <option value="treatmentPause">試合の中断（治療）</option>
                   <option value="treatmentResume">試合再開（治療）</option>
                 </>
@@ -3055,7 +3055,7 @@ return (
 
       {isBoys ? (
         <>
-          <option value="intentionalWalk">申告敬遠</option>
+          <option value="intentionalWalk">申告故意四球</option>
           {customOtherVisible("water") && <option value="waterBreak">給水タイム</option>}
           {customOtherVisible("tieBreak") && <option value="tiebreak">タイブレーク</option>}
           {customOtherVisible("gameEnd") && <option value="end">試合終了</option>}
@@ -3488,7 +3488,7 @@ return (
           その他
         </option>
 
-        {leagueMode === "custom" && customOtherVisible("intentionalWalk") && <option value="intentionalWalk">申告敬遠</option>}
+        {leagueMode === "custom" && customOtherVisible("intentionalWalk") && <option value="intentionalWalk">申告故意四球</option>}
               {leagueMode === "custom" && customOtherVisible("rainDelay") && <option value="customRain">雨天中断</option>}
               {leagueMode === "custom" && customExtraItems().map(([id,v])=><option key={id} value={id}>{v.label}</option>)}
               <option value="history">アナウンス履歴</option>
@@ -4634,8 +4634,8 @@ return (
 
                 <div className="mt-2 space-y-1">
                   <p>
-                    <span className="font-bold">【申告敬遠】</span>
-                    … 申告敬遠のアナウンスを行います。※ボーイズリーグのみ
+                    <span className="font-bold">【申告故意四球】</span>
+                    … 申告故意四球のアナウンスを行います。※ボーイズリーグのみ
                   </p>
                   <p>
                     <span className="font-bold">【試合終了】</span>
