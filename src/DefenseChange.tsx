@@ -4,7 +4,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import { TouchBackend } from 'react-dnd-touch-backend';
 import { useDrag } from "react-dnd";
 import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
-import { loadCustomInGameTexts, substituteTokens } from "./lib/customInGameTemplates";
+import { loadCustomInGameTexts, substituteTokens, customPitchPartEnabled } from "./lib/customInGameTemplates";
 import { getActiveCustomProfileId } from "./lib/customProfiles";
 import { customDefenseChangeIntro, customPinchDefenseBodies, customDefenseReentryText } from "./lib/customDefenseRuntime";
 import localForage from "localforage";
@@ -512,6 +512,7 @@ const buildPitcherCountAnnouncement = (
   prevPitchCounts: { current?: number; total?: number },
   teamPlayers: Player[],
   isBoysLeague: boolean = false, // 追加
+  teamName: string = "",
 ) => {
   if (prevPitcherId == null) return "";
 
@@ -524,6 +525,26 @@ const buildPitcherCountAnnouncement = (
   const total = Number(prevPitchCounts.total ?? 0);
 
   if (current === 0) return "";
+
+  // カスタマイズモード：イニング途中の投手交代専用設定。
+  // OFFの場合は投球数の追記だけを省略し、交代アナウンスは維持する。
+  if (getLeagueMode() === "custom") {
+    const texts = loadCustomInGameTexts(getActiveCustomProfileId());
+    const part = total > 0 && total !== current ? "pitcherChange" : "pitcherChangeNoTotal";
+    if (!customPitchPartEnabled(texts, part)) return "";
+    const template = texts.pitchCount?.[part];
+    if (typeof template === "string") {
+      return substituteTokens(template, {
+        "投手名": nameRuby(prevPitcher),
+        "投手名（苗字）": nameRuby(prevPitcher),
+        "投手名（フルネーム）": fullName(prevPitcher),
+        "敬称": honor(prevPitcher),
+        "この回の投球数": String(current),
+        "合計投球数": String(total),
+        "チーム名": teamName,
+      });
+    }
+  }
 
   const normalName = nameWithHonor(prevPitcher);
   const boysName = `${nameRuby(prevPitcher)}投手`;
@@ -10903,6 +10924,7 @@ const prevPitcherCountAnnouncement = didPitcherChange
       prevPitchCounts,
       teamPlayers,
       isBoysLeague,
+      teamName,
     )
   : "";
 setPitcherCountAnnouncement(prevPitcherCountAnnouncement);
@@ -11142,6 +11164,7 @@ const prevPitcherCountAnnouncement = didPitcherChange
       prevPitchCounts,
       teamPlayers,
       isBoysLeague,
+      teamName,
     )
   : "";
 
