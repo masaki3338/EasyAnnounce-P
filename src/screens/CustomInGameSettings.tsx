@@ -130,7 +130,7 @@ export default function CustomInGameSettings({profileId,profileName,onBack}:Prop
    });
   }
   if(item?.id==='pitchCount'){
-   // 投球数は4種類がそれぞれ別場面のため、選択中の通知文を表示する。
+   // 投球数は6種類がそれぞれ別場面のため、選択中の通知文を表示する。
    // ただし選択中以外の文章も含め、設定値を常に texts から取得する。
    return substituteTokens(texts.pitchCount?.[part?.id||'']||'',samples);
   }
@@ -167,7 +167,7 @@ export default function CustomInGameSettings({profileId,profileName,onBack}:Prop
     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 text-sm leading-relaxed">
      <section className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-2"><h3 className="font-extrabold text-blue-800">① 設定したい画面を選ぶ</h3><p>上部の「攻撃画面」「守備画面」「その他」から選び、一覧のアナウンス項目をタップします。</p><p className="text-xs text-slate-700">チェックを外した項目は、カスタマイズモードの試合中画面に表示されません。チェック変更後は画面下の「保存」ボタンを押してください。攻撃画面で切り替えられるのは「試合開始時刻」「得点」の2項目です。「申告故意四球」は「その他」の先頭で切り替えられます。</p></section>
      <section className="rounded-xl border border-sky-200 bg-sky-50 p-3 space-y-2"><h3 className="font-extrabold text-sky-800">② 攻撃画面の設定</h3><p>代打・代走・得点など、攻撃中に使うアナウンスの文章を編集します。項目によって複数の場面別の文章がある場合は、編集したい種類を選択してください。</p><p className="text-xs text-slate-700">「試合開始時刻」をOFFにすると開始時刻のモーダルは表示しません。「得点」をOFFにすると得点の放送モーダルを省略しますが、得点の記録と試合の進行は継続します。その他の攻撃項目は常にチェックON（変更不可）です。</p></section>
-     <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-2"><h3 className="font-extrabold text-emerald-800">③ 守備画面の設定</h3><p>守備交代・投球数などの文章を編集します。守備交代では選手の交代、守備位置の移動、打順紹介、リエントリーなど、状況別の文章を切り替えて設定できます。</p><p className="text-xs text-slate-700">「投球数の放送」は4種類（守備回終了時・合計あり／なし、事前お知らせ、到達時）を個別にON/OFFできます。チェックOFFの放送・通知モーダルは表示されません。守備交代など、その他の守備項目は常に利用できます。</p></section>
+     <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-2"><h3 className="font-extrabold text-emerald-800">③ 守備画面の設定</h3><p>守備交代・投球数などの文章を編集します。守備交代では選手の交代、守備位置の移動、打順紹介、リエントリーなど、状況別の文章を切り替えて設定できます。</p><p className="text-xs text-slate-700">「投球数の放送」は6種類（守備回終了時・合計あり／なし、投手交代時・合計あり／なし、事前お知らせ、到達時）を個別にON/OFFできます。チェックOFFの放送・通知モーダルは表示されません。投手交代時は交代アナウンス末尾の投球数だけを省略します。守備交代など、その他の守備項目は常に利用できます。</p></section>
      <section className="rounded-xl border border-violet-200 bg-violet-50 p-3 space-y-2"><h3 className="font-extrabold text-violet-800">④ その他の設定</h3><p>攻撃・守備以外で使うアナウンスを編集します。チェックOFFの項目は試合中の「その他」に表示しません。「グラウンド整備」「次の試合のお知らせ」をOFFにした場合は、指定イニングの自動モーダルも表示しません。ONの場合は各項目で表示する回（1〜9回）と表／裏を指定できます。</p></section>
      <section className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2"><h3 className="font-extrabold text-amber-800">⑤ 差し込み項目の使い方</h3><p>文章の挿入したい位置をタップし、「＋選手名（苗字）」「＋守備位置」「＋背番号」などのボタンを押します。試合中は登録した選手や試合の情報に自動で置き換わります。</p><div className="rounded-lg border border-amber-100 bg-white p-2 text-xs">例：【守備位置】の【選手名（苗字）】【敬称】が入ります。</div><p className="text-xs text-slate-700">差し込み項目はアナウンスの種類ごとに使用できるものが異なります。利用できない項目を入力すると警告が表示されます。</p></section>
      <section className="rounded-xl border border-rose-200 bg-rose-50 p-3 space-y-2"><h3 className="font-extrabold text-rose-800">⑥ 読み上げメモの使い方</h3><p>アナウンスするタイミングや注意事項を入力できます。入力したメモは実際のアナウンス文の上に薄黄色で表示され、<strong>音声では読み上げられません。</strong></p><div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-950">⚠️ 例：ファールボールが観客席へ入ったときに案内する</div></section>
